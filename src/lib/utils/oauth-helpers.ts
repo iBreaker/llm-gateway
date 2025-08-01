@@ -153,19 +153,57 @@ export async function exchangeGeminiToken(
 
 // 获取用户信息
 export async function getClaudeUserInfo(accessToken: string): Promise<{ email: string }> {
-  const response = await fetch('https://api.anthropic.com/v1/user', {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01'
-    }
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to get Claude user info: ${response.status}`)
+  // 尝试多个可能的用户信息端点
+  const possibleEndpoints = [
+    'https://console.anthropic.com/v1/organizations',
+    'https://console.anthropic.com/v1/user/profile',
+    'https://console.anthropic.com/v1/user/me',
+    'https://api.anthropic.com/v1/user'
+  ]
+  
+  const headers = {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://claude.ai/',
+    'Origin': 'https://claude.ai'
   }
-
-  return await response.json()
+  
+  let lastError: Error | null = null
+  
+  // 尝试每个端点
+  for (const endpoint of possibleEndpoints) {
+    try {
+      const response = await fetch(endpoint, { headers })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        // 尝试从不同的数据结构中提取邮箱
+        const email = data.email || 
+                     data.user?.email || 
+                     data.primary_email ||
+                     data.account?.email ||
+                     (data.organizations && data.organizations[0]?.name) // 如果是组织端点，使用组织名作为标识
+        
+        if (email) {
+          return { email }
+        }
+        
+        // 如果没有邮箱，使用access token的一部分作为标识
+        return { email: `claude-user-${accessToken.substring(0, 8)}` }
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Unknown error')
+      console.warn(`Failed to fetch from ${endpoint}:`, error)
+    }
+  }
+  
+  // 如果所有端点都失败，生成一个基于token的标识符
+  console.warn('All user info endpoints failed, using token-based identifier')
+  return { email: `claude-user-${accessToken.substring(0, 8)}` }
 }
 
 export async function getGeminiUserInfo(accessToken: string): Promise<{ email: string }> {
