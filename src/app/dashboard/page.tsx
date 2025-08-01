@@ -36,7 +36,7 @@ export default function DashboardPage() {
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatsCard title="总请求数" value={loading ? "加载中..." : (stats ? stats.totalRequests.toLocaleString() : "---")} />
-          <StatsCard title="活跃账号" value={loading ? "加载中..." : (stats ? `${stats.activeAccounts}/10` : "---")} />
+          <StatsCard title="活跃账号" value={loading ? "加载中..." : (stats ? stats.activeAccounts.toString() : "---")} />
           <StatsCard title="API 密钥" value={loading ? "加载中..." : (stats ? stats.apiKeysCount.toString() : "---")} />
           <StatsCard title="成功率" value={loading ? "加载中..." : (stats ? `${stats.successRate}%` : "---")} />
         </div>
@@ -71,7 +71,7 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <StatusItem label="数据库服务" status="正常" />
               <StatusItem label="缓存服务" status="正常" />
-              <StatusItem label="上游账号" status="8/10 正常" />
+              <StatusItem label="上游账号" status={loading ? "检查中..." : (stats ? `${stats.activeAccounts} 个活跃` : "未知")} />
               <StatusItem label="API 响应" status="245ms" />
             </div>
           </div>

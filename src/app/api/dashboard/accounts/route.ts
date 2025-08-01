@@ -34,13 +34,15 @@ export async function GET() {
       id: account.id?.toString(),
       type: account.type,
       email: account.email,
+      base_url: account.base_url, // 新增：用于 LLM Gateway 类型
       status: account.is_active ? 'active' : 'inactive',
-      lastUsed: getTimeAgo(account.updated_at),
+      lastUsed: getTimeAgo(account.updated_at || account.created_at),
       requestCount: account.request_count || 0,
       successRate: account.request_count > 0 
         ? Math.round((account.success_count / account.request_count) * 1000) / 10
         : 100,
-      createdAt: formatDate(account.created_at)
+      createdAt: formatDate(account.created_at),
+      health_status: account.health_status || 'unknown'
     }))
 
     const stats = {
