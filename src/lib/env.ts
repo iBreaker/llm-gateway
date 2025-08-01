@@ -4,8 +4,10 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
   
-  // 数据库
-  DATABASE_URL: z.string().default(process.env.VERCEL === '1' ? '' : './data/dev.db'),
+  // 数据库 - 使用 Vercel 标准环境变量
+  POSTGRES_URL: z.string().optional(),
+  SUPABASE_URL: z.string().optional(),
+  DATABASE_URL: z.string().default('./data/dev.db'),
   
   // 缓存 (可选)
   REDIS_URL: z.string().optional(),
