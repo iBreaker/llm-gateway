@@ -31,15 +31,20 @@ export class PostgresAdapter implements DatabaseAdapter {
       const options = this.config.options as PostgreSQLOptions
       
       this.sql = postgres(this.config.url, {
-        max: options.maxConnections || 10,
-        timeout: options.queryTimeout || 60,
-        connect_timeout: options.connectionTimeout || 30,
+        max: options.maxConnections || 5,
+        idle_timeout: 20, // 20秒空闲超时
+        connect_timeout: 10, // 10秒连接超时
         ssl: options.ssl ? 'require' : false,
-        onnotice: () => {} // 忽略通知
+        onnotice: () => {}, // 忽略通知
+        prepare: false // 禁用预处理语句，提升 Vercel 兼容性
       })
 
-      // 测试连接
-      await this.sql`SELECT NOW()`
+      // 测试连接（构建时快速失败）
+      const testPromise = this.sql`SELECT NOW()`
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection test timeout')), 5000)
+      )
+      await Promise.race([testPromise, timeoutPromise])
 
       this.connected = true
       console.log('✅ PostgreSQL 数据库连接成功')
