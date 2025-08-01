@@ -29,7 +29,6 @@ export function generateClaudeAuthUrl(redirectUri: string): {
   const state = generateState()
 
   const params = new URLSearchParams({
-    code: 'true',
     client_id: config.clientId,
     response_type: 'code',
     redirect_uri: redirectUri,
@@ -100,14 +99,12 @@ export async function exchangeClaudeToken(
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
       'User-Agent': 'claude-cli/1.0.56 (external, cli)',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': 'https://claude.ai/',
-      'Origin': 'https://claude.ai'
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9'
     },
-    body: JSON.stringify(params)
+    body: new URLSearchParams(params)
   })
 
   if (!response.ok) {
@@ -153,57 +150,47 @@ export async function exchangeGeminiToken(
 
 // 获取用户信息
 export async function getClaudeUserInfo(accessToken: string): Promise<{ email: string }> {
-  // 尝试多个可能的用户信息端点
-  const possibleEndpoints = [
-    'https://console.anthropic.com/v1/organizations',
-    'https://console.anthropic.com/v1/user/profile',
-    'https://console.anthropic.com/v1/user/me',
-    'https://api.anthropic.com/v1/user'
-  ]
+  const config = OAUTH_CONFIGS.claude
   
   const headers = {
     'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     'User-Agent': 'claude-cli/1.0.56 (external, cli)',
     'Accept': 'application/json',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://claude.ai/',
-    'Origin': 'https://claude.ai'
+    'Accept-Language': 'en-US,en;q=0.9'
   }
   
-  let lastError: Error | null = null
-  
-  // 尝试每个端点
-  for (const endpoint of possibleEndpoints) {
-    try {
-      const response = await fetch(endpoint, { headers })
+  try {
+    // 使用 organizations API，这是 relay 项目使用的主要端点
+    const response = await fetch(config.userInfoUrl, { headers })
+    
+    if (response.ok) {
+      const data = await response.json()
       
-      if (response.ok) {
-        const data = await response.json()
-        
-        // 尝试从不同的数据结构中提取邮箱
-        const email = data.email || 
-                     data.user?.email || 
-                     data.primary_email ||
-                     data.account?.email ||
-                     (data.organizations && data.organizations[0]?.name) // 如果是组织端点，使用组织名作为标识
-        
-        if (email) {
-          return { email }
-        }
-        
-        // 如果没有邮箱，使用access token的一部分作为标识
-        return { email: `claude-user-${accessToken.substring(0, 8)}` }
+      // 从组织数据中提取标识信息
+      if (Array.isArray(data) && data.length > 0) {
+        // 使用第一个组织的信息
+        const org = data[0]
+        const email = org.display_name || org.name || `claude-org-${org.uuid?.substring(0, 8) || 'unknown'}`
+        return { email }
+      } else if (data.display_name || data.name) {
+        // 单个组织对象
+        const email = data.display_name || data.name
+        return { email }
       }
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Unknown error')
-      console.warn(`Failed to fetch from ${endpoint}:`, error)
+      
+      // 如果没有找到有用的标识信息，使用 token 的一部分
+      return { email: `claude-user-${accessToken.substring(0, 8)}` }
+    } else {
+      console.warn(`Organizations API failed: ${response.status}`)
+      // 使用 token 作为备用标识符
+      return { email: `claude-user-${accessToken.substring(0, 8)}` }
     }
+  } catch (error) {
+    console.warn('Failed to fetch Claude user info:', error)
+    // 如果所有都失败，生成一个基于token的标识符
+    return { email: `claude-user-${accessToken.substring(0, 8)}` }
   }
-  
-  // 如果所有端点都失败，生成一个基于token的标识符
-  console.warn('All user info endpoints failed, using token-based identifier')
-  return { email: `claude-user-${accessToken.substring(0, 8)}` }
 }
 
 export async function getGeminiUserInfo(accessToken: string): Promise<{ email: string }> {
