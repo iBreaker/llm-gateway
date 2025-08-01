@@ -1,18 +1,13 @@
 // Claude OAuth 账号验证器
 import type { ClaudeOAuthAccount, AccountValidator } from '@/lib/types/account-types'
+import { OAUTH_CONFIGS } from '@/lib/config/oauth-config'
 
 export class ClaudeOAuthValidator implements AccountValidator {
-  private clientId: string
-  private clientSecret: string
-  private baseUrl: string = 'https://api.anthropic.com'
+  private config = OAUTH_CONFIGS.claude
 
   constructor() {
-    this.clientId = process.env.CLAUDE_OAUTH_CLIENT_ID || ''
-    this.clientSecret = process.env.CLAUDE_OAUTH_CLIENT_SECRET || ''
-    
-    if (!this.clientId || !this.clientSecret) {
-      throw new Error('Claude OAuth credentials not configured')
-    }
+    // Claude 使用 PKCE 流程，不需要 Client Secret
+    // 使用与 Claude Code CLI 相同的公开客户端 ID
   }
 
   async validateCredentials(account: ClaudeOAuthAccount): Promise<boolean> {
@@ -20,20 +15,23 @@ export class ClaudeOAuthValidator implements AccountValidator {
       const { access_token } = account.credentials
       
       // 调用 Claude API 验证令牌
-      const response = await fetch(`${this.baseUrl}/v1/auth/validate`, {
-        method: 'GET',
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${access_token}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Hi' }]
+        })
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        return data.valid === true
-      }
-
-      return false
+      // 如果请求成功返回，说明 Token 有效
+      return response.ok
     } catch (error) {
       console.error('Claude OAuth 凭证验证失败:', error)
       return false
@@ -44,16 +42,20 @@ export class ClaudeOAuthValidator implements AccountValidator {
     try {
       const { refresh_token } = account.credentials
       
-      const response = await fetch(`${this.baseUrl}/oauth/token`, {
+      const response = await fetch(this.config.tokenUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/json',
+          'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://claude.ai/',
+          'Origin': 'https://claude.ai'
         },
-        body: new URLSearchParams({
+        body: JSON.stringify({
           grant_type: 'refresh_token',
           refresh_token: refresh_token,
-          client_id: this.clientId,
-          client_secret: this.clientSecret
+          client_id: this.config.clientId
         })
       })
 
@@ -113,7 +115,7 @@ export class ClaudeOAuthValidator implements AccountValidator {
   // Claude 特有的方法
   async getUserInfo(account: ClaudeOAuthAccount): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/user`, {
+      const response = await fetch('https://api.anthropic.com/v1/user', {
         headers: {
           'Authorization': `Bearer ${account.credentials.access_token}`,
           'Content-Type': 'application/json'
@@ -135,7 +137,7 @@ export class ClaudeOAuthValidator implements AccountValidator {
   async checkClaudeCodeAvailability(account: ClaudeOAuthAccount): Promise<boolean> {
     try {
       // 调用 Claude API 健康检查
-      const response = await fetch(`${this.baseUrl}/v1/health`, {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
         headers: {
           'Authorization': `Bearer ${account.credentials.access_token}`
         }
@@ -151,7 +153,7 @@ export class ClaudeOAuthValidator implements AccountValidator {
   // 获取账号使用限制信息
   async getUsageLimits(account: ClaudeOAuthAccount): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/usage`, {
+      const response = await fetch('https://api.anthropic.com/v1/usage', {
         headers: {
           'Authorization': `Bearer ${account.credentials.access_token}`,
           'Content-Type': 'application/json'

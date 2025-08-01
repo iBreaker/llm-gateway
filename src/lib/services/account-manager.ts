@@ -25,17 +25,15 @@ export class UnifiedAccountManager implements AccountManager {
 
   private initializeValidators() {
     try {
-      if (process.env.GEMINI_OAUTH_CLIENT_ID && process.env.GEMINI_OAUTH_CLIENT_SECRET) {
-        this.validators.set('gemini_oauth', new GeminiOAuthValidator())
-      }
+      // 使用内置的 OAuth 配置，不依赖环境变量
+      this.validators.set('gemini_oauth', new GeminiOAuthValidator())
     } catch (error) {
       console.warn('Gemini OAuth 验证器初始化失败:', error)
     }
 
     try {
-      if (process.env.CLAUDE_OAUTH_CLIENT_ID && process.env.CLAUDE_OAUTH_CLIENT_SECRET) {
-        this.validators.set('claude_oauth', new ClaudeOAuthValidator())
-      }
+      // Claude 使用 PKCE 流程，不需要 Client Secret
+      this.validators.set('claude_oauth', new ClaudeOAuthValidator())
     } catch (error) {
       console.warn('Claude OAuth 验证器初始化失败:', error)
     }
