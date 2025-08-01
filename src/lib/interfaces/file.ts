@@ -1,28 +1,28 @@
 // 文件存储接口定义
-export interface StorageAdapter {
+export interface FileAdapter {
   // 连接管理
   connect(): Promise<void>
   disconnect(): Promise<void>
   isConnected(): boolean
   
   // 文件操作
-  put(key: string, data: Buffer | string | Uint8Array, options?: StorageOptions): Promise<StorageResult>
-  get(key: string): Promise<StorageFile | null>
+  put(key: string, data: Buffer | string | Uint8Array, options?: FileOptions): Promise<FileResult>
+  get(key: string): Promise<FileStorage | null>
   delete(key: string): Promise<boolean>
   exists(key: string): Promise<boolean>
   
   // 批量操作
-  putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: StorageOptions }[]): Promise<StorageResult[]>
-  getMany(keys: string[]): Promise<(StorageFile | null)[]>
+  putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: FileOptions }[]): Promise<FileResult[]>
+  getMany(keys: string[]): Promise<(FileStorage | null)[]>
   deleteMany(keys: string[]): Promise<boolean[]>
   
   // 文件信息
-  stat(key: string): Promise<StorageFileStat | null>
-  list(prefix?: string, options?: ListOptions): Promise<StorageFile[]>
+  stat(key: string): Promise<FileStorageStat | null>
+  list(prefix?: string, options?: ListOptions): Promise<FileStorage[]>
   
   // 流式操作
   createReadStream(key: string): Promise<ReadableStream>
-  createWriteStream(key: string, options?: StorageOptions): Promise<WritableStream>
+  createWriteStream(key: string, options?: FileOptions): Promise<WritableStream>
   
   // URL 生成 (用于直接访问)
   getSignedUrl(key: string, action: 'read' | 'write', expiresIn?: number): Promise<string>
@@ -33,35 +33,35 @@ export interface StorageAdapter {
   deleteFolder(path: string, recursive?: boolean): Promise<void>
   
   // 复制和移动
-  copy(sourceKey: string, destinationKey: string): Promise<StorageResult>
-  move(sourceKey: string, destinationKey: string): Promise<StorageResult>
+  copy(sourceKey: string, destinationKey: string): Promise<FileResult>
+  move(sourceKey: string, destinationKey: string): Promise<FileResult>
 }
 
-export interface StorageFile {
+export interface FileStorage {
   key: string
   data: Buffer
-  metadata: StorageMetadata
-  stat: StorageFileStat
+  metadata: FileMetadata
+  stat: FileStorageStat
 }
 
-export interface StorageFileStat {
+export interface FileStorageStat {
   key: string
   size: number
   lastModified: Date
   contentType?: string
   etag?: string
-  metadata?: StorageMetadata
+  metadata?: FileMetadata
 }
 
-export interface StorageResult {
+export interface FileResult {
   key: string
   url?: string
   etag?: string
   size: number
-  metadata?: StorageMetadata
+  metadata?: FileMetadata
 }
 
-export interface StorageMetadata {
+export interface FileMetadata {
   contentType?: string
   contentEncoding?: string
   contentDisposition?: string
@@ -70,9 +70,9 @@ export interface StorageMetadata {
   [key: string]: any
 }
 
-export interface StorageOptions {
+export interface FileOptions {
   contentType?: string
-  metadata?: StorageMetadata
+  metadata?: FileMetadata
   public?: boolean
   overwrite?: boolean
   encryption?: boolean
@@ -85,13 +85,13 @@ export interface ListOptions {
   includeMetadata?: boolean
 }
 
-export interface StorageConfig {
+export interface FileConfig {
   type: 'local' | 'vercel-blob' | 's3' | 'gcs'
-  options: LocalStorageOptions | VercelBlobOptions | S3Options | GcsOptions
+  options: LocalFileOptions | VercelBlobOptions | S3Options | GcsOptions
 }
 
-// 本地存储配置
-export interface LocalStorageOptions {
+// 本地文件配置
+export interface LocalFileOptions {
   rootPath: string
   createDirectories?: boolean
   permissions?: {
@@ -126,37 +126,37 @@ export interface GcsOptions {
 }
 
 // 错误类型
-export class StorageError extends Error {
+export class FileError extends Error {
   constructor(message: string, public code?: string, public cause?: Error) {
     super(message)
-    this.name = 'StorageError'
+    this.name = 'FileError'
   }
 }
 
-export class StorageNotFoundError extends StorageError {
+export class FileNotFoundError extends FileError {
   constructor(key: string, cause?: Error) {
     super(`File not found: ${key}`, 'NOT_FOUND', cause)
-    this.name = 'StorageNotFoundError'
+    this.name = 'FileNotFoundError'
   }
 }
 
-export class StorageConnectionError extends StorageError {
+export class FileConnectionError extends FileError {
   constructor(message: string, cause?: Error) {
     super(message, 'CONNECTION_ERROR', cause)
-    this.name = 'StorageConnectionError'
+    this.name = 'FileConnectionError'
   }
 }
 
-export class StoragePermissionError extends StorageError {
+export class FilePermissionError extends FileError {
   constructor(message: string, cause?: Error) {
     super(message, 'PERMISSION_ERROR', cause)
-    this.name = 'StoragePermissionError'
+    this.name = 'FilePermissionError'
   }
 }
 
-export class StorageQuotaError extends StorageError {
+export class FileQuotaError extends FileError {
   constructor(message: string, cause?: Error) {
     super(message, 'QUOTA_EXCEEDED', cause)
-    this.name = 'StorageQuotaError'
+    this.name = 'FileQuotaError'
   }
 }

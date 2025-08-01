@@ -4,28 +4,28 @@ import path from 'path'
 import { createReadStream, createWriteStream } from 'fs'
 import crypto from 'crypto'
 import type {
-  StorageAdapter,
-  StorageConfig,
-  StorageFile,
-  StorageFileStat,
-  StorageResult,
-  StorageOptions,
-  StorageMetadata,
+  FileAdapter,
+  FileConfig,
+  FileStorage,
+  FileStorageStat,
+  FileResult,
+  FileOptions,
+  FileMetadata,
   ListOptions,
-  LocalStorageOptions,
-  StorageConnectionError,
-  StorageNotFoundError,
-  StoragePermissionError
-} from '../../interfaces/storage'
+  LocalFileOptions,
+  FileConnectionError,
+  FileNotFoundError,
+  FilePermissionError
+} from '../../interfaces/file'
 
-export class LocalStorageAdapter implements StorageAdapter {
-  private config: StorageConfig
+export class LocalFileAdapter implements FileAdapter {
+  private config: FileConfig
   private rootPath: string
   private connected = false
 
-  constructor(config: StorageConfig) {
+  constructor(config: FileConfig) {
     this.config = config
-    const options = config.options as LocalStorageOptions
+    const options = config.options as LocalFileOptions
     this.rootPath = path.resolve(options.rootPath)
   }
 
@@ -33,7 +33,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     if (this.connected) return
 
     try {
-      const options = this.config.options as LocalStorageOptions
+      const options = this.config.options as LocalFileOptions
       
       // 确保根目录存在
       if (options.createDirectories !== false) {
@@ -45,7 +45,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       
       this.connected = true
     } catch (error) {
-      throw new StorageConnectionError('本地存储连接失败', error as Error)
+      throw new FileConnectionError('本地文件存储连接失败', error as Error)
     }
   }
 
@@ -57,8 +57,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     return this.connected
   }
 
-  async put(key: string, data: Buffer | string | Uint8Array, options?: StorageOptions): Promise<StorageResult> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async put(key: string, data: Buffer | string | Uint8Array, options?: FileOptions): Promise<FileResult> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const filePath = this.getFilePath(key)
@@ -86,9 +86,9 @@ export class LocalStorageAdapter implements StorageAdapter {
       await fs.writeFile(filePath, buffer)
 
       // 设置文件权限
-      const storageOptions = this.config.options as LocalStorageOptions
-      if (storageOptions.permissions?.file) {
-        await fs.chmod(filePath, storageOptions.permissions.file)
+      const fileOptions = this.config.options as LocalFileOptions
+      if (fileOptions.permissions?.file) {
+        await fs.chmod(filePath, fileOptions.permissions.file)
       }
 
       // 写入元数据
@@ -105,12 +105,12 @@ export class LocalStorageAdapter implements StorageAdapter {
         metadata: options?.metadata
       }
     } catch (error) {
-      throw new StoragePermissionError(`写入文件失败: ${key}`, error as Error)
+      throw new FilePermissionError(`写入文件失败: ${key}`, error as Error)
     }
   }
 
-  async get(key: string): Promise<StorageFile | null> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async get(key: string): Promise<FileStorage | null> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const filePath = this.getFilePath(key)
@@ -130,12 +130,12 @@ export class LocalStorageAdapter implements StorageAdapter {
       if (error.code === 'ENOENT') {
         return null
       }
-      throw new StoragePermissionError(`读取文件失败: ${key}`, error)
+      throw new FilePermissionError(`读取文件失败: ${key}`, error)
     }
   }
 
   async delete(key: string): Promise<boolean> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const filePath = this.getFilePath(key)
@@ -154,12 +154,12 @@ export class LocalStorageAdapter implements StorageAdapter {
       if (error.code === 'ENOENT') {
         return false
       }
-      throw new StoragePermissionError(`删除文件失败: ${key}`, error)
+      throw new FilePermissionError(`删除文件失败: ${key}`, error)
     }
   }
 
   async exists(key: string): Promise<boolean> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const filePath = this.getFilePath(key)
@@ -170,8 +170,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
-  async putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: StorageOptions }[]): Promise<StorageResult[]> {
-    const results: StorageResult[] = []
+  async putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: FileOptions }[]): Promise<FileResult[]> {
+    const results: FileResult[] = []
     for (const item of items) {
       const result = await this.put(item.key, item.data, item.options)
       results.push(result)
@@ -179,8 +179,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     return results
   }
 
-  async getMany(keys: string[]): Promise<(StorageFile | null)[]> {
-    const results: (StorageFile | null)[] = []
+  async getMany(keys: string[]): Promise<(FileStorage | null)[]> {
+    const results: (FileStorage | null)[] = []
     for (const key of keys) {
       const result = await this.get(key)
       results.push(result)
@@ -197,8 +197,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     return results
   }
 
-  async stat(key: string): Promise<StorageFileStat | null> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async stat(key: string): Promise<FileStorageStat | null> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const filePath = this.getFilePath(key)
@@ -217,16 +217,16 @@ export class LocalStorageAdapter implements StorageAdapter {
       if (error.code === 'ENOENT') {
         return null
       }
-      throw new StoragePermissionError(`获取文件信息失败: ${key}`, error)
+      throw new FilePermissionError(`获取文件信息失败: ${key}`, error)
     }
   }
 
-  async list(prefix?: string, options?: ListOptions): Promise<StorageFile[]> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async list(prefix?: string, options?: ListOptions): Promise<FileStorage[]> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const searchPath = prefix ? path.join(this.rootPath, prefix) : this.rootPath
-      const files: StorageFile[] = []
+      const files: FileStorage[] = []
 
       await this.walkDirectory(searchPath, async (filePath) => {
         const relativePath = path.relative(this.rootPath, filePath)
@@ -257,17 +257,17 @@ export class LocalStorageAdapter implements StorageAdapter {
       const offset = options?.offset || 0
       return files.slice(offset)
     } catch (error) {
-      throw new StoragePermissionError('列出文件失败', error as Error)
+      throw new FilePermissionError('列出文件失败', error as Error)
     }
   }
 
   async createReadStream(key: string): Promise<ReadableStream> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     const filePath = this.getFilePath(key)
     
     if (!await this.exists(key)) {
-      throw new StorageNotFoundError(key)
+      throw new FileNotFoundError(key)
     }
 
     const nodeStream = createReadStream(filePath)
@@ -293,8 +293,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     })
   }
 
-  async createWriteStream(key: string, options?: StorageOptions): Promise<WritableStream> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async createWriteStream(key: string, options?: FileOptions): Promise<WritableStream> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     const filePath = this.getFilePath(key)
     const fileDir = path.dirname(filePath)
@@ -331,40 +331,38 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   async getSignedUrl(key: string, action: 'read' | 'write', expiresIn = 3600): Promise<string> {
-    // 本地存储不支持签名 URL，返回空字符串或抛出错误
-    throw new Error('本地存储不支持签名 URL')
+    // 本地存储不支持签名 URL
+    throw new Error('本地文件存储不支持签名 URL')
   }
 
   getPublicUrl(key: string): string {
-    // 本地存储不支持公共 URL，可以返回本地文件路径
+    // 本地存储返回文件路径
     return `file://${this.getFilePath(key)}`
   }
 
   async createFolder(folderPath: string): Promise<void> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     const fullPath = path.join(this.rootPath, folderPath)
     await fs.mkdir(fullPath, { recursive: true })
 
-    const storageOptions = this.config.options as LocalStorageOptions
-    if (storageOptions.permissions?.directory) {
-      await fs.chmod(fullPath, storageOptions.permissions.directory)
+    const fileOptions = this.config.options as LocalFileOptions
+    if (fileOptions.permissions?.directory) {
+      await fs.chmod(fullPath, fileOptions.permissions.directory)
     }
   }
 
   async deleteFolder(folderPath: string, recursive = false): Promise<void> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     const fullPath = path.join(this.rootPath, folderPath)
     await fs.rmdir(fullPath, { recursive })
   }
 
-  async copy(sourceKey: string, destinationKey: string): Promise<StorageResult> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
-
+  async copy(sourceKey: string, destinationKey: string): Promise<FileResult> {
     const sourceFile = await this.get(sourceKey)
     if (!sourceFile) {
-      throw new StorageNotFoundError(sourceKey)
+      throw new FileNotFoundError(sourceKey)
     }
 
     return this.put(destinationKey, sourceFile.data, {
@@ -372,7 +370,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     })
   }
 
-  async move(sourceKey: string, destinationKey: string): Promise<StorageResult> {
+  async move(sourceKey: string, destinationKey: string): Promise<FileResult> {
     const result = await this.copy(sourceKey, destinationKey)
     await this.delete(sourceKey)
     return result
@@ -389,7 +387,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     return this.getFilePath(key) + '.metadata.json'
   }
 
-  private async writeMetadata(key: string, metadata: StorageMetadata): Promise<void> {
+  private async writeMetadata(key: string, metadata: FileMetadata): Promise<void> {
     const metadataPath = this.getMetadataPath(key)
     const metadataDir = path.dirname(metadataPath)
     
@@ -397,7 +395,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
   }
 
-  private async readMetadata(key: string): Promise<StorageMetadata | null> {
+  private async readMetadata(key: string): Promise<FileMetadata | null> {
     try {
       const metadataPath = this.getMetadataPath(key)
       const content = await fs.readFile(metadataPath, 'utf8')
