@@ -74,13 +74,28 @@ export function generateGeminiAuthUrl(redirectUri: string): {
 export async function exchangeClaudeToken(
   code: string,
   codeVerifier: string,
-  redirectUri: string
+  redirectUri: string,
+  state?: string
 ): Promise<{
   access_token: string
   refresh_token: string
   expires_in: number
 }> {
   const config = OAUTH_CONFIGS.claude
+  
+  // 构建请求参数，包含所有必需的字段
+  const params: any = {
+    grant_type: 'authorization_code',
+    client_id: config.clientId,
+    code: code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier
+  }
+  
+  // 如果提供了 state 参数，添加到请求中
+  if (state) {
+    params.state = state
+  }
   
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
@@ -92,13 +107,7 @@ export async function exchangeClaudeToken(
       'Referer': 'https://claude.ai/',
       'Origin': 'https://claude.ai'
     },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      client_id: config.clientId,
-      code: code,
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier
-    })
+    body: JSON.stringify(params)
   })
 
   if (!response.ok) {

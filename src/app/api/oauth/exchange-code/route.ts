@@ -41,24 +41,34 @@ export async function POST(request: NextRequest) {
           })
         }
 
-        // 解析授权码
-        let actualCode = code
+        // 解析并清理授权码
+        let actualCode = code.trim()
         
         // 如果用户输入的是完整的回调 URL，提取其中的授权码
-        if (code.includes('console.anthropic.com/oauth/code/callback')) {
-          const url = new URL(code)
+        if (actualCode.includes('console.anthropic.com/oauth/code/callback')) {
+          const url = new URL(actualCode)
           const codeParam = url.searchParams.get('code')
           if (codeParam) {
             actualCode = codeParam
           }
         }
-
-        // 使用 PKCE 参数交换 Token
-        const baseUrl = process.env.VERCEL_URL 
-          ? `https://${process.env.VERCEL_URL}` 
-          : `http://localhost:${process.env.PORT || 3000}`
         
-        tokenData = await exchangeClaudeToken(actualCode, codeVerifier, `${baseUrl}/oauth/callback`)
+        // 如果授权码包含 # 符号，可能是带有片段的长字符串，提取主要部分
+        if (actualCode.includes('#')) {
+          const parts = actualCode.split('#')
+          if (parts.length > 1) {
+            // 取第一部分作为授权码，第二部分可能是其他信息
+            actualCode = parts[0]
+          }
+        }
+        
+        // 验证授权码格式（Claude 授权码应该是合理长度的字符串）
+        if (actualCode.length < 10 || actualCode.length > 500) {
+          throw new Error('授权码格式不正确，请检查是否完整复制了授权码')
+        }
+
+        // 使用 PKCE 参数交换 Token，使用固定的 Claude 回调 URI
+        tokenData = await exchangeClaudeToken(actualCode, codeVerifier, 'https://console.anthropic.com/oauth/code/callback', state)
         userInfo = await getClaudeUserInfo(tokenData.access_token)
       } else if (provider === 'gemini') {
         tokenData = await exchangeGeminiToken(code, 'urn:ietf:wg:oauth:2.0:oob')
