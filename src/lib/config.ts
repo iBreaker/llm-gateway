@@ -1,13 +1,13 @@
 import { env } from './env'
 import type { DatabaseConfig } from './interfaces/database'
 import type { CacheConfig } from './interfaces/cache'
-import type { StorageConfig } from './interfaces/storage'
+import type { FileConfig } from './interfaces/file'
 
 // 系统配置
 export interface SystemConfig {
   database: DatabaseConfig
   cache: CacheConfig
-  storage: StorageConfig
+  file: FileConfig
   server: {
     port: number
     host?: string
@@ -75,8 +75,8 @@ export function createSystemConfig(): SystemConfig {
     }
   }
 
-  // 存储配置
-  const storageConfig: StorageConfig = env.BLOB_READ_WRITE_TOKEN ? {
+  // 文件存储配置
+  const fileConfig: FileConfig = env.BLOB_READ_WRITE_TOKEN ? {
     type: 'vercel-blob',
     options: {
       token: env.BLOB_READ_WRITE_TOKEN,
@@ -85,7 +85,7 @@ export function createSystemConfig(): SystemConfig {
   } : {
     type: 'local',
     options: {
-      rootPath: './data/storage',
+      rootPath: './data/files',
       createDirectories: true,
       permissions: {
         file: 0o644,
@@ -97,7 +97,7 @@ export function createSystemConfig(): SystemConfig {
   return {
     database: databaseConfig,
     cache: cacheConfig,
-    storage: storageConfig,
+    file: fileConfig,
     server: {
       port: env.PORT,
       cors: {
@@ -138,9 +138,9 @@ export function validateConfig(config: SystemConfig): void {
     throw new Error('数据库 URL 不能为空')
   }
 
-  // 验证存储配置
-  if (config.storage.type === 'vercel-blob') {
-    const options = config.storage.options as any
+  // 验证文件存储配置
+  if (config.file.type === 'vercel-blob') {
+    const options = config.file.options as any
     if (!options.token) {
       throw new Error('Vercel Blob 存储需要配置 token')
     }
@@ -161,8 +161,8 @@ export function getConfigSummary(config: SystemConfig): Record<string, any> {
       type: config.cache.type,
       hasUrl: !!config.cache.url
     },
-    storage: {
-      type: config.storage.type
+    file: {
+      type: config.file.type
     },
     server: {
       port: config.server.port,

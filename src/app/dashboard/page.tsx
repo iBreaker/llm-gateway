@@ -1,7 +1,27 @@
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import Link from 'next/link'
 
-export default function DashboardPage() {
+// 获取统计数据
+async function getStats() {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/dashboard/stats`, {
+      next: { revalidate: 30 } // 30秒缓存
+    })
+    
+    if (!response.ok) {
+      console.error('获取统计数据失败:', response.status)
+      return null
+    }
+    
+    return response.json()
+  } catch (error) {
+    console.error('获取统计数据出错:', error)
+    return null
+  }
+}
+
+export default async function DashboardPage() {
+  const stats = await getStats()
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -13,10 +33,10 @@ export default function DashboardPage() {
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard title="总请求数" value="12,543" />
-          <StatsCard title="活跃账号" value="8/10" />
-          <StatsCard title="API 密钥" value="15" />
-          <StatsCard title="成功率" value="99.2%" />
+          <StatsCard title="总请求数" value={stats ? stats.totalRequests.toLocaleString() : "---"} />
+          <StatsCard title="活跃账号" value={stats ? `${stats.activeAccounts}/10` : "---"} />
+          <StatsCard title="API 密钥" value={stats ? stats.apiKeysCount.toString() : "---"} />
+          <StatsCard title="成功率" value={stats ? `${stats.successRate}%` : "---"} />
         </div>
 
         {/* 功能区域 */}

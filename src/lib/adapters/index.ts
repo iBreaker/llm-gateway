@@ -29,10 +29,6 @@ export async function createCacheAdapter(config: CacheConfig): Promise<CacheAdap
       const { MemoryCacheAdapter } = await import('./cache/memory')
       return new MemoryCacheAdapter(config)
     }
-    case 'redis': {
-      const { RedisCacheAdapter } = await import('./cache/redis')
-      return new RedisCacheAdapter(config)
-    }
     default:
       throw new Error(`不支持的缓存类型: ${config.type}`)
   }
@@ -48,14 +44,6 @@ export async function createFileAdapter(config: FileConfig): Promise<FileAdapter
     case 'vercel-blob': {
       const { VercelBlobFileAdapter } = await import('./file/vercel-blob')
       return new VercelBlobFileAdapter(config)
-    }
-    case 's3': {
-      const { S3FileAdapter } = await import('./file/s3')
-      return new S3FileAdapter(config)
-    }
-    case 'gcs': {
-      const { GcsFileAdapter } = await import('./file/gcs')
-      return new GcsFileAdapter(config)
     }
     default:
       throw new Error(`不支持的文件存储类型: ${config.type}`)

@@ -1,6 +1,8 @@
 import { systemConfig, validateConfig, getConfigSummary } from './config'
 import { ServiceRegistry } from './adapters'
-import type { DatabaseAdapter, CacheAdapter, StorageAdapter } from './adapters'
+import type { DatabaseAdapter } from './interfaces/database'
+import type { CacheAdapter } from './interfaces/cache'
+import type { FileAdapter } from './interfaces/file'
 
 // 系统初始化状态
 let initialized = false
@@ -10,14 +12,14 @@ let shutdownHooks: (() => Promise<void>)[] = []
 export async function initializeSystem(): Promise<{
   database: DatabaseAdapter
   cache: CacheAdapter
-  storage: StorageAdapter
+  file: FileAdapter
 }> {
   if (initialized) {
     const registry = ServiceRegistry.getInstance()
     return {
       database: registry.getDatabase(),
       cache: registry.getCache(),
-      storage: registry.getStorage()
+      file: registry.getFile()
     }
   }
 
@@ -31,14 +33,14 @@ export async function initializeSystem(): Promise<{
     // 2. 初始化服务注册中心
     const registry = ServiceRegistry.getInstance()
 
-    // 3. 初始化存储（SQLite 可能需要依赖存储适配器）
-    console.log('💾 初始化存储适配器...')
-    const storage = await registry.initializeStorage(systemConfig.storage)
-    console.log(`✅ 存储适配器初始化完成 (${systemConfig.storage.type})`)
+    // 3. 初始化文件存储（SQLite 可能需要依赖文件适配器）
+    console.log('💾 初始化文件存储适配器...')
+    const file = await registry.initializeFile(systemConfig.file)
+    console.log(`✅ 文件存储适配器初始化完成 (${systemConfig.file.type})`)
 
-    // 4. 初始化数据库（SQLite 需要存储适配器支持 Blob）
+    // 4. 初始化数据库（SQLite 需要文件适配器支持 Blob）
     console.log('📊 初始化数据库适配器...')
-    const database = await registry.initializeDatabaseWithStorage(systemConfig.database, storage)
+    const database = await registry.initializeDatabaseWithFile(systemConfig.database, file)
     console.log(`✅ 数据库适配器初始化完成 (${systemConfig.database.type})`)
 
     // 5. 初始化缓存
@@ -57,7 +59,7 @@ export async function initializeSystem(): Promise<{
     initialized = true
     console.log('🎉 系统初始化完成!')
 
-    return { database, cache, storage }
+    return { database, cache, file }
   } catch (error) {
     console.error('❌ 系统初始化失败:', error)
     
@@ -147,7 +149,7 @@ export async function healthCheck(): Promise<{
   services: {
     database: boolean
     cache: boolean
-    storage: boolean
+    file: boolean
   }
   timestamp: string
 }> {
@@ -156,7 +158,7 @@ export async function healthCheck(): Promise<{
   if (!initialized) {
     return {
       status: 'unhealthy',
-      services: { database: false, cache: false, storage: false },
+      services: { database: false, cache: false, file: false },
       timestamp
     }
   }
@@ -167,7 +169,7 @@ export async function healthCheck(): Promise<{
     const services = {
       database: registry.getDatabase().isConnected(),
       cache: registry.getCache().isConnected(),
-      storage: registry.getStorage().isConnected()
+      file: registry.getFile().isConnected()
     }
 
     const status = Object.values(services).every(Boolean) ? 'healthy' : 'unhealthy'
@@ -176,7 +178,7 @@ export async function healthCheck(): Promise<{
   } catch (error) {
     return {
       status: 'unhealthy',
-      services: { database: false, cache: false, storage: false },
+      services: { database: false, cache: false, file: false },
       timestamp
     }
   }
