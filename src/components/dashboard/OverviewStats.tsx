@@ -1,3 +1,5 @@
+import StatCard from '@/components/ui/StatCard'
+
 interface OverviewStatsProps {
   stats: {
     totalRequests: number
@@ -16,90 +18,64 @@ export default function OverviewStats({ stats }: OverviewStatsProps) {
       value: stats.totalRequests.toLocaleString(),
       change: '+12%',
       changeType: 'positive' as const,
-      icon: ChartBarIcon,
-      color: 'blue'
+      icon: <ChartBarIcon className="w-6 h-6" />,
+      color: 'blue' as const
     },
     {
       name: '活跃账号',
-      value: `${stats.activeAccounts}/${stats.activeAccounts + 2}`,
+      value: `${stats.activeAccounts}`,
       change: '100%',
       changeType: 'positive' as const,  
-      icon: ServerIcon,
-      color: 'green'
+      icon: <ServerIcon className="w-6 h-6" />,
+      color: 'green' as const
     },
     {
       name: 'API 密钥',
       value: stats.apiKeysCount.toString(),
       change: '+3',
       changeType: 'positive' as const,
-      icon: KeyIcon,
-      color: 'purple'
+      icon: <KeyIcon className="w-6 h-6" />,
+      color: 'purple' as const
     },
     {
       name: '成功率',
       value: `${stats.successRate}%`,
       change: '+0.5%',
       changeType: 'positive' as const,
-      icon: CheckCircleIcon,
-      color: 'emerald'
+      icon: <CheckCircleIcon className="w-6 h-6" />,
+      color: 'green' as const
     },
     {
       name: '平均响应时间',
       value: `${stats.avgResponseTime}ms`,
       change: '-15ms',
       changeType: 'positive' as const,
-      icon: ClockIcon,  
-      color: 'orange'
+      icon: <ClockIcon className="w-6 h-6" />,  
+      color: 'orange' as const
     },
     {
       name: '总成本',
       value: `$${stats.totalCost.toFixed(2)}`,
       change: '+$12.5',
       changeType: 'neutral' as const,
-      icon: CurrencyDollarIcon,
-      color: 'red'
+      icon: <CurrencyDollarIcon className="w-6 h-6" />,
+      color: 'red' as const
     }
   ]
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {statItems.map((item) => {
-        const Icon = item.icon
-        const colorClasses = {
-          blue: 'bg-blue-50 text-blue-600',
-          green: 'bg-green-50 text-green-600', 
-          purple: 'bg-purple-50 text-purple-600',
-          emerald: 'bg-emerald-50 text-emerald-600',
-          orange: 'bg-orange-50 text-orange-600',
-          red: 'bg-red-50 text-red-600'
-        }
-        
-        const changeClasses = {
-          positive: 'text-green-600 bg-green-50',
-          negative: 'text-red-600 bg-red-50', 
-          neutral: 'text-gray-600 bg-gray-50'
-        }
-
-        return (
-          <div key={item.name} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-600">{item.name}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{item.value}</p>
-                <div className="flex items-center mt-2">
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${changeClasses[item.changeType as keyof typeof changeClasses]}`}>
-                    {item.change}
-                  </span>
-                  <span className="text-xs text-gray-500 ml-2">较上周</span>
-                </div>
-              </div>
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colorClasses[item.color as keyof typeof colorClasses]}`}>
-                <Icon className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-        )
-      })}
+      {statItems.map((item) => (
+        <StatCard
+          key={item.name}
+          title={item.name}
+          value={item.value}
+          change={item.change}
+          changeType={item.changeType}
+          icon={item.icon}
+          color={item.color}
+        />
+      ))}
     </div>
   )
 }

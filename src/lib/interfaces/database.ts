@@ -50,7 +50,7 @@ export interface QueryOptions {
 }
 
 export interface DatabaseConfig {
-  type: 'sqlite' | 'postgresql'
+  type: 'sqlite' | 'postgresql' | 'supabase'
   url: string
   options?: {
     maxConnections?: number

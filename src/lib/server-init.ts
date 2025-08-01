@@ -2,13 +2,11 @@
 import { initializeSystem } from './init'
 import type { DatabaseAdapter } from './interfaces/database'
 import type { CacheAdapter } from './interfaces/cache'
-import type { FileAdapter } from './interfaces/file'
 
 let systemInitialized = false
 let systemServices: {
   database: DatabaseAdapter
   cache: CacheAdapter
-  file: FileAdapter
 } | null = null
 
 // 确保系统只初始化一次（单例模式）
@@ -44,11 +42,7 @@ export async function getCache(): Promise<CacheAdapter> {
   return services.cache
 }
 
-// 获取文件存储实例（用于 API 路由）
-export async function getFile(): Promise<FileAdapter> {
-  const services = await ensureSystemInitialized()
-  return services.file
-}
+
 
 // 健康检查（用于 API 路由）
 export async function checkSystemHealth() {
@@ -56,16 +50,15 @@ export async function checkSystemHealth() {
     return {
       status: 'unhealthy',
       message: '系统未初始化',
-      services: { database: false, cache: false, file: false }
+      services: { database: false, cache: false }
     }
   }
 
   try {
-    const { database, cache, file } = systemServices
+    const { database, cache } = systemServices
     const services = {
       database: database.isConnected(),
-      cache: cache.isConnected(),
-      file: file.isConnected()
+      cache: cache.isConnected()
     }
 
     const allHealthy = Object.values(services).every(Boolean)
