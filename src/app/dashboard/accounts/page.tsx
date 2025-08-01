@@ -8,13 +8,15 @@ import { useState, useEffect } from 'react'
 
 interface Account {
   id: string
-  type: string
-  email: string
+  type: 'gemini_oauth' | 'claude_oauth' | 'llm_gateway'
+  email?: string
+  base_url?: string
   status: string
   lastUsed: string
   requestCount: number
   successRate: number
   createdAt: string
+  health_status: 'healthy' | 'unhealthy' | 'unknown'
 }
 
 interface AccountStats {
@@ -169,7 +171,12 @@ export default function AccountsPage() {
                   accounts.map((account) => (
                     <tr key={account.id}>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{account.email}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {account.type === 'llm_gateway' 
+                            ? account.base_url 
+                            : (account.email || '未设置邮箱')
+                          }
+                        </div>
                         <div className="text-sm text-gray-500">创建于 {account.createdAt}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -228,20 +235,29 @@ export default function AccountsPage() {
 // StatCard moved to shared component
 
 function TypeBadge({ type }: { type: string }) {
-  const colors = {
-    openai: 'bg-green-100 text-green-800',
-    anthropic: 'bg-orange-100 text-orange-800',
-    google: 'bg-blue-100 text-blue-800',
-    claude: 'bg-purple-100 text-purple-800',
-    gemini: 'bg-red-100 text-red-800'
+  const typeConfig = {
+    gemini_oauth: {
+      color: 'bg-blue-100 text-blue-800',
+      label: 'Gemini OAuth'
+    },
+    claude_oauth: {
+      color: 'bg-orange-100 text-orange-800', 
+      label: 'Claude OAuth'
+    },
+    llm_gateway: {
+      color: 'bg-purple-100 text-purple-800',
+      label: 'LLM Gateway'
+    }
   }
   
-  const defaultColor = 'bg-gray-100 text-gray-800'
-  const color = colors[type as keyof typeof colors] || defaultColor
+  const config = typeConfig[type as keyof typeof typeConfig] || {
+    color: 'bg-gray-100 text-gray-800',
+    label: type
+  }
   
   return (
-    <span className={`px-2 py-1 text-xs font-medium rounded-full ${color}`}>
-      {type.charAt(0).toUpperCase() + type.slice(1)}
+    <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.color}`}>
+      {config.label}
     </span>
   )
 }
