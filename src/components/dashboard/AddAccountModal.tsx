@@ -92,15 +92,31 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
           // 如果是 OAuth 模式且只有授权码，尝试交换 Token
           if (oauthMode && formData.access_token && !formData.refresh_token) {
             try {
+              const requestBody: any = {
+                provider: formData.type === 'claude_oauth' ? 'claude' : 'gemini',
+                code: formData.access_token
+              }
+
+              // 对于 Claude，添加 PKCE 参数
+              if (formData.type === 'claude_oauth') {
+                const storedParams = localStorage.getItem('claude_oauth_params')
+                if (storedParams) {
+                  const { codeVerifier, state } = JSON.parse(storedParams)
+                  requestBody.codeVerifier = codeVerifier
+                  requestBody.state = state
+                  // 清理存储的参数
+                  localStorage.removeItem('claude_oauth_params')
+                } else {
+                  throw new Error('缺少 PKCE 参数，请重新生成授权 URL')
+                }
+              }
+
               const exchangeResponse = await fetch('/api/oauth/exchange-code', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                  provider: formData.type === 'claude_oauth' ? 'claude' : 'gemini',
-                  code: formData.access_token
-                })
+                body: JSON.stringify(requestBody)
               })
 
               const exchangeData = await exchangeResponse.json()
@@ -374,16 +390,31 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
                     </p>
                     <Button
                       type="button"
-                      onClick={() => {
-                        const authUrl = 'https://claude.ai/oauth/authorize?' + new URLSearchParams({
-                          code: 'true',
-                          client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-                          response_type: 'code',
-                          redirect_uri: 'https://console.anthropic.com/oauth/code/callback',
-                          scope: 'org:create_api_key user:profile user:inference',
-                          code_challenge_method: 'S256'
-                        }).toString()
-                        window.open(authUrl, '_blank')
+                      onClick={async () => {
+                        try {
+                          // 生成 PKCE 参数
+                          const response = await fetch('/api/oauth/generate-claude-url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                          })
+                          
+                          if (!response.ok) {
+                            throw new Error('生成授权 URL 失败')
+                          }
+                          
+                          const data = await response.json()
+                          
+                          // 存储 PKCE 参数到 localStorage，用于后续 Token 交换
+                          localStorage.setItem('claude_oauth_params', JSON.stringify({
+                            codeVerifier: data.codeVerifier,
+                            state: data.state
+                          }))
+                          
+                          // 打开授权页面
+                          window.open(data.authUrl, '_blank')
+                        } catch (error) {
+                          setError(error instanceof Error ? error.message : '生成授权 URL 失败')
+                        }
                       }}
                       className="bg-orange-600 hover:bg-orange-700 text-white"
                     >
