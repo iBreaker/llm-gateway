@@ -22,8 +22,13 @@ export async function POST(request: NextRequest) {
     switch (body.type) {
       case 'gemini_oauth':
       case 'claude_oauth':
-        if (!body.email || !body.credentials?.access_token || !body.credentials?.refresh_token) {
-          validationError = 'OAuth 账号需要邮箱、访问令牌和刷新令牌'
+        if (!body.credentials?.access_token) {
+          validationError = 'OAuth 账号需要 Access Token'
+        }
+        if (!body.credentials?.refresh_token) {
+          validationError = validationError 
+            ? validationError + '，同时强烈建议提供 Refresh Token' 
+            : '强烈建议提供 Refresh Token 以支持自动令牌刷新'
         }
         break
       case 'llm_gateway':

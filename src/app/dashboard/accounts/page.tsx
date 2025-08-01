@@ -33,8 +33,43 @@ export default function AccountsPage() {
   const [error, setError] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [oauthMessage, setOauthMessage] = useState<{ type: 'success' | 'error', message: string } | null>(null)
 
   useEffect(() => {
+    // 检查 OAuth 回调结果
+    const urlParams = new URLSearchParams(window.location.search)
+    const oauthSuccess = urlParams.get('oauth_success')
+    const oauthError = urlParams.get('oauth_error')
+    
+    if (oauthSuccess) {
+      const provider = urlParams.get('provider')
+      const email = urlParams.get('email')
+      setOauthMessage({ 
+        type: 'success', 
+        message: `${provider === 'claude' ? 'Claude' : 'Gemini'} OAuth 授权成功！账号 ${email} 已准备添加。` 
+      })
+      
+      // 自动创建账号
+      const accessToken = urlParams.get('access_token')
+      const refreshToken = urlParams.get('refresh_token')
+      const expiresIn = urlParams.get('expires_in')
+      
+      if (accessToken && refreshToken) {
+        createOAuthAccount(provider as 'claude' | 'gemini', email || '', accessToken, refreshToken, parseInt(expiresIn || '3600'))
+      }
+      
+      // 清理 URL 参数
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (oauthError) {
+      setOauthMessage({ 
+        type: 'error', 
+        message: `OAuth 授权失败: ${decodeURIComponent(oauthError)}` 
+      })
+      
+      // 清理 URL 参数
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
     async function fetchAccounts() {
       try {
         const response = await fetch('/api/dashboard/accounts')
@@ -53,6 +88,49 @@ export default function AccountsPage() {
 
     fetchAccounts()
   }, [])
+
+  // 自动创建 OAuth 账号
+  const createOAuthAccount = async (provider: 'claude' | 'gemini', email: string, accessToken: string, refreshToken: string, expiresIn: number) => {
+    try {
+      const response = await fetch('/api/dashboard/accounts/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: provider === 'claude' ? 'claude_oauth' : 'gemini_oauth',
+          email: email,
+          credentials: {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_at: new Date(Date.now() + expiresIn * 1000).toISOString()
+          },
+          priority: 1,
+          weight: 100
+        })
+      })
+
+      if (response.ok) {
+        setOauthMessage({ 
+          type: 'success', 
+          message: `${provider === 'claude' ? 'Claude' : 'Gemini'} 账号添加成功！` 
+        })
+        // 重新获取账号列表
+        window.location.reload()
+      } else {
+        const errorData = await response.json()
+        setOauthMessage({ 
+          type: 'error', 
+          message: `添加账号失败: ${errorData.error}` 
+        })
+      }
+    } catch (error) {
+      setOauthMessage({ 
+        type: 'error', 
+        message: `添加账号失败: ${error instanceof Error ? error.message : '未知错误'}` 
+      })
+    }
+  }
 
   const handleDeleteAccount = async (accountId: string) => {
     if (!confirm('确定要删除此账号吗？')) return
@@ -116,6 +194,29 @@ export default function AccountsPage() {
             添加账号
           </Button>
         </div>
+
+        {/* OAuth 消息提示 */}
+        {oauthMessage && (
+          <div className={`p-4 rounded-lg border ${
+            oauthMessage.type === 'success' 
+              ? 'bg-green-50 border-green-200 text-green-800' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">{oauthMessage.message}</p>
+              <button
+                onClick={() => setOauthMessage(null)}
+                className={`text-sm px-2 py-1 rounded ${
+                  oauthMessage.type === 'success'
+                    ? 'text-green-600 hover:bg-green-100'
+                    : 'text-red-600 hover:bg-red-100'
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
