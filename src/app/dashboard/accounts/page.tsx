@@ -1,51 +1,106 @@
-import DashboardLayout from '@/components/dashboard/DashboardLayout'
-import Link from 'next/link'
+'use client'
 
-// 模拟数据
-const mockAccounts = [
-  {
-    id: '1',
-    type: 'claude',
-    email: 'claude1@example.com',
-    status: 'active',
-    lastUsed: '2小时前',
-    requestCount: 2456,
-    successRate: 99.8,
-    createdAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    type: 'gemini',
-    email: 'gemini1@example.com',
-    status: 'active',
-    lastUsed: '1小时前',
-    requestCount: 1823,
-    successRate: 98.5,
-    createdAt: '2024-01-12'
-  },
-  {
-    id: '3',
-    type: 'claude',
-    email: 'claude2@example.com',
-    status: 'inactive',
-    lastUsed: '1天前',
-    requestCount: 945,
-    successRate: 99.1,
-    createdAt: '2024-01-10'
-  },
-  {
-    id: '4',
-    type: 'gemini',
-    email: 'gemini2@example.com',
-    status: 'error',
-    lastUsed: '3天前',
-    requestCount: 234,
-    successRate: 87.2,
-    createdAt: '2024-01-08'
-  }
-]
+import DashboardLayout from '@/components/dashboard/DashboardLayout'
+import StatCard from '@/components/ui/StatCard'
+import Button from '@/components/ui/Button'
+import AddAccountModal from '@/components/dashboard/AddAccountModal'
+import { useState, useEffect } from 'react'
+
+interface Account {
+  id: string
+  type: string
+  email: string
+  status: string
+  lastUsed: string
+  requestCount: number
+  successRate: number
+  createdAt: string
+}
+
+interface AccountStats {
+  totalAccounts: number
+  activeAccounts: number
+  errorAccounts: number
+  avgSuccessRate: number
+}
 
 export default function AccountsPage() {
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [stats, setStats] = useState<AccountStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+
+  useEffect(() => {
+    async function fetchAccounts() {
+      try {
+        const response = await fetch('/api/dashboard/accounts')
+        if (!response.ok) {
+          throw new Error('获取账号数据失败')
+        }
+        const data = await response.json()
+        setAccounts(data.accounts)
+        setStats(data.stats)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '未知错误')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAccounts()
+  }, [])
+
+  const handleDeleteAccount = async (accountId: string) => {
+    if (!confirm('确定要删除此账号吗？')) return
+    
+    try {
+      const response = await fetch(`/api/dashboard/accounts/${accountId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) {
+        throw new Error('删除账号失败')
+      }
+      
+      // 重新获取数据
+      const updatedResponse = await fetch('/api/dashboard/accounts')
+      const data = await updatedResponse.json()
+      setAccounts(data.accounts)
+      setStats(data.stats)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '删除失败')
+    }
+  }
+
+  const refreshData = async () => {
+    const response = await fetch('/api/dashboard/accounts')
+    const data = await response.json()
+    setAccounts(data.accounts)
+    setStats(data.stats)
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg text-gray-600">加载中...</div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg text-red-600">错误：{error}</div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -53,19 +108,35 @@ export default function AccountsPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">上游账号管理</h1>
-            <p className="text-gray-600 mt-2">管理 Claude 和 Gemini 账号池</p>
+            <p className="text-gray-600 mt-2">管理上游API账号池</p>
           </div>
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+          <Button variant="primary" onClick={() => setShowAddModal(true)}>
             添加账号
-          </button>
+          </Button>
         </div>
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <StatCard title="总账号数" value="4" />
-          <StatCard title="活跃账号" value="2" />
-          <StatCard title="异常账号" value="1" />
-          <StatCard title="平均成功率" value="96.2%" />
+          <StatCard 
+            title="总账号数" 
+            value={stats?.totalAccounts?.toString() || '0'}
+            color="blue"
+          />
+          <StatCard 
+            title="活跃账号" 
+            value={stats?.activeAccounts?.toString() || '0'}
+            color="green"
+          />
+          <StatCard 
+            title="异常账号" 
+            value={stats?.errorAccounts?.toString() || '0'}
+            color="red"
+          />
+          <StatCard 
+            title="平均成功率" 
+            value={`${stats?.avgSuccessRate?.toFixed(1) || '0'}%`}
+            color="purple"
+          />
         </div>
 
         {/* 账号列表 */}
@@ -88,62 +159,89 @@ export default function AccountsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {mockAccounts.map((account) => (
-                  <tr key={account.id}>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{account.email}</div>
-                      <div className="text-sm text-gray-500">创建于 {account.createdAt}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <TypeBadge type={account.type} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={account.status} />
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {account.requestCount.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {account.successRate}%
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {account.lastUsed}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700 text-sm">编辑</button>
-                        <button className="text-red-600 hover:text-red-700 text-sm">删除</button>
-                      </div>
+                {accounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      暂无账号数据
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  accounts.map((account) => (
+                    <tr key={account.id}>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{account.email}</div>
+                        <div className="text-sm text-gray-500">创建于 {account.createdAt}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <TypeBadge type={account.type} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={account.status} />
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {account.requestCount.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {account.successRate}%
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {account.lastUsed}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex space-x-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setEditingAccount(account)}
+                          >
+                            编辑
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleDeleteAccount(account.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
+
+        {/* 添加账号模态框 */}
+        <AddAccountModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={refreshData}
+        />
       </div>
     </DashboardLayout>
   )
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="bg-white border rounded-lg p-4">
-      <p className="text-sm font-medium text-gray-600">{title}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-    </div>
-  )
-}
+// StatCard moved to shared component
 
 function TypeBadge({ type }: { type: string }) {
   const colors = {
-    claude: 'bg-blue-100 text-blue-800',
-    gemini: 'bg-green-100 text-green-800'
+    openai: 'bg-green-100 text-green-800',
+    anthropic: 'bg-orange-100 text-orange-800',
+    google: 'bg-blue-100 text-blue-800',
+    claude: 'bg-purple-100 text-purple-800',
+    gemini: 'bg-red-100 text-red-800'
   }
   
+  const defaultColor = 'bg-gray-100 text-gray-800'
+  const color = colors[type as keyof typeof colors] || defaultColor
+  
   return (
-    <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[type as keyof typeof colors]}`}>
-      {type === 'claude' ? 'Claude' : 'Gemini'}
+    <span className={`px-2 py-1 text-xs font-medium rounded-full ${color}`}>
+      {type.charAt(0).toUpperCase() + type.slice(1)}
     </span>
   )
 }

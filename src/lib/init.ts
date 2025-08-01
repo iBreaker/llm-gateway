@@ -2,7 +2,6 @@ import { systemConfig, validateConfig, getConfigSummary } from './config'
 import { ServiceRegistry } from './adapters'
 import type { DatabaseAdapter } from './interfaces/database'
 import type { CacheAdapter } from './interfaces/cache'
-import type { FileAdapter } from './interfaces/file'
 
 // 系统初始化状态
 let initialized = false
@@ -12,14 +11,12 @@ let shutdownHooks: (() => Promise<void>)[] = []
 export async function initializeSystem(): Promise<{
   database: DatabaseAdapter
   cache: CacheAdapter
-  file: FileAdapter
 }> {
   if (initialized) {
     const registry = ServiceRegistry.getInstance()
     return {
       database: registry.getDatabase(),
-      cache: registry.getCache(),
-      file: registry.getFile()
+      cache: registry.getCache()
     }
   }
 
@@ -33,22 +30,17 @@ export async function initializeSystem(): Promise<{
     // 2. 初始化服务注册中心
     const registry = ServiceRegistry.getInstance()
 
-    // 3. 初始化文件存储（SQLite 可能需要依赖文件适配器）
-    console.log('💾 初始化文件存储适配器...')
-    const file = await registry.initializeFile(systemConfig.file)
-    console.log(`✅ 文件存储适配器初始化完成 (${systemConfig.file.type})`)
-
-    // 4. 初始化数据库（SQLite 需要文件适配器支持 Blob）
+    // 3. 初始化数据库
     console.log('📊 初始化数据库适配器...')
-    const database = await registry.initializeDatabaseWithFile(systemConfig.database, file)
+    const database = await registry.initializeDatabase(systemConfig.database)
     console.log(`✅ 数据库适配器初始化完成 (${systemConfig.database.type})`)
 
-    // 5. 初始化缓存
+    // 4. 初始化缓存
     console.log('🗄️  初始化缓存适配器...')
     const cache = await registry.initializeCache(systemConfig.cache)
     console.log(`✅ 缓存适配器初始化完成 (${systemConfig.cache.type})`)
 
-    // 6. 数据库迁移
+    // 5. 数据库迁移
     console.log('🔄 执行数据库迁移...')
     await database.migrate()
     console.log('✅ 数据库迁移完成')
@@ -59,7 +51,7 @@ export async function initializeSystem(): Promise<{
     initialized = true
     console.log('🎉 系统初始化完成!')
 
-    return { database, cache, file }
+    return { database, cache }
   } catch (error) {
     console.error('❌ 系统初始化失败:', error)
     
@@ -149,7 +141,6 @@ export async function healthCheck(): Promise<{
   services: {
     database: boolean
     cache: boolean
-    file: boolean
   }
   timestamp: string
 }> {
@@ -158,7 +149,7 @@ export async function healthCheck(): Promise<{
   if (!initialized) {
     return {
       status: 'unhealthy',
-      services: { database: false, cache: false, file: false },
+      services: { database: false, cache: false },
       timestamp
     }
   }
@@ -168,8 +159,7 @@ export async function healthCheck(): Promise<{
     
     const services = {
       database: registry.getDatabase().isConnected(),
-      cache: registry.getCache().isConnected(),
-      file: registry.getFile().isConnected()
+      cache: registry.getCache().isConnected()
     }
 
     const status = Object.values(services).every(Boolean) ? 'healthy' : 'unhealthy'
@@ -178,7 +168,7 @@ export async function healthCheck(): Promise<{
   } catch (error) {
     return {
       status: 'unhealthy',
-      services: { database: false, cache: false, file: false },
+      services: { database: false, cache: false },
       timestamp
     }
   }

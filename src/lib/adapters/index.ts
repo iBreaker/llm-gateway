@@ -1,21 +1,24 @@
 // 适配器工厂
 import type { DatabaseAdapter, DatabaseConfig } from '../interfaces/database'
 import type { CacheAdapter, CacheConfig } from '../interfaces/cache'
-import type { FileAdapter, FileConfig } from '../interfaces/file'
 
 // 数据库适配器工厂
 export async function createDatabaseAdapter(
   config: DatabaseConfig,
-  fileAdapter?: FileAdapter
+  fileAdapter?: any
 ): Promise<DatabaseAdapter> {
   switch (config.type) {
     case 'sqlite': {
       const { SqliteAdapter } = await import('./database/sqlite')
-      return new SqliteAdapter(config, fileAdapter)
+      return new SqliteAdapter(config)
     }
     case 'postgresql': {
       const { PostgresAdapter } = await import('./database/postgres')
       return new PostgresAdapter(config)
+    }
+    case 'supabase': {
+      const { SupabaseAdapter } = await import('./database/supabase-clean')
+      return new SupabaseAdapter(config)
     }
     default:
       throw new Error(`不支持的数据库类型: ${config.type}`)
@@ -34,28 +37,13 @@ export async function createCacheAdapter(config: CacheConfig): Promise<CacheAdap
   }
 }
 
-// 文件存储适配器工厂
-export async function createFileAdapter(config: FileConfig): Promise<FileAdapter> {
-  switch (config.type) {
-    case 'local': {
-      const { LocalFileAdapter } = await import('./file/local')
-      return new LocalFileAdapter(config)
-    }
-    case 'vercel-blob': {
-      const { VercelBlobFileAdapter } = await import('./file/vercel-blob')
-      return new VercelBlobFileAdapter(config)
-    }
-    default:
-      throw new Error(`不支持的文件存储类型: ${config.type}`)
-  }
-}
+
 
 // 服务管理器
 export class ServiceRegistry {
   private static instance: ServiceRegistry
   private database?: DatabaseAdapter
   private cache?: CacheAdapter
-  private file?: FileAdapter
 
   private constructor() {}
 
@@ -75,7 +63,7 @@ export class ServiceRegistry {
     return this.database
   }
 
-  async initializeDatabaseWithFile(config: DatabaseConfig, fileAdapter: FileAdapter): Promise<DatabaseAdapter> {
+  async initializeDatabaseWithFile(config: DatabaseConfig, fileAdapter: any): Promise<DatabaseAdapter> {
     if (this.database) {
       await this.database.disconnect()
     }
@@ -93,14 +81,7 @@ export class ServiceRegistry {
     return this.cache
   }
 
-  async initializeFile(config: FileConfig): Promise<FileAdapter> {
-    if (this.file) {
-      await this.file.disconnect()
-    }
-    this.file = await createFileAdapter(config)
-    await this.file.connect()
-    return this.file
-  }
+
 
   getDatabase(): DatabaseAdapter {
     if (!this.database) {
@@ -116,12 +97,7 @@ export class ServiceRegistry {
     return this.cache
   }
 
-  getFile(): FileAdapter {
-    if (!this.file) {
-      throw new Error('文件适配器未初始化')
-    }
-    return this.file
-  }
+
 
   async shutdown(): Promise<void> {
     const promises: Promise<void>[] = []
@@ -132,9 +108,6 @@ export class ServiceRegistry {
     if (this.cache) {
       promises.push(this.cache.disconnect())
     }
-    if (this.file) {
-      promises.push(this.file.disconnect())
-    }
 
     await Promise.all(promises)
   }
@@ -143,4 +116,3 @@ export class ServiceRegistry {
 // 便捷的获取方法
 export const db = () => ServiceRegistry.getInstance().getDatabase()
 export const cache = () => ServiceRegistry.getInstance().getCache()
-export const file = () => ServiceRegistry.getInstance().getFile()

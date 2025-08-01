@@ -5,53 +5,76 @@ export async function GET() {
   try {
     const db = await getDatabase()
     
-    // 这里应该从数据库获取真实数据，暂时返回模拟数据
-    // TODO: 实现真实的数据库查询
-    const apiKeys = [
-      {
-        id: '1',
-        name: '生产环境密钥',
-        key: 'llmgw_sk_1234567890abcdef1234567890abcdef',
-        permissions: ['read', 'write'],
-        lastUsed: '30分钟前',
-        requestCount: 1245,
-        status: 'active',
-        expiresAt: '2024-12-31',
-        createdAt: '2024-01-15'
-      },
-      {
-        id: '2',
-        name: '测试环境密钥',
-        key: 'llmgw_sk_fedcba0987654321fedcba0987654321',
-        permissions: ['read'],
-        lastUsed: '2小时前',
-        requestCount: 568,
-        status: 'active',
-        expiresAt: null,
-        createdAt: '2024-01-12'
-      },
-      {
-        id: '3',
-        name: '开发环境密钥',
-        key: 'llmgw_sk_abcdef1234567890abcdef1234567890',
-        permissions: ['read', 'write', 'admin'],
-        lastUsed: '1天前',
-        requestCount: 89,
-        status: 'inactive',
-        expiresAt: '2024-06-30',
-        createdAt: '2024-01-10'
-      }
-    ]
+    // 获取API密钥列表
+    const apiKeys = await db.findMany('api_keys')
+    
+    // 获取统计信息
+    const [totalKeys, activeKeys, totalRequests, todayRequests] = await Promise.all([
+      db.count('api_keys'),
+      db.count('api_keys', { is_active: 1 }),
+      db.raw<{ total: number }>(`
+        SELECT SUM(request_count) as total FROM api_keys
+      `).then(result => result[0]?.total || 0),
+      // 今日请求数（从使用记录表获取）
+      db.raw<{ count: number }>(`
+        SELECT COUNT(*) as count FROM usage_records 
+        WHERE DATE(created_at) = DATE('now')
+      `).then(result => result[0]?.count || 0)
+    ])
+    
+    // 转换API密钥数据格式
+    const formattedApiKeys = apiKeys.map(key => ({
+      id: key.id?.toString(),
+      name: key.name,
+      key: key.key_hash, // 注意：这里应该是已经hash的值，不是原始密钥
+      permissions: JSON.parse(key.permissions || '[]'),
+      lastUsed: getTimeAgo(key.updated_at),
+      requestCount: key.request_count || 0,
+      status: key.is_active ? 'active' : 'inactive',
+      expiresAt: key.expires_at ? formatDate(key.expires_at) : null,
+      createdAt: formatDate(key.created_at)
+    }))
 
-    return NextResponse.json(apiKeys)
+    const stats = {
+      totalKeys,
+      activeKeys,
+      totalRequests,
+      todayRequests
+    }
+
+    return NextResponse.json({
+      apiKeys: formattedApiKeys,
+      stats
+    })
   } catch (error) {
-    console.error('获取 API 密钥数据失败:', error)
+    console.error('获取API密钥数据失败:', error)
     
     return NextResponse.json({
-      error: '获取 API 密钥数据失败',
+      error: '获取API密钥数据失败',
       message: error instanceof Error ? error.message : '未知错误'
     }, {
       status: 500
     })
   }
+}
+
+function getTimeAgo(dateString: string): string {
+  const now = new Date()
+  const date = new Date(dateString)
+  const diffMs = now.getTime() - date.getTime()
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffHours / 24)
+  
+  if (diffDays > 0) {
+    return `${diffDays}天前`
+  } else if (diffHours > 0) {
+    return `${diffHours}小时前`
+  } else {
+    return `刚刚`
+  }
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toISOString().split('T')[0]
 }

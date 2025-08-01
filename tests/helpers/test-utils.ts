@@ -2,9 +2,9 @@ import { randomBytes } from 'crypto'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { mkdtemp, rmdir } from 'fs/promises'
+import { expect } from '@jest/globals'
 import type { DatabaseConfig, SqliteConfig } from '@/lib/interfaces/database'
 import type { CacheConfig } from '@/lib/interfaces/cache'
-import type { StorageConfig } from '@/lib/interfaces/storage'
 
 // 生成测试用的随机 ID
 export function generateTestId(prefix = 'test'): string {
@@ -70,111 +70,9 @@ export function createTestCacheConfig(overrides: Partial<CacheConfig> = {}): Cac
   }
 }
 
-// 测试用存储配置
-export function createTestStorageConfig(tempDir: string): StorageConfig {
-  return {
-    type: 'local',
-    options: {
-      rootPath: tempDir,
-      createDirectories: true,
-    },
-  }
-}
-
 // 等待指定时间
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-// Mock 存储适配器
-export class MockStorageAdapter {
-  private files = new Map<string, Buffer>()
-
-  async connect(): Promise<void> {}
-  async disconnect(): Promise<void> {}
-  isConnected(): boolean { return true }
-
-  async put(key: string, data: Buffer | string | Uint8Array): Promise<any> {
-    const buffer = Buffer.isBuffer(data) ? data : 
-                   data instanceof Uint8Array ? Buffer.from(data) :
-                   Buffer.from(data, 'utf8')
-    this.files.set(key, buffer)
-    return {
-      key,
-      size: buffer.length,
-      etag: 'mock-etag',
-    }
-  }
-
-  async get(key: string): Promise<any> {
-    const data = this.files.get(key)
-    if (!data) return null
-    
-    return {
-      key,
-      data,
-      metadata: {},
-      stat: {
-        key,
-        size: data.length,
-        lastModified: new Date(),
-      }
-    }
-  }
-
-  async delete(key: string): Promise<boolean> {
-    return this.files.delete(key)
-  }
-
-  async exists(key: string): Promise<boolean> {
-    return this.files.has(key)
-  }
-
-  async list(prefix?: string): Promise<any[]> {
-    const results: any[] = []
-    for (const [key, data] of this.files.entries()) {
-      if (!prefix || key.startsWith(prefix)) {
-        results.push({
-          key,
-          data,
-          metadata: {},
-          stat: {
-            key,
-            size: data.length,
-            lastModified: new Date(),
-          }
-        })
-      }
-    }
-    return results
-  }
-
-  // 其他必需的方法
-  async putMany(): Promise<any[]> { return [] }
-  async getMany(): Promise<any[]> { return [] }
-  async deleteMany(): Promise<boolean[]> { return [] }
-  async stat(): Promise<any> { return null }
-  async createReadStream(): Promise<any> { throw new Error('Not implemented') }
-  async createWriteStream(): Promise<any> { throw new Error('Not implemented') }
-  async getSignedUrl(): Promise<string> { throw new Error('Not implemented') }
-  getPublicUrl(): string { throw new Error('Not implemented') }
-  async createFolder(): Promise<void> {}
-  async deleteFolder(): Promise<void> {}
-  async copy(): Promise<any> { throw new Error('Not implemented') }
-  async move(): Promise<any> { throw new Error('Not implemented') }
-
-  // 测试辅助方法
-  clear(): void {
-    this.files.clear()
-  }
-
-  getFileCount(): number {
-    return this.files.size
-  }
-
-  hasFile(key: string): boolean {
-    return this.files.has(key)
-  }
 }
 
 // 断言辅助函数
