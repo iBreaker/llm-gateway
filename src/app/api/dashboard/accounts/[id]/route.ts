@@ -63,7 +63,7 @@ export async function PUT(
     }
 
     // 更新账号
-    const updateData = {
+    const updateData: any = {
       email: body.email,
       type: body.type,
       is_active: body.is_active !== undefined ? body.is_active : true,

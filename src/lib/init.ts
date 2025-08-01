@@ -5,7 +5,7 @@ import type { CacheAdapter } from './interfaces/cache'
 
 // 系统初始化状态
 let initialized = false
-let shutdownHooks: (() => Promise<void>)[] = []
+const shutdownHooks: (() => Promise<void>)[] = []
 
 // 初始化系统
 export async function initializeSystem(): Promise<{

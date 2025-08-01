@@ -30,7 +30,7 @@ export async function GET() {
     `).then(result => result[0]?.avg_success_rate || 100)
 
     // 转换账号数据格式
-    const formattedAccounts = accounts.map(account => ({
+    const formattedAccounts = accounts.map((account: any) => ({
       id: account.id?.toString(),
       type: account.type,
       email: account.email,

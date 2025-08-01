@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       apiKey: {
-        ...newApiKey,
+        ...(newApiKey as any),
         key: apiKey // 只在创建时返回完整密钥
       }
     })
