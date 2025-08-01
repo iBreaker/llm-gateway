@@ -1,26 +1,26 @@
 import { put, del, head, list, copy as blobCopy } from '@vercel/blob'
 import type {
-  StorageAdapter,
-  StorageConfig,
-  StorageFile,
-  StorageFileStat,
-  StorageResult,
-  StorageOptions,
-  StorageMetadata,
+  FileAdapter,
+  FileConfig,
+  FileStorage,
+  FileStorageStat,
+  FileResult,
+  FileOptions,
+  FileMetadata,
   ListOptions,
   VercelBlobOptions,
-  StorageConnectionError,
-  StorageNotFoundError,
-  StoragePermissionError
-} from '../../interfaces/storage'
+  FileConnectionError,
+  FileNotFoundError,
+  FilePermissionError
+} from '../../interfaces/file'
 
-export class VercelBlobStorageAdapter implements StorageAdapter {
-  private config: StorageConfig
+export class VercelBlobFileAdapter implements FileAdapter {
+  private config: FileConfig
   private token: string
   private baseUrl?: string
   private connected = false
 
-  constructor(config: StorageConfig) {
+  constructor(config: FileConfig) {
     this.config = config
     const options = config.options as VercelBlobOptions
     this.token = options.token
@@ -35,7 +35,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
       await list({ token: this.token, limit: 1 })
       this.connected = true
     } catch (error) {
-      throw new StorageConnectionError('Vercel Blob 连接失败', error as Error)
+      throw new FileConnectionError('Vercel Blob 连接失败', error as Error)
     }
   }
 
@@ -47,8 +47,8 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     return this.connected
   }
 
-  async put(key: string, data: Buffer | string | Uint8Array, options?: StorageOptions): Promise<StorageResult> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async put(key: string, data: Buffer | string | Uint8Array, options?: FileOptions): Promise<FileResult> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       // 转换数据为适合的格式
@@ -70,12 +70,12 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
         metadata: options?.metadata
       }
     } catch (error) {
-      throw new StoragePermissionError(`上传文件失败: ${key}`, error as Error)
+      throw new FilePermissionError(`上传文件失败: ${key}`, error as Error)
     }
   }
 
-  async get(key: string): Promise<StorageFile | null> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async get(key: string): Promise<FileStorage | null> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       // Vercel Blob 不支持直接获取文件内容，需要通过 URL 下载
@@ -101,12 +101,12 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
       if (error.message.includes('404')) {
         return null
       }
-      throw new StoragePermissionError(`读取文件失败: ${key}`, error)
+      throw new FilePermissionError(`读取文件失败: ${key}`, error)
     }
   }
 
   async delete(key: string): Promise<boolean> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       await del(key, { token: this.token })
@@ -115,12 +115,12 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
       if (error.message?.includes('not found')) {
         return false
       }
-      throw new StoragePermissionError(`删除文件失败: ${key}`, error)
+      throw new FilePermissionError(`删除文件失败: ${key}`, error)
     }
   }
 
   async exists(key: string): Promise<boolean> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const stat = await this.stat(key)
@@ -130,8 +130,8 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     }
   }
 
-  async putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: StorageOptions }[]): Promise<StorageResult[]> {
-    const results: StorageResult[] = []
+  async putMany(items: { key: string; data: Buffer | string | Uint8Array; options?: FileOptions }[]): Promise<FileResult[]> {
+    const results: FileResult[] = []
     
     // Vercel Blob 不支持批量上传，串行处理
     for (const item of items) {
@@ -142,8 +142,8 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     return results
   }
 
-  async getMany(keys: string[]): Promise<(StorageFile | null)[]> {
-    const results: (StorageFile | null)[] = []
+  async getMany(keys: string[]): Promise<(FileStorage | null)[]> {
+    const results: (FileStorage | null)[] = []
     
     // 并行获取文件
     const promises = keys.map(key => this.get(key))
@@ -162,8 +162,8 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     return deleteResults
   }
 
-  async stat(key: string): Promise<StorageFileStat | null> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async stat(key: string): Promise<FileStorageStat | null> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const blobs = await list({
@@ -188,12 +188,12 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
       if (error.message?.includes('not found')) {
         return null
       }
-      throw new StoragePermissionError(`获取文件信息失败: ${key}`, error)
+      throw new FilePermissionError(`获取文件信息失败: ${key}`, error)
     }
   }
 
-  async list(prefix?: string, options?: ListOptions): Promise<StorageFile[]> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async list(prefix?: string, options?: ListOptions): Promise<FileStorage[]> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       const blobs = await list({
@@ -202,7 +202,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
         limit: options?.limit || 1000
       })
 
-      const files: StorageFile[] = []
+      const files: FileStorage[] = []
       
       for (const blob of blobs.blobs) {
         // 应用偏移量过滤
@@ -223,21 +223,21 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
 
       return files
     } catch (error) {
-      throw new StoragePermissionError('列出文件失败', error as Error)
+      throw new FilePermissionError('列出文件失败', error as Error)
     }
   }
 
   async createReadStream(key: string): Promise<ReadableStream> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     const stat = await this.stat(key)
     if (!stat) {
-      throw new StorageNotFoundError(key)
+      throw new FileNotFoundError(key)
     }
 
     const response = await fetch(stat.etag!) // etag 包含了 blob URL
     if (!response.ok) {
-      throw new StoragePermissionError(`创建读取流失败: ${key}`)
+      throw new FilePermissionError(`创建读取流失败: ${key}`)
     }
 
     if (!response.body) {
@@ -247,7 +247,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     return response.body
   }
 
-  async createWriteStream(key: string, options?: StorageOptions): Promise<WritableStream> {
+  async createWriteStream(key: string, options?: FileOptions): Promise<WritableStream> {
     // Vercel Blob 不支持流式写入，需要缓存数据然后上传
     const chunks: Uint8Array[] = []
 
@@ -282,7 +282,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     // Vercel Blob 的 URL 本身就是签名的，直接返回 blob URL
     const stat = await this.stat(key)
     if (!stat) {
-      throw new StorageNotFoundError(key)
+      throw new FileNotFoundError(key)
     }
     
     return stat.etag! // etag 包含了 blob URL
@@ -317,8 +317,8 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     }
   }
 
-  async copy(sourceKey: string, destinationKey: string): Promise<StorageResult> {
-    if (!this.connected) throw new StorageConnectionError('存储未连接')
+  async copy(sourceKey: string, destinationKey: string): Promise<FileResult> {
+    if (!this.connected) throw new FileConnectionError('文件存储未连接')
 
     try {
       // Vercel Blob 支持直接复制
@@ -336,7 +336,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
       // 如果直接复制失败，使用获取+上传的方式
       const sourceFile = await this.get(sourceKey)
       if (!sourceFile) {
-        throw new StorageNotFoundError(sourceKey)
+        throw new FileNotFoundError(sourceKey)
       }
 
       return this.put(destinationKey, sourceFile.data, {
@@ -345,7 +345,7 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     }
   }
 
-  async move(sourceKey: string, destinationKey: string): Promise<StorageResult> {
+  async move(sourceKey: string, destinationKey: string): Promise<FileResult> {
     const result = await this.copy(sourceKey, destinationKey)
     await this.delete(sourceKey)
     return result
