@@ -4,7 +4,12 @@ import { exchangeClaudeToken, exchangeGeminiToken, getClaudeUserInfo, getGeminiU
 // POST /api/oauth/exchange-code
 export async function POST(request: NextRequest) {
   try {
-    const { provider, code }: { provider: 'claude' | 'gemini', code: string } = await request.json()
+    const { provider, code, codeVerifier, state }: { 
+      provider: 'claude' | 'gemini', 
+      code: string, 
+      codeVerifier?: string, 
+      state?: string 
+    } = await request.json()
 
     if (!['claude', 'gemini'].includes(provider)) {
       return NextResponse.json(
@@ -25,7 +30,18 @@ export async function POST(request: NextRequest) {
 
     try {
       if (provider === 'claude') {
-        // Claude 需要解析回调 URL 获取授权码
+        // Claude 需要 PKCE 参数
+        if (!codeVerifier || !state) {
+          return NextResponse.json({
+            error: 'Claude OAuth 需要 PKCE 参数',
+            message: '缺少必需的 codeVerifier 或 state 参数',
+            suggestion: 'regenerate_url'
+          }, {
+            status: 400
+          })
+        }
+
+        // 解析授权码
         let actualCode = code
         
         // 如果用户输入的是完整的回调 URL，提取其中的授权码
@@ -37,15 +53,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 对于 Claude，我们暂时无法完成完整的 Token 交换，因为需要 PKCE 参数
-        // 这里返回提示用户使用官方 CLI 或手动获取 Token
-        return NextResponse.json({
-          error: 'Claude OAuth 需要使用官方 Claude Code CLI 完成授权',
-          message: '请使用 Claude Code CLI 获取访问令牌，或直接输入已有的 Access Token 和 Refresh Token',
-          suggestion: 'manual_input'
-        }, {
-          status: 400
-        })
+        // 使用 PKCE 参数交换 Token
+        const baseUrl = process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}` 
+          : `http://localhost:${process.env.PORT || 3000}`
+        
+        tokenData = await exchangeClaudeToken(actualCode, codeVerifier, `${baseUrl}/oauth/callback`)
+        userInfo = await getClaudeUserInfo(tokenData.access_token)
       } else if (provider === 'gemini') {
         tokenData = await exchangeGeminiToken(code, 'urn:ietf:wg:oauth:2.0:oob')
         userInfo = await getGeminiUserInfo(tokenData.access_token)
