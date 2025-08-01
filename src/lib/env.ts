@@ -5,7 +5,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   
   // 数据库
-  DATABASE_URL: z.string().default('./data/dev.db'),
+  DATABASE_URL: z.string().default(process.env.VERCEL === '1' ? '' : './data/dev.db'),
   
   // 缓存 (可选)
   REDIS_URL: z.string().optional(),

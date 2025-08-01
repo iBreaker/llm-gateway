@@ -31,7 +31,15 @@ export interface SystemConfig {
 export function createSystemConfig(): SystemConfig {
   // 检测部署环境
   const isVercel = process.env.VERCEL === '1'
-  const isPostgreSQL = env.DATABASE_URL.includes('postgresql')
+  const isPostgreSQL = env.DATABASE_URL.includes('postgresql') || env.DATABASE_URL.includes('supabase')
+  
+  // 调试信息
+  console.log('🔍 数据库配置检测:', {
+    isVercel,
+    DATABASE_URL: env.DATABASE_URL.substring(0, 50) + '...',
+    isPostgreSQL,
+    detectedType: isPostgreSQL ? 'PostgreSQL' : 'SQLite'
+  })
   
   // 数据库配置 - 根据部署环境自动选择
   const databaseConfig: DatabaseConfig = isPostgreSQL ? {
