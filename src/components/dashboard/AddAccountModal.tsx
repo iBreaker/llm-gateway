@@ -33,43 +33,6 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
   const [error, setError] = useState<string | null>(null)
   const [oauthMode, setOauthMode] = useState(false) // OAuth 模式 vs 手动输入模式
 
-  // OAuth 授权处理
-  const handleOAuthAuthorization = async (provider: 'claude' | 'gemini') => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await fetch('/api/oauth/initiate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ provider })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'OAuth 授权初始化失败')
-      }
-
-      // 存储 OAuth 状态信息到 localStorage
-      localStorage.setItem('oauth_state', JSON.stringify({
-        provider: data.provider,
-        state: data.state,
-        codeVerifier: data.codeVerifier
-      }))
-
-      // 跳转到 OAuth 授权页面
-      window.location.href = data.authUrl
-    } catch (error) {
-      console.error('OAuth 授权失败:', error)
-      setError(error instanceof Error ? error.message : 'OAuth 授权失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   if (!isOpen) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
