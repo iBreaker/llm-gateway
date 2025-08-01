@@ -41,7 +41,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 md:flex">
       {/* 移动端遮罩层 */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
@@ -53,10 +53,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
       )}
 
       {/* 侧边栏 */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex md:flex-shrink-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col w-64">
           {/* 头部 */}
           <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
             <div className="text-xl font-bold text-gray-900">
@@ -127,7 +127,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* 主内容区域 */}
-      <div className="md:pl-64">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* 移动端顶部栏 */}
         <div className="md:hidden bg-white shadow-sm border-b border-gray-200">
           <div className="flex items-center justify-between px-4 py-3">

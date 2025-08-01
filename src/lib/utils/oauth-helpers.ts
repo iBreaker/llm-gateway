@@ -111,11 +111,41 @@ export async function exchangeClaudeToken(
   })
 
   if (!response.ok) {
-    const errorData = await response.text()
-    throw new Error(`Claude OAuth token exchange failed: ${response.status} ${errorData}`)
+    let errorData: string
+    try {
+      errorData = await response.text()
+    } catch (textError) {
+      errorData = `Unable to read error response: ${textError}`
+    }
+    
+    console.error('❌ Claude OAuth HTTP Error:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: errorData
+    })
+    
+    throw new Error(`Claude OAuth token exchange failed: ${response.status} ${response.statusText} - ${errorData}`)
   }
 
-  return await response.json()
+  let responseText: string = ''
+  try {
+    responseText = await response.text()
+    console.log('🔍 Claude OAuth 响应文本:', responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''))
+    
+    if (!responseText.trim()) {
+      throw new Error('Empty response from Claude OAuth server')
+    }
+    
+    const responseData = JSON.parse(responseText)
+    console.log('✅ Claude OAuth 响应解析成功:', responseData)
+    
+    return responseData
+  } catch (parseError) {
+    console.error('❌ JSON 解析错误:', parseError)
+    console.error('❌ 原始响应内容:', responseText || 'No response text available')
+    throw new Error(`Invalid JSON response from Claude OAuth server: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`)
+  }
 }
 
 // 使用授权码交换 Gemini Token
