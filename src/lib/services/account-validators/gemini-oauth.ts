@@ -1,33 +1,33 @@
 // Gemini OAuth 账号验证器
 import { OAuth2Client } from 'google-auth-library'
 import type { GeminiOAuthAccount, AccountValidator } from '@/lib/types/account-types'
+import { OAUTH_CONFIGS } from '@/lib/config/oauth-config'
 
 export class GeminiOAuthValidator implements AccountValidator {
   private client: OAuth2Client
 
   constructor() {
-    const clientId = process.env.GEMINI_OAUTH_CLIENT_ID
-    const clientSecret = process.env.GEMINI_OAUTH_CLIENT_SECRET
-    
-    if (!clientId || !clientSecret) {
-      throw new Error('Gemini OAuth credentials not configured')
-    }
-
-    this.client = new OAuth2Client(clientId, clientSecret)
+    const config = OAUTH_CONFIGS.gemini
+    this.client = new OAuth2Client(config.clientId, config.clientSecret)
   }
 
   async validateCredentials(account: GeminiOAuthAccount): Promise<boolean> {
     try {
       const { access_token } = account.credentials
       
-      // 验证访问令牌
-      const ticket = await this.client.verifyIdToken({
-        idToken: access_token,
-        audience: process.env.GEMINI_OAUTH_CLIENT_ID
+      // 验证访问令牌 - 直接测试 API 调用
+      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${access_token}`
+        }
       })
 
-      const payload = ticket.getPayload()
-      return !!payload && payload.email === account.email
+      if (response.ok) {
+        const userInfo = await response.json()
+        return userInfo.email === account.email
+      }
+      
+      return false
     } catch (error) {
       console.error('Gemini OAuth 凭证验证失败:', error)
       return false
