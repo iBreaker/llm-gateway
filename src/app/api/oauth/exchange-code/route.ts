@@ -41,31 +41,44 @@ export async function POST(request: NextRequest) {
           })
         }
 
-        // 解析并清理授权码
+        // 解析并清理授权码 - 参考 claude-relay-service 的 parseCallbackUrl 方法
         let actualCode = code.trim()
+        
+        console.log('🔍 原始授权码:', actualCode)
         
         // 如果用户输入的是完整的回调 URL，提取其中的授权码
         if (actualCode.includes('console.anthropic.com/oauth/code/callback')) {
-          const url = new URL(actualCode)
-          const codeParam = url.searchParams.get('code')
-          if (codeParam) {
-            actualCode = codeParam
+          try {
+            const url = new URL(actualCode)
+            const codeParam = url.searchParams.get('code')
+            if (codeParam) {
+              actualCode = codeParam
+              console.log('✅ 从 URL 提取授权码:', actualCode)
+            }
+          } catch (error) {
+            console.warn('⚠️ URL 解析失败，尝试其他方法:', error)
           }
         }
         
-        // 如果授权码包含 # 符号，可能是带有片段的长字符串，提取主要部分
-        if (actualCode.includes('#')) {
-          const parts = actualCode.split('#')
-          if (parts.length > 1) {
-            // 取第一部分作为授权码，第二部分可能是其他信息
-            actualCode = parts[0]
-          }
+        // 清理授权码：移除 URL fragments 和额外参数
+        // 参考 claude-relay-service 的处理：split('#')[0]?.split('&')[0]
+        const cleanedCode = actualCode.split('#')[0]?.split('&')[0] ?? actualCode
+        actualCode = cleanedCode.trim()
+        
+        console.log('🧹 清理后的授权码:', actualCode)
+        
+        // 基本格式验证：授权码应该只包含字母、数字、下划线、连字符
+        const validCodePattern = /^[A-Za-z0-9_-]+$/
+        if (!validCodePattern.test(actualCode)) {
+          throw new Error('授权码包含无效字符，请检查是否复制了正确的 Authorization Code')
         }
         
-        // 验证授权码格式（Claude 授权码应该是合理长度的字符串）
+        // 验证授权码长度
         if (actualCode.length < 10 || actualCode.length > 500) {
-          throw new Error('授权码格式不正确，请检查是否完整复制了授权码')
+          throw new Error(`授权码长度无效 (${actualCode.length} 字符)，请检查是否完整复制了授权码`)
         }
+        
+        console.log('✅ 授权码验证通过，长度:', actualCode.length)
 
         // 使用 PKCE 参数交换 Token，使用固定的 Claude 回调 URI
         tokenData = await exchangeClaudeToken(actualCode, codeVerifier, 'https://console.anthropic.com/oauth/code/callback', state)
@@ -86,15 +99,37 @@ export async function POST(request: NextRequest) {
         }
       })
     } catch (tokenError) {
-      console.error('OAuth token exchange failed:', tokenError)
-      const errorMessage = tokenError instanceof Error ? tokenError.message : 'Token exchange failed'
+      console.error('❌ OAuth token exchange failed:', tokenError)
+      
+      // 尝试解析错误信息
+      let errorMessage = 'Token exchange failed'
+      let errorDetails = ''
+      
+      if (tokenError instanceof Error) {
+        errorMessage = tokenError.message
+        
+        // 检查是否是 JSON 解析错误
+        if (errorMessage.includes('Unexpected token') || errorMessage.includes('not valid JSON')) {
+          errorDetails = '服务器返回了非 JSON 格式的响应，可能是授权码无效或已过期'
+        }
+        // 检查是否是网络错误
+        else if (errorMessage.includes('fetch')) {
+          errorDetails = '网络请求失败，请检查网络连接'
+        }
+        // 检查是否是 Claude 特定错误
+        else if (errorMessage.includes('Claude OAuth token exchange failed')) {
+          errorDetails = 'Claude OAuth 服务器拒绝了请求，请检查授权码是否正确且未过期'
+        }
+      }
       
       return NextResponse.json({
         error: 'Token 交换失败',
         message: errorMessage,
-        details: provider === 'claude' 
-          ? '建议使用手动输入模式直接输入 Access Token 和 Refresh Token'
-          : '请检查授权码是否正确'
+        details: errorDetails || (provider === 'claude' 
+          ? '请确保授权码正确且未过期，或尝试使用手动输入模式'
+          : '请检查授权码是否正确'),
+        provider,
+        timestamp: new Date().toISOString()
       }, {
         status: 400
       })
