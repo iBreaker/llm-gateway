@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         let actualCode = code.trim()
         
         // 如果用户输入的是完整的回调 URL，提取其中的授权码
-        if (actualCode.includes('console.anthropic.com/oauth2/callback')) {
+        if (actualCode.includes('console.anthropic.com/oauth/code/callback')) {
           const url = new URL(actualCode)
           const codeParam = url.searchParams.get('code')
           if (codeParam) {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 使用 PKCE 参数交换 Token，使用固定的 Claude 回调 URI
-        tokenData = await exchangeClaudeToken(actualCode, codeVerifier, 'https://console.anthropic.com/oauth2/callback', state)
+        tokenData = await exchangeClaudeToken(actualCode, codeVerifier, 'https://console.anthropic.com/oauth/code/callback', state)
         userInfo = await getClaudeUserInfo(tokenData.access_token)
       } else if (provider === 'gemini') {
         tokenData = await exchangeGeminiToken(code, 'urn:ietf:wg:oauth:2.0:oob')

@@ -14,6 +14,7 @@ export async function POST() {
     
     // 构建完整的授权 URL
     const authUrl = config.authorizeUrl + '?' + new URLSearchParams({
+      code: 'true',
       client_id: config.clientId,
       response_type: 'code',
       redirect_uri: config.redirectUri,
