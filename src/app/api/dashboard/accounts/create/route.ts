@@ -1,45 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/lib/server-init'
+import { accountManager } from '@/lib/services/account-manager'
+import type { CreateAccountInput, AccountType } from '@/lib/types/account-types'
 
 // POST /api/dashboard/accounts/create
 export async function POST(request: NextRequest) {
   try {
-    const db = await getDatabase()
     const body = await request.json()
 
+    // 验证账号类型
+    const validTypes: AccountType[] = ['gemini_oauth', 'claude_oauth', 'llm_gateway']
+    if (!validTypes.includes(body.type)) {
+      return NextResponse.json(
+        { error: '无效的账号类型' },
+        { status: 400 }
+      )
+    }
+
     // 验证必填字段
-    if (!body.email || !body.type || !body.credentials) {
+    let validationError: string | null = null
+
+    switch (body.type) {
+      case 'gemini_oauth':
+      case 'claude_oauth':
+        if (!body.email || !body.credentials?.access_token || !body.credentials?.refresh_token) {
+          validationError = 'OAuth 账号需要邮箱、访问令牌和刷新令牌'
+        }
+        break
+      case 'llm_gateway':
+        if (!body.base_url || !body.credentials?.api_key) {
+          validationError = 'LLM Gateway 账号需要 Base URL 和 API Key'
+        }
+        break
+    }
+
+    if (validationError) {
       return NextResponse.json(
-        { error: '邮箱、类型和凭据为必填字段' },
+        { error: validationError },
         { status: 400 }
       )
     }
 
-    // 检查邮箱是否已存在
-    const existingAccount = await db.findOne('upstream_accounts', { email: body.email })
-    if (existingAccount) {
-      return NextResponse.json(
-        { error: '该邮箱已被使用' },
-        { status: 400 }
-      )
+    // 根据账号类型构建创建输入数据
+    let createInput: CreateAccountInput
+
+    switch (body.type) {
+      case 'gemini_oauth':
+      case 'claude_oauth':
+        createInput = {
+          type: body.type,
+          email: body.email,
+          credentials: body.credentials,
+          priority: body.priority || 1,
+          weight: body.weight || 100
+        }
+        break
+      case 'llm_gateway':
+        createInput = {
+          type: body.type,
+          base_url: body.base_url,
+          credentials: body.credentials,
+          priority: body.priority || 1,
+          weight: body.weight || 100
+        }
+        break
+      default:
+        return NextResponse.json(
+          { error: '不支持的账号类型' },
+          { status: 400 }
+        )
     }
 
-    // 创建新账号
-    const accountData = {
-      type: body.type,
-      email: body.email,
-      credentials: JSON.stringify(body.credentials),
-      is_active: body.is_active !== undefined ? body.is_active : true,
-      priority: body.priority || 1,
-      weight: body.weight || 100,
-      request_count: 0,
-      success_count: 0,
-      error_count: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-
-    const newAccount = await db.create('upstream_accounts', accountData)
+    // 使用统一账号管理器创建账号
+    const newAccount = await accountManager.createAccount(createInput)
 
     return NextResponse.json({
       success: true,
