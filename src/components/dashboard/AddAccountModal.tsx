@@ -89,19 +89,58 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
       switch (formData.type) {
         case 'gemini_oauth':
         case 'claude_oauth':
-          if (!formData.access_token) {
-            throw new Error('Access Token 是必需的')
-          }
-          if (!formData.refresh_token) {
-            throw new Error('强烈建议提供 Refresh Token 以支持自动令牌刷新')
-          }
-          if (formData.email) {
-            requestData.email = formData.email
-          }
-          requestData.credentials = {
-            access_token: formData.access_token,
-            refresh_token: formData.refresh_token,
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 默认24小时后过期
+          // 如果是 OAuth 模式且只有授权码，尝试交换 Token
+          if (oauthMode && formData.access_token && !formData.refresh_token) {
+            try {
+              const exchangeResponse = await fetch('/api/oauth/exchange-code', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  provider: formData.type === 'claude_oauth' ? 'claude' : 'gemini',
+                  code: formData.access_token
+                })
+              })
+
+              const exchangeData = await exchangeResponse.json()
+              
+              if (!exchangeResponse.ok) {
+                if (exchangeData.suggestion === 'manual_input') {
+                  // 建议用户使用手动输入模式
+                  setOauthMode(false)
+                  throw new Error(exchangeData.message || '建议使用手动输入模式')
+                }
+                throw new Error(exchangeData.message || 'Token 交换失败')
+              }
+
+              // 使用交换得到的 Token 数据
+              requestData.email = exchangeData.data.email
+              requestData.credentials = {
+                access_token: exchangeData.data.access_token,
+                refresh_token: exchangeData.data.refresh_token,
+                expires_at: new Date(Date.now() + exchangeData.data.expires_in * 1000).toISOString()
+              }
+            } catch (exchangeError) {
+              const errorMessage = exchangeError instanceof Error ? exchangeError.message : '未知错误'
+              throw new Error(`授权码交换失败: ${errorMessage}`)
+            }
+          } else {
+            // 手动输入模式或已有完整 Token 信息
+            if (!formData.access_token) {
+              throw new Error('Access Token 是必需的')
+            }
+            if (!formData.refresh_token) {
+              throw new Error('强烈建议提供 Refresh Token 以支持自动令牌刷新')
+            }
+            if (formData.email) {
+              requestData.email = formData.email
+            }
+            requestData.credentials = {
+              access_token: formData.access_token,
+              refresh_token: formData.refresh_token,
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 默认24小时后过期
+            }
           }
           break
         
@@ -201,18 +240,44 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
               </div>
               
               {oauthMode ? (
-                <div className="text-center">
-                  <p className="text-sm text-blue-700 mb-3">
-                    点击下方按钮跳转到 Google 进行 OAuth 授权
-                  </p>
-                  <Button
-                    type="button"
-                    onClick={() => handleOAuthAuthorization('gemini')}
-                    disabled={loading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {loading ? '处理中...' : '🔐 使用 Google OAuth 授权'}
-                  </Button>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <p className="text-sm text-blue-700 mb-3">
+                      点击下方按钮跳转到 Google 进行 OAuth 授权，然后复制返回的授权码
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => window.open('https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+                        client_id: '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com',
+                        response_type: 'code',
+                        redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
+                        scope: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+                        access_type: 'offline',
+                        prompt: 'consent'
+                      }).toString(), '_blank')}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      🔐 打开 Google OAuth 授权页面
+                    </Button>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      授权码 (Authorization Code) *
+                    </label>
+                    <textarea
+                      value={formData.access_token || ''}
+                      onChange={(e) => setFormData({ ...formData, access_token: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      rows={3}
+                      placeholder="请粘贴从 Google OAuth 页面获取的授权码"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      1. 点击上方按钮打开授权页面<br/>
+                      2. 登录并授权访问<br/>
+                      3. 复制返回的授权码并粘贴到此处
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-blue-700">
@@ -302,18 +367,47 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
               </div>
               
               {oauthMode ? (
-                <div className="text-center">
-                  <p className="text-sm text-orange-700 mb-3">
-                    点击下方按钮跳转到 Claude 进行 OAuth 授权
-                  </p>
-                  <Button
-                    type="button"
-                    onClick={() => handleOAuthAuthorization('claude')}
-                    disabled={loading}
-                    className="bg-orange-600 hover:bg-orange-700 text-white"
-                  >
-                    {loading ? '处理中...' : '🔐 使用 Claude OAuth 授权'}
-                  </Button>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <p className="text-sm text-orange-700 mb-3">
+                      点击下方按钮跳转到 Claude 进行 OAuth 授权，然后复制回调 URL 或授权码
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const authUrl = 'https://claude.ai/oauth/authorize?' + new URLSearchParams({
+                          code: 'true',
+                          client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+                          response_type: 'code',
+                          redirect_uri: 'https://console.anthropic.com/oauth/code/callback',
+                          scope: 'org:create_api_key user:profile user:inference',
+                          code_challenge_method: 'S256'
+                        }).toString()
+                        window.open(authUrl, '_blank')
+                      }}
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
+                    >
+                      🔐 打开 Claude OAuth 授权页面
+                    </Button>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      回调 URL 或授权码 *
+                    </label>
+                    <textarea
+                      value={formData.access_token || ''}
+                      onChange={(e) => setFormData({ ...formData, access_token: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      rows={3}
+                      placeholder="请粘贴完整的回调 URL 或直接粘贴授权码"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      1. 点击上方按钮打开 Claude 授权页面<br/>
+                      2. 登录并授权访问<br/>
+                      3. 复制浏览器地址栏的完整回调 URL，或者从 URL 中提取授权码
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-orange-700">
