@@ -29,6 +29,7 @@ export function generateClaudeAuthUrl(redirectUri: string): {
   const state = generateState()
 
   const params = new URLSearchParams({
+    code: 'true',
     client_id: config.clientId,
     response_type: 'code',
     redirect_uri: redirectUri,
@@ -99,12 +100,14 @@ export async function exchangeClaudeToken(
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
       'User-Agent': 'claude-cli/1.0.56 (external, cli)',
-      'Accept': 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9'
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://claude.ai/',
+      'Origin': 'https://claude.ai'
     },
-    body: new URLSearchParams(params)
+    body: JSON.stringify(params)
   })
 
   if (!response.ok) {

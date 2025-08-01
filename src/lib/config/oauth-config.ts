@@ -5,10 +5,10 @@ export const OAUTH_CONFIGS = {
   // Claude OAuth 配置 (使用 PKCE，无需 Client Secret)
   claude: {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-    authorizeUrl: 'https://console.anthropic.com/oauth2/authorize',
-    tokenUrl: 'https://console.anthropic.com/oauth2/token',
-    redirectUri: 'https://console.anthropic.com/oauth2/callback',
-    scopes: 'default',
+    authorizeUrl: 'https://claude.ai/oauth/authorize',
+    tokenUrl: 'https://console.anthropic.com/v1/oauth/token',
+    redirectUri: 'https://console.anthropic.com/oauth/code/callback',
+    scopes: 'org:create_api_key user:profile user:inference',
     userInfoUrl: 'https://console.anthropic.com/v1/organizations'
   },
   
