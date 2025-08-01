@@ -1,27 +1,29 @@
+'use client'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 
-// 获取统计数据
-async function getStats() {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/dashboard/stats`, {
-      next: { revalidate: 30 } // 30秒缓存
-    })
-    
-    if (!response.ok) {
-      console.error('获取统计数据失败:', response.status)
-      return null
+export default function DashboardPage() {
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const response = await fetch('/api/dashboard/stats')
+        if (response.ok) {
+          const data = await response.json()
+          setStats(data)
+        }
+      } catch (error) {
+        console.error('获取统计数据出错:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-    
-    return response.json()
-  } catch (error) {
-    console.error('获取统计数据出错:', error)
-    return null
-  }
-}
 
-export default async function DashboardPage() {
-  const stats = await getStats()
+    fetchStats()
+  }, [])
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -33,10 +35,10 @@ export default async function DashboardPage() {
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard title="总请求数" value={stats ? stats.totalRequests.toLocaleString() : "---"} />
-          <StatsCard title="活跃账号" value={stats ? `${stats.activeAccounts}/10` : "---"} />
-          <StatsCard title="API 密钥" value={stats ? stats.apiKeysCount.toString() : "---"} />
-          <StatsCard title="成功率" value={stats ? `${stats.successRate}%` : "---"} />
+          <StatsCard title="总请求数" value={loading ? "加载中..." : (stats ? stats.totalRequests.toLocaleString() : "---")} />
+          <StatsCard title="活跃账号" value={loading ? "加载中..." : (stats ? `${stats.activeAccounts}/10` : "---")} />
+          <StatsCard title="API 密钥" value={loading ? "加载中..." : (stats ? stats.apiKeysCount.toString() : "---")} />
+          <StatsCard title="成功率" value={loading ? "加载中..." : (stats ? `${stats.successRate}%` : "---")} />
         </div>
 
         {/* 功能区域 */}
