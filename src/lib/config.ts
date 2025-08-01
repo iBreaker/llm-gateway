@@ -41,8 +41,6 @@ export function createSystemConfig(): SystemConfig {
     isVercel,
     SUPABASE_URL: env.SUPABASE_URL ? 'SET' : 'NOT_SET',
     POSTGRES_URL: env.POSTGRES_URL ? 'SET' : 'NOT_SET',
-    DATABASE_URL: env.DATABASE_URL.substring(0, 20) + '...',
-    finalUrl: databaseUrl.substring(0, 50) + '...',
     isPostgreSQL,
     detectedType: isPostgreSQL ? 'PostgreSQL/Supabase' : 'SQLite'
   })
@@ -53,9 +51,9 @@ export function createSystemConfig(): SystemConfig {
     type: 'postgresql',
     url: databaseUrl,
     options: {
-      maxConnections: env.NODE_ENV === 'production' ? 10 : 5,
-      connectionTimeout: 30000,
-      queryTimeout: 60000,
+      maxConnections: isVercel ? 5 : (env.NODE_ENV === 'production' ? 10 : 5),
+      connectionTimeout: 10000, // 10秒连接超时，适合 Vercel
+      queryTimeout: 20000, // 20秒查询超时，适合 Vercel
       ssl: env.NODE_ENV === 'production'
     }
   } : {

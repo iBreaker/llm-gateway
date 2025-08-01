@@ -15,6 +15,36 @@ export async function ensureSystemInitialized() {
     return systemServices
   }
 
+  // 构建时跳过数据库初始化，防止静态页面生成超时
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    console.log('🏗️ 构建模式：使用模拟服务')
+    const mockDatabase = {
+      isConnected: () => false,
+      connect: async () => {},
+      disconnect: async () => {},
+      findAll: async () => [],
+      findOne: async () => null,
+      create: async () => ({}),
+      update: async () => ({}),
+      delete: async () => true,
+      query: async () => []
+    } as DatabaseAdapter
+    
+    const mockCache = {
+      isConnected: () => false,
+      connect: async () => {},
+      disconnect: async () => {},
+      get: async () => null,
+      set: async () => {},
+      delete: async () => {},
+      clear: async () => {}
+    } as CacheAdapter
+
+    systemServices = { database: mockDatabase, cache: mockCache }
+    systemInitialized = true
+    return systemServices
+  }
+
   console.log('🔄 初始化 Next.js 服务器端系统...')
   
   try {
