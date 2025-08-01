@@ -46,8 +46,8 @@ export async function createStorageAdapter(config: StorageConfig): Promise<Stora
       return new LocalStorageAdapter(config)
     }
     case 'vercel-blob': {
-      const { VercelBlobAdapter } = await import('./storage/vercel-blob')
-      return new VercelBlobAdapter(config)
+      const { VercelBlobStorageAdapter } = await import('./storage/vercel-blob')
+      return new VercelBlobStorageAdapter(config)
     }
     case 's3': {
       const { S3StorageAdapter } = await import('./storage/s3')
