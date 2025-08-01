@@ -87,13 +87,13 @@ export default function OverviewStats({ stats }: OverviewStatsProps) {
                 <p className="text-sm font-medium text-gray-600">{item.name}</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">{item.value}</p>
                 <div className="flex items-center mt-2">
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${changeClasses[item.changeType]}`}>
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${changeClasses[item.changeType as keyof typeof changeClasses]}`}>
                     {item.change}
                   </span>
                   <span className="text-xs text-gray-500 ml-2">较上周</span>
                 </div>
               </div>
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colorClasses[item.color]}`}>
+              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colorClasses[item.color as keyof typeof colorClasses]}`}>
                 <Icon className="w-6 h-6" />
               </div>
             </div>

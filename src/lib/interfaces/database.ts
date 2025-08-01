@@ -94,3 +94,90 @@ export class QueryError extends DatabaseError {
     this.name = 'QueryError'
   }
 }
+
+// 数据库实体类型定义
+export interface DatabaseUser {
+  id: number
+  email: string
+  username: string
+  passwordHash: string
+  role: string
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DatabaseApiKey {
+  id: number
+  userId: number
+  name: string
+  keyHash: string
+  permissions: string[]
+  isActive: boolean
+  expiresAt?: Date
+  lastUsedAt?: Date
+  requestCount: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DatabaseUpstreamAccount {
+  id: number
+  type: string
+  email: string
+  credentials: Record<string, any>
+  isActive: boolean
+  priority: number
+  weight: number
+  lastUsedAt?: Date
+  requestCount: number
+  successCount: number
+  errorCount: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DatabaseUsageRecord {
+  id: number
+  apiKeyId: number
+  upstreamAccountId?: number
+  requestId: string
+  method: string
+  endpoint: string
+  statusCode?: number
+  responseTime?: number
+  tokensUsed: number
+  cost: number
+  errorMessage?: string
+  createdAt: Date
+}
+
+// PostgreSQL 特定选项
+export interface PostgreSQLOptions {
+  maxConnections?: number
+  connectionTimeout?: number
+  queryTimeout?: number
+  ssl?: boolean
+}
+
+// 专门的错误类型
+export class DatabaseConnectionError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message)
+    this.name = 'DatabaseConnectionError'
+  }
+}
+
+export class DatabaseQueryError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message)
+    this.name = 'DatabaseQueryError'
+  }
+}
+
+export class DatabaseTransactionError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message)
+    this.name = 'DatabaseTransactionError'
+  }
+}

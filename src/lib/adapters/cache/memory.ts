@@ -2,7 +2,9 @@ import type {
   CacheAdapter,
   CacheConfig,
   CacheLock,
-  MemoryCacheOptions,
+  MemoryCacheOptions
+} from '../../interfaces/cache'
+import {
   CacheConnectionError,
   CacheLockError
 } from '../../interfaces/cache'
@@ -250,14 +252,14 @@ export class MemoryCacheAdapter implements CacheAdapter {
     const now = Date.now()
     
     // 清理过期的缓存项
-    for (const [key, item] of this.cache.entries()) {
+    for (const [key, item] of Array.from(this.cache.entries())) {
       if (item.expiresAt && now > item.expiresAt) {
         this.cache.delete(key)
       }
     }
 
     // 清理过期的锁
-    for (const [key, lock] of this.locks.entries()) {
+    for (const [key, lock] of Array.from(this.locks.entries())) {
       if (now > lock.expiresAt) {
         this.locks.delete(key)
       }
@@ -268,7 +270,7 @@ export class MemoryCacheAdapter implements CacheAdapter {
     let oldestKey: string | null = null
     let oldestTime = Date.now()
 
-    for (const [key, item] of this.cache.entries()) {
+    for (const [key, item] of Array.from(this.cache.entries())) {
       if (item.accessedAt < oldestTime) {
         oldestTime = item.accessedAt
         oldestKey = key
