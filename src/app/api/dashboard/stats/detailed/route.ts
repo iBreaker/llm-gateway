@@ -87,20 +87,20 @@ export async function GET() {
     `)
 
     // 格式化数据
-    const formattedDailyStats = dailyStats.map(stat => ({
+    const formattedDailyStats = dailyStats.map((stat: any) => ({
       date: formatDateShort(stat.date),
       requests: stat.requests,
       cost: Math.round(stat.cost * 100) / 100,
       successRate: Math.round(stat.success_rate * 10) / 10
     }))
 
-    const formattedTopApiKeys = topApiKeys.map(key => ({
+    const formattedTopApiKeys = topApiKeys.map((key: any) => ({
       name: key.name,
       requests: key.requests,
       cost: Math.round(key.cost * 100) / 100
     }))
 
-    const formattedTopAccounts = topAccounts.map(account => ({
+    const formattedTopAccounts = topAccounts.map((account: any) => ({
       email: account.email,
       requests: account.requests,
       successRate: Math.round(account.success_rate * 10) / 10

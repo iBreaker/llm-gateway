@@ -23,7 +23,7 @@ export async function GET() {
     ])
     
     // 转换API密钥数据格式
-    const formattedApiKeys = apiKeys.map(key => ({
+    const formattedApiKeys = apiKeys.map((key: any) => ({
       id: key.id?.toString(),
       name: key.name,
       key: key.key_hash, // 注意：这里应该是已经hash的值，不是原始密钥
