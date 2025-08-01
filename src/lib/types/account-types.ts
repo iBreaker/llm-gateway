@@ -6,6 +6,7 @@ export interface BaseUpstreamAccount {
   id: number
   type: AccountType
   email?: string
+  user_id?: string
   is_active: boolean
   priority: number
   weight: number
@@ -73,6 +74,7 @@ export interface CreateGeminiAccountInput {
   credentials: GeminiOAuthCredentials
   priority?: number
   weight?: number
+  user_id?: string
 }
 
 export interface CreateClaudeAccountInput {
@@ -81,6 +83,7 @@ export interface CreateClaudeAccountInput {
   credentials: ClaudeOAuthCredentials
   priority?: number
   weight?: number
+  user_id?: string
 }
 
 export interface CreateLLMGatewayAccountInput {
@@ -89,6 +92,7 @@ export interface CreateLLMGatewayAccountInput {
   credentials: LLMGatewayCredentials
   priority?: number
   weight?: number
+  user_id?: string
 }
 
 export type CreateAccountInput = CreateGeminiAccountInput | CreateClaudeAccountInput | CreateLLMGatewayAccountInput

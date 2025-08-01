@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { accountManager } from '@/lib/services/account-manager'
 import type { CreateAccountInput, AccountType } from '@/lib/types/account-types'
+import { withAuth, logUserActivity } from '@/lib/utils/auth-helpers'
 
 // POST /api/dashboard/accounts/create
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, { userId }) => {
   try {
     const body = await request.json()
 
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 根据账号类型构建创建输入数据
+    // 根据账号类型构建创建输入数��
     let createInput: CreateAccountInput
 
     switch (body.type) {
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
           email: body.email,
           credentials: body.credentials,
           priority: body.priority || 1,
-          weight: body.weight || 100
+          weight: body.weight || 100,
+          user_id: userId  // 添加用户ID关联
         }
         break
       case 'llm_gateway':
@@ -65,7 +67,8 @@ export async function POST(request: NextRequest) {
           base_url: body.base_url,
           credentials: body.credentials,
           priority: body.priority || 1,
-          weight: body.weight || 100
+          weight: body.weight || 100,
+          user_id: userId  // 添加用户ID关联
         }
         break
       default:
@@ -77,6 +80,16 @@ export async function POST(request: NextRequest) {
 
     // 使用统一账号管理器创建账号
     const newAccount = await accountManager.createAccount(createInput)
+
+    // 记录用户活动
+    await logUserActivity(
+      userId,
+      'create_upstream_account',
+      'upstream_account',
+      newAccount.id.toString(),
+      { account_type: body.type, email: body.email },
+      request
+    )
 
     return NextResponse.json({
       success: true,
@@ -92,4 +105,4 @@ export async function POST(request: NextRequest) {
       status: 500
     })
   }
-}
+})
