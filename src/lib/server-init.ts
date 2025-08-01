@@ -22,13 +22,21 @@ export async function ensureSystemInitialized() {
       isConnected: () => false,
       connect: async () => {},
       disconnect: async () => {},
-      findAll: async () => [],
+      transaction: async (fn: any) => fn({}),
       findOne: async () => null,
+      findMany: async () => [],
       create: async () => ({}),
       update: async () => ({}),
-      delete: async () => true,
-      query: async () => []
-    } as DatabaseAdapter
+      delete: async () => 0,
+      createMany: async () => [],
+      updateMany: async () => 0,
+      deleteMany: async () => 0,
+      count: async () => 0,
+      exists: async () => false,
+      raw: async () => [],
+      initializeSchema: async () => {},
+      healthCheck: async () => ({ status: 'mock', connected: false })
+    } as any as DatabaseAdapter
     
     const mockCache = {
       isConnected: () => false,
@@ -36,9 +44,20 @@ export async function ensureSystemInitialized() {
       disconnect: async () => {},
       get: async () => null,
       set: async () => {},
-      delete: async () => {},
-      clear: async () => {}
-    } as CacheAdapter
+      delete: async () => false,
+      exists: async () => false,
+      mget: async () => [],
+      mset: async () => {},
+      mdel: async () => 0,
+      increment: async () => 0,
+      decrement: async () => 0,
+      expire: async () => false,
+      ttl: async () => -1,
+      clear: async () => {},
+      keys: async () => [],
+      flush: async () => {},
+      healthCheck: async () => ({ status: 'mock', connected: false })
+    } as any as CacheAdapter
 
     systemServices = { database: mockDatabase, cache: mockCache }
     systemInitialized = true
