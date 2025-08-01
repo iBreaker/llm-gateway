@@ -29,23 +29,29 @@ export interface SystemConfig {
 
 // 根据环境变量生成配置
 export function createSystemConfig(): SystemConfig {
-  // 检测部署环境
+  // 检测部署环境和数据库类型
   const isVercel = process.env.VERCEL === '1'
-  const isPostgreSQL = env.DATABASE_URL.includes('postgresql') || env.DATABASE_URL.includes('supabase')
+  
+  // 根据 Vercel 标准环境变量确定数据库
+  const databaseUrl = env.SUPABASE_URL || env.POSTGRES_URL || env.DATABASE_URL
+  const isPostgreSQL = databaseUrl.includes('postgresql') || databaseUrl.includes('supabase')
   
   // 调试信息
   console.log('🔍 数据库配置检测:', {
     isVercel,
-    DATABASE_URL: env.DATABASE_URL.substring(0, 50) + '...',
+    SUPABASE_URL: env.SUPABASE_URL ? 'SET' : 'NOT_SET',
+    POSTGRES_URL: env.POSTGRES_URL ? 'SET' : 'NOT_SET',
+    DATABASE_URL: env.DATABASE_URL.substring(0, 20) + '...',
+    finalUrl: databaseUrl.substring(0, 50) + '...',
     isPostgreSQL,
-    detectedType: isPostgreSQL ? 'PostgreSQL' : 'SQLite'
+    detectedType: isPostgreSQL ? 'PostgreSQL/Supabase' : 'SQLite'
   })
   
   // 数据库配置 - 根据部署环境自动选择
   const databaseConfig: DatabaseConfig = isPostgreSQL ? {
-    // PostgreSQL - 明确指定 PostgreSQL
+    // PostgreSQL/Supabase
     type: 'postgresql',
-    url: env.DATABASE_URL,
+    url: databaseUrl,
     options: {
       maxConnections: env.NODE_ENV === 'production' ? 10 : 5,
       connectionTimeout: 30000,
