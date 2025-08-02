@@ -3,6 +3,115 @@
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
 
+// Claude OAuth URL 生成器组件
+function ClaudeOAuthUrlGenerator({ setError }: { setError: (error: string | null) => void }) {
+  const [authUrl, setAuthUrl] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const generateUrl = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/oauth/generate-claude-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!response.ok) {
+        throw new Error('生成授权 URL 失败')
+      }
+      
+      const data = await response.json()
+      
+      // 存储 PKCE 参数到 localStorage，用于后续 Token 交换
+      localStorage.setItem('claude_oauth_params', JSON.stringify({
+        codeVerifier: data.codeVerifier,
+        state: data.state
+      }))
+      
+      setAuthUrl(data.authUrl)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '生成授权 URL 失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(authUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      setError('复制失败，请手动复制')
+    }
+  }
+
+  const openUrl = () => {
+    if (authUrl) {
+      window.open(authUrl, '_blank')
+    }
+  }
+
+  return (
+    <div className="text-center space-y-4">
+      <p className="text-sm text-orange-700 mb-3">
+        生成 Claude OAuth 授权 URL，复制链接或点击按钮打开页面进行授权
+      </p>
+      
+      {!authUrl ? (
+        <Button
+          type="button"
+          onClick={generateUrl}
+          disabled={loading}
+          className="bg-orange-600 hover:bg-orange-700 text-white"
+        >
+          {loading ? '生成中...' : '🔗 生成授权 URL'}
+        </Button>
+      ) : (
+        <div className="space-y-3">
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+            <p className="text-xs text-gray-600 mb-2">授权 URL:</p>
+            <div className="text-sm text-gray-800 break-all bg-white p-2 rounded border">
+              {authUrl}
+            </div>
+          </div>
+          
+          <div className="flex gap-2 justify-center">
+            <Button
+              type="button"
+              onClick={copyUrl}
+              className={`text-sm ${copied ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+            >
+              {copied ? '✅ 已复制' : '📋 复制 URL'}
+            </Button>
+            
+            <Button
+              type="button"
+              onClick={openUrl}
+              className="bg-orange-600 hover:bg-orange-700 text-white text-sm"
+            >
+              🔐 打开授权页面
+            </Button>
+            
+            <Button
+              type="button"
+              onClick={() => {
+                setAuthUrl('')
+                setCopied(false)
+              }}
+              variant="ghost"
+              className="text-sm text-gray-600 hover:text-gray-800"
+            >
+              🔄 重新生成
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface AddAccountModalProps {
   isOpen: boolean
   onClose: () => void
@@ -347,43 +456,7 @@ export default function AddAccountModal({ isOpen, onClose, onSuccess }: AddAccou
               
               {oauthMode ? (
                 <div className="space-y-4">
-                  <div className="text-center">
-                    <p className="text-sm text-orange-700 mb-3">
-                      点击下方按钮跳转到 Claude 进行 OAuth 授权，然后复制回调 URL 或授权码
-                    </p>
-                    <Button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          // 生成 PKCE 参数
-                          const response = await fetch('/api/oauth/generate-claude-url', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' }
-                          })
-                          
-                          if (!response.ok) {
-                            throw new Error('生成授权 URL 失败')
-                          }
-                          
-                          const data = await response.json()
-                          
-                          // 存储 PKCE 参数到 localStorage，用于后续 Token 交换
-                          localStorage.setItem('claude_oauth_params', JSON.stringify({
-                            codeVerifier: data.codeVerifier,
-                            state: data.state
-                          }))
-                          
-                          // 打开授权页面
-                          window.open(data.authUrl, '_blank')
-                        } catch (error) {
-                          setError(error instanceof Error ? error.message : '生成授权 URL 失败')
-                        }
-                      }}
-                      className="bg-orange-600 hover:bg-orange-700 text-white"
-                    >
-                      🔐 打开 Claude OAuth 授权页面
-                    </Button>
-                  </div>
+                  <ClaudeOAuthUrlGenerator setError={setError} />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       回调 URL 或授权码 *
