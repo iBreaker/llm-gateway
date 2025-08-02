@@ -55,16 +55,30 @@ export class SupabaseAdapter implements DatabaseAdapter {
       // 初始化迁移管理器
       this.migrationManager = new MigrationManager(this)
 
-      // 测试连接 - 使用一个必定存在的系统表
+      // 测试连接 - 使用 Supabase 内置的连接测试
       console.log('🔍 测试 Supabase 连接...')
-      const { data, error } = await this.client
-        .from('information_schema.tables')
-        .select('table_name')
-        .limit(1)
-      
-      if (error) {
-        console.error('❌ Supabase 连接测试失败:', error)
-        throw error
+      try {
+        // 使用简单的 RPC 调用测试连接
+        const { data, error } = await this.client.rpc('version')
+        if (error && error.code !== '42883') { // 42883 = function does not exist, 这是正常的
+          console.error('❌ Supabase 连接测试失败:', error)
+          throw error
+        }
+        // 如果没有 version 函数，尝试一个基本查询
+        if (error && error.code === '42883') {
+          const { error: testError } = await this.client
+            .from('pg_stat_database')
+            .select('datname')
+            .limit(1)
+          
+          if (testError) {
+            console.error('❌ Supabase 基本查询测试失败:', testError)
+            throw testError
+          }
+        }
+      } catch (connectionError) {
+        console.error('❌ Supabase 连接测试异常:', connectionError)
+        throw connectionError
       }
 
       console.log('✅ Supabase 数据库连接成功')
