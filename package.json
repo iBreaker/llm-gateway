@@ -26,7 +26,8 @@
     "deploy": "npm run build && ./scripts/quick-push.sh \"部署更新\"",
     "init-config": "ts-node --project tsconfig.scripts.json scripts/init-config.ts",
     "config:show": "ts-node --project tsconfig.scripts.json -e \"import('./src/lib/config').then(c => c.getAllConfigs().then(console.log))\"",
-    "config:clear-cache": "ts-node --project tsconfig.scripts.json -e \"import('./src/lib/config').then(c => c.clearConfigCache())\""
+    "config:clear-cache": "ts-node --project tsconfig.scripts.json -e \"import('./src/lib/config').then(c => c.clearConfigCache())\"",
+    "create-admin": "ts-node --project tsconfig.scripts.json scripts/create-admin.ts"
   },
   "keywords": [
     "llm",
@@ -54,6 +55,7 @@
     "google-auth-library": "^9.11.0",
     "https-proxy-agent": "^7.0.0",
     "jose": "^5.6.0",
+    "lucide-react": "^0.536.0",
     "nanoid": "^5.0.0",
     "next": "^14.2.0",
     "postgres": "^3.4.7",
