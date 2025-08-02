@@ -19,8 +19,8 @@ const envSchema = z.object({
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   
   // 安全
-  JWT_SECRET: z.string().min(32, 'JWT Secret 至少需要 32 个字符'),
-  ENCRYPTION_MASTER_KEY: z.string().min(32, '加密密钥至少需要 32 个字符'),
+  JWT_SECRET: z.string().min(32, 'JWT Secret 至少需要 32 个字符').default('dev_jwt_secret_32_characters_long_string_for_development_only'),
+  ENCRYPTION_MASTER_KEY: z.string().min(32, '加密密钥至少需要 32 个字符').default('dev_encryption_key_32_chars_string_for_development_only'),
   
   // OAuth 配置
   CLAUDE_OAUTH_CLIENT_ID: z.string().optional(),
