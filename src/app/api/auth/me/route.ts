@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth/jwt'
-
-const prisma = new PrismaClient()
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'

@@ -3,10 +3,8 @@ import { withApiKey, ApiKeyAuthRequest, recordUsage } from '@/lib/auth/api-key'
 import { AnthropicClient, validateAnthropicRequest } from '@/lib/anthropic/client'
 import { AnthropicOAuthClient } from '@/lib/anthropic-oauth/client'
 import { nanoid } from 'nanoid'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { loadBalancer } from '@/lib/load-balancer'
-
-const prisma = new PrismaClient()
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'

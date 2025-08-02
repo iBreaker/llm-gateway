@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { AnthropicClient } from '@/lib/anthropic/client'
-
-const prisma = new PrismaClient()
 
 async function handleGetAccounts(request: AuthenticatedRequest) {
   try {

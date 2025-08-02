@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { AnthropicClient } from '@/lib/anthropic/client'
 import { AnthropicOAuthClient, validateAnthropicOAuthCredentials, type AnthropicOAuthCredentials } from '@/lib/anthropic-oauth/client'
-
-const prisma = new PrismaClient()
 
 async function handleHealthCheck(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {

@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { AnthropicClient } from './anthropic/client'
-
-const prisma = new PrismaClient()
 
 export interface HealthCheckResult {
   accountId: bigint

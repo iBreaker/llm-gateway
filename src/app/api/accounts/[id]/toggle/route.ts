@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 async function handleToggleAccount(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {

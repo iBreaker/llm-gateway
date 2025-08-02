@@ -3,9 +3,7 @@
  * 所有配置存储在数据库中，支持缓存和动态更新
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // 配置缓存
 const configCache = new Map<string, { value: any; expires: number }>();

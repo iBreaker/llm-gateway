@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { nanoid } from 'nanoid'
 import bcrypt from 'bcryptjs'
-
-const prisma = new PrismaClient()
 
 async function handleGetApiKeys(request: AuthenticatedRequest) {
   try {
