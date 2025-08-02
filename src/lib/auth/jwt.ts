@@ -34,7 +34,23 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     const secretKey = new TextEncoder().encode(secret)
     
     const { payload } = await jwtVerify(token, secretKey)
-    return payload as JWTPayload
+    
+    // 验证payload是否包含必需的字段
+    if (
+      typeof payload.userId === 'string' &&
+      typeof payload.email === 'string' &&
+      typeof payload.role === 'string'
+    ) {
+      return {
+        userId: payload.userId,
+        email: payload.email,
+        role: payload.role,
+        iat: payload.iat,
+        exp: payload.exp
+      }
+    }
+    
+    return null
   } catch (error) {
     console.error('JWT verification failed:', error)
     return null

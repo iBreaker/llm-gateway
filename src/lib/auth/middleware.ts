@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromHeader } from './jwt'
 
 export interface AuthenticatedRequest extends NextRequest {
-  user?: {
+  user: {
     userId: string
     email: string
     role: string
+    id: bigint
   }
 }
 
@@ -37,7 +38,8 @@ export async function authMiddleware(request: NextRequest): Promise<NextResponse
   ;(request as AuthenticatedRequest).user = {
     userId: payload.userId,
     email: payload.email,
-    role: payload.role
+    role: payload.role,
+    id: BigInt(payload.userId)
   }
 
   return null // 继续处理请求
@@ -72,10 +74,10 @@ export function checkRole(allowedRoles: string[]) {
  * 创建受保护的 API 处理函数
  */
 export function withAuth(
-  handler: (request: AuthenticatedRequest) => Promise<NextResponse>,
+  handler: (request: AuthenticatedRequest, context?: any) => Promise<NextResponse>,
   options: { requiredRoles?: string[] } = {}
 ) {
-  return async (request: NextRequest): Promise<NextResponse> => {
+  return async (request: NextRequest, context?: any): Promise<NextResponse> => {
     // 执行认证中间件
     const authResult = await authMiddleware(request)
     if (authResult) {
@@ -91,6 +93,6 @@ export function withAuth(
     }
 
     // 执行实际的处理函数
-    return handler(request as AuthenticatedRequest)
+    return handler(request as AuthenticatedRequest, context)
   }
 }

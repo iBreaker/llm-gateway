@@ -31,7 +31,7 @@ export default function LoginPage() {
       if (response.ok) {
         // 保存 token 到 localStorage
         localStorage.setItem('token', data.token)
-        router.push('/dashboard')
+        router.push('/overview')
       } else {
         setError(data.message || '登录失败')
       }
