@@ -5,7 +5,7 @@ export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
   datasources: {
     db: {
-      url: process.env.POSTGRES_URL + '&prepared_statements=false'
+      url: (process.env.POSTGRES_URL || '') + (process.env.POSTGRES_URL?.includes('?') ? '&' : '?') + 'prepared_statements=false'
     }
   }
 })
