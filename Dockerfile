@@ -4,6 +4,8 @@ FROM node:18-alpine AS base
 # 安装依赖阶段
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
+# 升级 npm 到最新版本以支持 lockfileVersion 3
+RUN npm install -g npm@latest
 WORKDIR /app
 
 COPY package*.json ./
@@ -12,6 +14,8 @@ RUN npm ci --only=production && npm cache clean --force
 # 构建阶段
 FROM base AS builder
 WORKDIR /app
+# 升级 npm 到最新版本以支持 lockfileVersion 3
+RUN npm install -g npm@latest
 COPY package*.json ./
 RUN npm ci
 

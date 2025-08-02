@@ -11,6 +11,9 @@ RUN apk add --no-cache \
     make \
     g++
 
+# 升级 npm 到最新版本以支持 lockfileVersion 3
+RUN npm install -g npm@latest
+
 # 复制 package 文件
 COPY package*.json ./
 COPY prisma ./prisma/
