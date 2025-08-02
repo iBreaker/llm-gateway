@@ -73,7 +73,10 @@ export class SqliteAdapter implements DatabaseAdapter {
     if (!this.db) throw new DatabaseConnectionError('数据库未连接')
 
     try {
-      return this.db.transaction(() => {
+      // SQLite 事务需要手动管理，因为 better-sqlite3 的 transaction() 不支持异步回调
+      this.db.exec('BEGIN TRANSACTION')
+      
+      try {
         const tx: DatabaseTransaction = {
           findOne: async <T>(table: string, where: Record<string, any>) => {
             return this.findOne<T>(table, where)
@@ -95,10 +98,15 @@ export class SqliteAdapter implements DatabaseAdapter {
           }
         }
         
-        return callback(tx)
-      })()
+        const result = await callback(tx)
+        this.db.exec('COMMIT')
+        return result
+      } catch (error) {
+        this.db.exec('ROLLBACK')
+        throw error
+      }
     } catch (error) {
-      throw new DatabaseQueryError('事务执行失败', error as Error)
+      throw new DatabaseTransactionError('事务执行失败', error as Error)
     }
   }
 
