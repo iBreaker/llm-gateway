@@ -83,6 +83,11 @@ export async function setConfig(key: string, value: any): Promise<void> {
 }
 
 /**
+ * 更新配置值 (setConfig 的别名)
+ */
+export const updateConfig = setConfig;
+
+/**
  * 批量设置配置
  */
 export async function setConfigs(configs: Record<string, any>): Promise<void> {
