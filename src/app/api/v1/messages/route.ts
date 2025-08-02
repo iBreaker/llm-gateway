@@ -372,7 +372,7 @@ async function handleStreamRequest(
 
       } catch (error) {
         console.error('流式处理错误:', error)
-        safeError(error)
+        safeError(error as Error)
       }
     }
   })
@@ -403,6 +403,6 @@ function getClientIP(request: NextRequest): string {
   return realIP || remoteAddress || 'unknown'
 }
 
-export const POST = withApiKey(handleAnthropicMessages, { 
+export const POST = withApiKey(handleAnthropicMessages as any, { 
   requiredPermission: 'anthropic.messages' 
 })
