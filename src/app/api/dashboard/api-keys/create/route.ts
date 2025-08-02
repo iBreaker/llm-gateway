@@ -8,12 +8,37 @@ export async function POST(request: NextRequest) {
     const db = await getDatabase()
     const body = await request.json()
 
-    // 验证必填字段
-    if (!body.name || !body.user_id) {
+    // 从认证头中获取用户ID
+    const userId = request.headers.get('x-user-id')
+    if (!userId) {
       return NextResponse.json(
-        { error: '名称和用户ID为必填字段' },
+        { error: '用户未认证' },
+        { status: 401 }
+      )
+    }
+
+    // 验证必填字段
+    if (!body.name) {
+      return NextResponse.json(
+        { error: '名称为必填字段' },
         { status: 400 }
       )
+    }
+
+    // 首先检查或创建用户记录（将Supabase UUID映射到我们的用户表）
+    const userEmail = request.headers.get('x-user-email') || ''
+    let userRecord = await db.findOne('users', { email: userEmail })
+    
+    if (!userRecord) {
+      // 创建用户记录
+      userRecord = await db.create('users', {
+        email: userEmail,
+        username: userEmail.split('@')[0] || 'user',
+        password_hash: 'supabase_auth', // 标记为Supabase认证用户
+        role: 'user',
+        is_active: true
+      })
+      console.log('创建新用户记录:', userRecord)
     }
 
     // 生成API密钥
@@ -22,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     // 创建新API密钥
     const apiKeyData = {
-      user_id: body.user_id,
+      user_id: userRecord.id, // 使用我们数据库中的用户ID
       name: body.name,
       key_hash: keyHash,
       permissions: JSON.stringify(body.permissions || ['read']),

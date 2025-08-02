@@ -141,6 +141,26 @@ export class MigrationManager {
     try {
       console.log('🚀 开始数据库迁移...')
       
+      // 检查是否为 Supabase 适配器
+      const isSupabase = this.adapter.constructor.name.includes('Supabase')
+      
+      if (isSupabase) {
+        console.log('🔍 检测到 Supabase 环境')
+        console.log('📋 由于 Supabase JS 客户端限制，请手动在 Supabase Dashboard 中执行以下 SQL:')
+        console.log('━'.repeat(80))
+        console.log('1. 进入 Supabase Dashboard > SQL Editor')
+        console.log('2. 执行项目根目录中的 supabase-init.sql 文件')
+        console.log('3. 或者复制粘贴以下 SQL 语句:')
+        console.log('━'.repeat(80))
+        console.log(TABLES_SQL)
+        console.log(INDEXES_SQL)
+        console.log(TRIGGERS_SQL)
+        console.log('━'.repeat(80))
+        console.log('✅ Supabase 迁移指导完成 - 请手动执行上述 SQL')
+        return
+      }
+      
+      // 对于非 Supabase 适配器，正常执行迁移
       // 1. 创建表结构
       await this.executeSql(TABLES_SQL)
       console.log('✅ 表结构创建完成')
@@ -150,8 +170,7 @@ export class MigrationManager {
       console.log('✅ 索引创建完成')
       
       // 3. 创建触发器 (仅对 PostgreSQL/Supabase)
-      if (this.adapter.constructor.name.includes('Postgres') || 
-          this.adapter.constructor.name.includes('Supabase')) {
+      if (this.adapter.constructor.name.includes('Postgres')) {
         await this.executeSql(TRIGGERS_SQL)
         console.log('✅ 触发器创建完成')
       }
