@@ -50,7 +50,7 @@ export async function POST() {
       results.push({ table: 'users', status: 'success' })
     } catch (error) {
       console.error('创建users表失败:', error)
-      results.push({ table: 'users', status: 'error', error: error.message })
+      results.push({ table: 'users', status: 'error', error: error instanceof Error ? error.message : '未知错误' })
     }
 
     // 2. 创建API密钥表
@@ -77,7 +77,7 @@ export async function POST() {
       results.push({ table: 'api_keys', status: 'success' })
     } catch (error) {
       console.error('创建api_keys表失败:', error)
-      results.push({ table: 'api_keys', status: 'error', error: error.message })
+      results.push({ table: 'api_keys', status: 'error', error: error instanceof Error ? error.message : '未知错误' })
     }
 
     // 3. 创建上游账号表
@@ -106,7 +106,7 @@ export async function POST() {
       results.push({ table: 'upstream_accounts', status: 'success' })
     } catch (error) {
       console.error('创建upstream_accounts表失败:', error)
-      results.push({ table: 'upstream_accounts', status: 'error', error: error.message })
+      results.push({ table: 'upstream_accounts', status: 'error', error: error instanceof Error ? error.message : '未知错误' })
     }
 
     // 4. 创建使用记录表
@@ -134,7 +134,7 @@ export async function POST() {
       results.push({ table: 'usage_records', status: 'success' })
     } catch (error) {
       console.error('创建usage_records表失败:', error)
-      results.push({ table: 'usage_records', status: 'error', error: error.message })
+      results.push({ table: 'usage_records', status: 'error', error: error instanceof Error ? error.message : '未知错误' })
     }
 
     // 5. 创建索引
@@ -151,7 +151,7 @@ export async function POST() {
         results.push({ index: index.name, status: 'success' })
       } catch (error) {
         console.error(`创建索引${index.name}失败:`, error)
-        results.push({ index: index.name, status: 'error', error: error.message })
+        results.push({ index: index.name, status: 'error', error: error instanceof Error ? error.message : '未知错误' })
       }
     }
 
