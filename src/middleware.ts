@@ -1,57 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-// 创建全局 Prisma 实例
-const prisma = new PrismaClient()
 
 /**
- * 检查系统初始化状态的中间件
+ * 简化的中间件 - 使用 API 调用检查状态
+ * 因为 Prisma 不能在 Edge Runtime 中运行
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
-  // 跳过静态资源和 API 路由
+  // 跳过静态资源、API 路由和初始化相关路径
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
-    pathname.includes('.') // 静态文件
+    pathname.includes('.') || // 静态文件
+    pathname === '/init' ||   // 允许访问初始化页面
+    pathname === '/auth/login' // 允许访问登录页面
   ) {
     return NextResponse.next()
   }
 
-  try {
-    // 检查系统是否已初始化
-    const userCount = await prisma.user.count()
-    const needsInit = userCount === 0
-    
-    // 根据当前路径和初始化状态决定重定向
-    if (needsInit) {
-      // 系统未初始化
-      if (pathname !== '/init') {
-        return NextResponse.redirect(new URL('/init', request.url))
-      }
-    } else {
-      // 系统已初始化
-      if (pathname === '/init') {
-        return NextResponse.redirect(new URL('/auth/login', request.url))
-      }
-      if (pathname === '/') {
-        return NextResponse.redirect(new URL('/auth/login', request.url))
-      }
-    }
-    
-    return NextResponse.next()
-    
-  } catch (error) {
-    console.error('中间件数据库连接错误:', error)
-    
-    // 数据库连接失败，可能是首次部署
-    if (pathname !== '/init') {
-      return NextResponse.redirect(new URL('/init', request.url))
-    }
-    
-    return NextResponse.next()
+  // 对于其他路径，重定向到登录页面
+  // 具体的初始化判断由页面组件处理
+  if (pathname === '/') {
+    return NextResponse.redirect(new URL('/auth/login', request.url))
   }
+  
+  return NextResponse.next()
 }
 
 // 配置中间件匹配路径

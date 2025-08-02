@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
 import { hashPassword } from '@/lib/auth/password'
+import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 
-const prisma = new PrismaClient()
+// 强制动态渲染
+export const dynamic = 'force-dynamic'
 
 // 全局初始化令牌（重启后失效）
 let initToken: string | null = null
@@ -124,8 +125,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -157,7 +156,5 @@ export async function GET() {
       },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
