@@ -26,7 +26,7 @@ export async function POST() {
     results.sqlFiles = sqlFiles
     
     // 加载SQL文件
-    const { tables, indexes, triggers } = sqlLoader.loadBaseSqlFiles()
+    const { tables, indexes: sqlIndexes, triggers } = sqlLoader.loadBaseSqlFiles()
     
     // 定义需要创建的表
     const tableDefinitions = [
