@@ -10,6 +10,7 @@ export async function GET() {
       NODE_ENV: process.env.NODE_ENV,
       VERCEL: process.env.VERCEL,
       SUPABASE_URL: process.env.SUPABASE_URL ? 'SET' : 'NOT_SET',
+      SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'SET' : 'NOT_SET',
       POSTGRES_URL: process.env.POSTGRES_URL ? 'SET' : 'NOT_SET',
       DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
     }
@@ -58,8 +59,27 @@ export async function GET() {
       await adapter.disconnect()
     } catch (dbError) {
       console.error('❌ 数据库适配器测试失败:', dbError)
+      
+      // 捕获详细的错误信息
+      let errorDetails: any = {
+        message: dbError instanceof Error ? dbError.message : '数据库适配器失败',
+        name: dbError instanceof Error ? dbError.name : 'UnknownError'
+      }
+      
+      // 如果是 Supabase 错误，尝试提取更多信息
+      if (dbError && typeof dbError === 'object') {
+        const error = dbError as any
+        if (error.code) errorDetails.code = error.code
+        if (error.details) errorDetails.details = error.details
+        if (error.hint) errorDetails.hint = error.hint
+        if (error.status) errorDetails.status = error.status
+        if (error.statusText) errorDetails.statusText = error.statusText
+        if (error.cause) errorDetails.cause = error.cause
+      }
+      
       dbAdapterCheck = { 
-        error: dbError instanceof Error ? dbError.message : '数据库适配器失败',
+        error: errorDetails.message,
+        errorDetails,
         stack: dbError instanceof Error ? dbError.stack : undefined
       }
     }
