@@ -6,7 +6,10 @@ const envSchema = z.object({
   
   // 数据库 - 使用 Vercel 标准环境变量
   POSTGRES_URL: z.string().optional(),
+  POSTGRES_URL_NON_POOLING: z.string().optional(),
   SUPABASE_URL: z.string().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   DATABASE_URL: z.string().default('./data/dev.db'),
   
   // 缓存 (可选)
