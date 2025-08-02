@@ -26,8 +26,8 @@ services:
     image: redis:7-alpine
     container_name: llm-gateway-redis
     restart: unless-stopped
-    ports:
-      - "16379:6379"
+    # ports:
+    #   - "16379:6379"  # 内部服务，不需要暴露端口
     volumes:
       - redis_data:/data
     healthcheck:
