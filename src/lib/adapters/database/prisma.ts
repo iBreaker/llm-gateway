@@ -288,6 +288,29 @@ export class PrismaAdapter implements DatabaseAdapter {
     console.log('✅ Prisma 数据填充: 无需额外操作')
   }
 
+  async healthCheck(): Promise<{ status: string; connected: boolean; latency?: number }> {
+    if (!this.client) {
+      return { status: 'disconnected', connected: false }
+    }
+
+    try {
+      const startTime = Date.now()
+      await this.client.$queryRaw`SELECT 1`
+      const latency = Date.now() - startTime
+      
+      return { 
+        status: 'healthy', 
+        connected: true, 
+        latency 
+      }
+    } catch (error) {
+      return { 
+        status: 'error', 
+        connected: false 
+      }
+    }
+  }
+
   // ==========================================
   // 私有方法
   // ==========================================
