@@ -74,7 +74,33 @@
 
 ## 🚦 快速开始
 
-项目正在开发中，敬请期待...
+### 🌟 一键部署到 Vercel（推荐）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/llm-gateway)
+
+1. 点击上方按钮，Vercel 自动部署应用
+2. 在 Vercel 控制台添加 Postgres 数据库（自动配置环境变量）
+3. 运行数据库迁移：`npm run db:push`
+
+**详细指南**: [Vercel 部署文档](VERCEL_SETUP.md)
+
+### 本地开发
+
+```bash
+# 安装依赖
+npm install
+
+# 配置环境变量
+cp .env.example .env
+
+# 推送数据库结构
+npm run db:push
+
+# 启动开发服务器
+npm run dev
+```
+
+访问: http://localhost:13010
 
 ## 🤝 贡献指南
 
