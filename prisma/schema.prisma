@@ -109,6 +109,7 @@ model UsageRecord {
   requestId         String   @unique @map("request_id")
   method            String
   endpoint          String
+  model             String?  // 添加模型字段存储实际使用的模型
   statusCode        Int?     @map("status_code")
   responseTime      Int?     @map("response_time") // 毫秒
   tokensUsed        BigInt   @default(0) @map("tokens_used")

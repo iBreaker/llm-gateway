@@ -188,6 +188,7 @@ export async function recordUsage(
     requestId: string
     method: string
     endpoint: string
+    model?: string  // 添加模型字段
     statusCode?: number
     responseTime?: number
     tokensUsed?: number
@@ -205,6 +206,7 @@ export async function recordUsage(
         requestId: requestData.requestId,
         method: requestData.method,
         endpoint: requestData.endpoint,
+        model: requestData.model,  // 添加模型字段到数据库
         statusCode: requestData.statusCode,
         responseTime: requestData.responseTime,
         tokensUsed: BigInt(requestData.tokensUsed || 0),

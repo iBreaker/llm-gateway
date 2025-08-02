@@ -40,27 +40,84 @@ async function handleGetDetailedStats(request: AuthenticatedRequest) {
 
     const failedRequests = totalRequests - successfulRequests
 
-    // 计算平均响应时间（模拟数据）
-    const averageResponseTime = 150 + Math.floor(Math.random() * 100)
+    // 计算平均响应时间（从实际数据获取）
+    const responseTimeResult = await prisma.usageRecord.aggregate({
+      where: {
+        createdAt: {
+          gte: startDate
+        },
+        responseTime: {
+          not: null
+        }
+      },
+      _avg: {
+        responseTime: true
+      }
+    })
+    const averageResponseTime = Math.round(responseTimeResult._avg.responseTime || 0)
 
-    // 计算总费用（模拟数据）
-    const totalCost = totalRequests * 0.002
+    // 计算总费用（从实际数据获取）
+    const costResult = await prisma.usageRecord.aggregate({
+      where: {
+        createdAt: {
+          gte: startDate
+        }
+      },
+      _sum: {
+        cost: true
+      }
+    })
+    const totalCost = Number(costResult._sum.cost || 0)
 
-    // 按模型分布（模拟数据）
-    const requestsByModel = [
-      { model: 'claude-3-sonnet', count: Math.floor(totalRequests * 0.4) },
-      { model: 'claude-3-haiku', count: Math.floor(totalRequests * 0.3) },
-      { model: 'gemini-pro', count: Math.floor(totalRequests * 0.2) },
-      { model: 'gpt-4', count: Math.floor(totalRequests * 0.1) }
-    ].filter(item => item.count > 0)
+    // 按模型分布（从实际数据获取）
+    const modelStats = await prisma.usageRecord.groupBy({
+      by: ['model'],
+      where: {
+        createdAt: {
+          gte: startDate
+        },
+        model: {
+          not: null
+        }
+      },
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      }
+    })
 
-    // 按日期分布（模拟数据）
+    const requestsByModel = modelStats.map(stat => ({
+      model: stat.model || 'unknown',
+      count: stat._count.id
+    }))
+
+    // 按日期分布（从实际数据获取）
+    const dateStats = await prisma.$queryRaw<Array<{date: string, count: bigint}>>`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as count
+      FROM usage_records 
+      WHERE created_at >= ${startDate}
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `
+
+    // 创建完整的日期范围（包括没有请求的日期）
     const requestsByDate = []
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-      const count = Math.floor(Math.random() * (totalRequests / days * 2))
+      const dateStr = date.toISOString().split('T')[0]
+      
+      // 查找该日期的实际数据
+      const found = dateStats.find(stat => stat.date === dateStr)
+      const count = found ? Number(found.count) : 0
+      
       requestsByDate.push({
-        date: date.toISOString().split('T')[0],
+        date: dateStr,
         count
       })
     }

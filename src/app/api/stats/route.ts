@@ -16,10 +16,10 @@ async function handleGetStats(request: AuthenticatedRequest) {
       where: { status: 'ACTIVE' }
     })
 
-    // 获取总请求数 (示例数据，实际应从使用记录计算)
+    // 获取总请求数（从使用记录统计）
     const totalRequests = await prisma.usageRecord.count()
 
-    // 计算错误率 (示例计算)
+    // 计算错误率（从实际数据计算）
     const errorCount = await prisma.usageRecord.count({
       where: {
         errorMessage: { not: null }
