@@ -61,7 +61,7 @@ export async function GET() {
       console.error('❌ 数据库适配器测试失败:', dbError)
       
       // 捕获详细的错误信息
-      let errorDetails: any = {
+      const errorDetails: any = {
         message: dbError instanceof Error ? dbError.message : '数据库适配器失败',
         name: dbError instanceof Error ? dbError.name : 'UnknownError'
       }
