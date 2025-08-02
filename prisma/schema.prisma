@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL") // Vercel 自动提供
+  directUrl = env("POSTGRES_URL_NON_POOLING") // Vercel 自动提供，用于迁移
 }
 
 // 用户角色枚举
