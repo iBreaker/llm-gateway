@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink } from 'lucide-react'
+import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink, Power, PowerOff } from 'lucide-react'
 
 interface UpstreamAccount {
   id: string
@@ -81,6 +81,8 @@ export default function AccountsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [visibleCredentials, setVisibleCredentials] = useState<Set<string>>(new Set())
   const [selectedType, setSelectedType] = useState<string>('all')
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set())
+  const [isTogglingStatus, setIsTogglingStatus] = useState<Set<string>>(new Set())
 
   // 获取上游账号列表
   const fetchAccounts = async () => {
@@ -228,6 +230,119 @@ export default function AccountsPage() {
     }
   }
 
+  // 切换账号状态
+  const toggleAccountStatus = async (id: string) => {
+    setIsTogglingStatus(prev => new Set([...prev, id]))
+    
+    try {
+      const account = accounts.find(a => a.id === id)
+      if (!account) return
+
+      const newStatus = account.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
+      
+      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/accounts/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: account.name,
+          email: account.email,
+          priority: account.priority,
+          weight: account.weight,
+          status: newStatus
+        })
+      })
+
+      if (response.ok) {
+        await fetchAccounts()
+        const action = newStatus === 'ACTIVE' ? '启用' : '禁用'
+        setMessage({ type: 'success', text: `账号已${action}` })
+        setTimeout(() => setMessage(null), 3000)
+      } else {
+        const data = await response.json()
+        setMessage({ type: 'error', text: data.message || '操作失败' })
+        setTimeout(() => setMessage(null), 3000)
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: '网络错误' })
+      setTimeout(() => setMessage(null), 3000)
+    } finally {
+      setIsTogglingStatus(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(id)
+        return newSet
+      })
+    }
+  }
+
+  // 批量操作
+  const handleBatchOperation = async (operation: 'enable' | 'disable' | 'delete') => {
+    if (selectedAccounts.size === 0) {
+      setMessage({ type: 'error', text: '请选择要操作的账号' })
+      setTimeout(() => setMessage(null), 3000)
+      return
+    }
+
+    const accountIds = Array.from(selectedAccounts)
+    const operationText = {
+      enable: '启用',
+      disable: '禁用', 
+      delete: '删除'
+    }[operation]
+
+    if (!confirm(`确定要${operationText}选中的 ${accountIds.length} 个账号吗？`)) {
+      return
+    }
+
+    try {
+      const token = localStorage.getItem('token')
+      
+      if (operation === 'delete') {
+        // 批量删除
+        for (const id of accountIds) {
+          await fetch(`/api/accounts/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        }
+      } else {
+        // 批量更新状态
+        for (const id of accountIds) {
+          const account = accounts.find(a => a.id === id)
+          if (!account) continue
+
+          const newStatus = operation === 'enable' ? 'ACTIVE' : 'INACTIVE'
+          
+          await fetch(`/api/accounts/${id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              name: account.name,
+              email: account.email,
+              priority: account.priority,
+              weight: account.weight,
+              status: newStatus
+            })
+          })
+        }
+      }
+
+      await fetchAccounts()
+      setSelectedAccounts(new Set())
+      setMessage({ type: 'success', text: `批量${operationText}完成` })
+      setTimeout(() => setMessage(null), 3000)
+    } catch (error) {
+      setMessage({ type: 'error', text: '批量操作失败' })
+      setTimeout(() => setMessage(null), 3000)
+    }
+  }
+
   // 过滤账号
   const filteredAccounts = selectedType === 'all' 
     ? accounts 
@@ -278,24 +393,63 @@ export default function AccountsPage() {
         </button>
       </div>
 
-      {/* 过滤器 */}
-      <div className="flex items-center space-x-4">
-        <span className="text-sm font-medium text-zinc-700">类型筛选:</span>
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="px-3 py-1 border border-zinc-200 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-        >
-          <option value="all">全部</option>
-          <option value="ANTHROPIC_API">Anthropic API</option>
-          <option value="CLAUDE_CODE">Claude Code</option>
-          <option value="GEMINI_CLI">Gemini CLI</option>
-          <option value="OPENAI_API">OpenAI API</option>
-        </select>
+      {/* 过滤器和批量操作 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <span className="text-sm font-medium text-zinc-700">类型筛选:</span>
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="px-3 py-1 border border-zinc-200 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
+          >
+            <option value="all">全部</option>
+            <option value="ANTHROPIC_API">Anthropic API</option>
+            <option value="CLAUDE_CODE">Claude Code</option>
+            <option value="GEMINI_CLI">Gemini CLI</option>
+            <option value="OPENAI_API">OpenAI API</option>
+          </select>
+        </div>
+
+        {/* 批量操作 */}
+        {selectedAccounts.size > 0 && (
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-zinc-600">
+              已选择 {selectedAccounts.size} 个账号
+            </span>
+            <button
+              onClick={() => handleBatchOperation('enable')}
+              className="flex items-center space-x-1 px-3 py-1 bg-green-600 text-white text-sm font-medium rounded-sm hover:bg-green-700"
+            >
+              <Power className="w-4 h-4" />
+              <span>批量启用</span>
+            </button>
+            <button
+              onClick={() => handleBatchOperation('disable')}
+              className="flex items-center space-x-1 px-3 py-1 bg-orange-600 text-white text-sm font-medium rounded-sm hover:bg-orange-700"
+            >
+              <PowerOff className="w-4 h-4" />
+              <span>批量禁用</span>
+            </button>
+            <button
+              onClick={() => handleBatchOperation('delete')}
+              className="flex items-center space-x-1 px-3 py-1 bg-red-600 text-white text-sm font-medium rounded-sm hover:bg-red-700"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>批量删除</span>
+            </button>
+            <button
+              onClick={() => setSelectedAccounts(new Set())}
+              className="text-zinc-500 hover:text-zinc-700"
+              title="清除选择"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 账号统计 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white border border-zinc-200 rounded-sm p-4">
           <div className="flex items-center">
             <Server className="w-5 h-5 text-zinc-400" />
@@ -311,6 +465,16 @@ export default function AccountsPage() {
           </div>
           <p className="text-2xl font-bold text-zinc-900 mt-1">
             {accounts.filter(a => a.status === 'ACTIVE').length}
+          </p>
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-sm p-4">
+          <div className="flex items-center">
+            <PowerOff className="w-5 h-5 text-orange-500" />
+            <span className="ml-2 text-sm font-medium text-zinc-600">禁用账号</span>
+          </div>
+          <p className="text-2xl font-bold text-zinc-900 mt-1">
+            {accounts.filter(a => a.status === 'INACTIVE').length}
           </p>
         </div>
 
@@ -342,7 +506,21 @@ export default function AccountsPage() {
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  账号信息
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={filteredAccounts.length > 0 && selectedAccounts.size === filteredAccounts.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedAccounts(new Set(filteredAccounts.map(a => a.id)))
+                        } else {
+                          setSelectedAccounts(new Set())
+                        }
+                      }}
+                      className="w-4 h-4 text-zinc-600 bg-white border-zinc-300 rounded focus:ring-zinc-500"
+                    />
+                    <span>账号信息</span>
+                  </div>
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   类型
@@ -375,13 +553,31 @@ export default function AccountsPage() {
                 </tr>
               ) : (
                 filteredAccounts.map((account) => (
-                  <tr key={account.id} className="hover:bg-zinc-50">
+                  <tr key={account.id} className={`hover:bg-zinc-50 ${account.status === 'INACTIVE' ? 'opacity-50 bg-zinc-25' : ''}`}>
                     <td className="px-4 py-3">
-                      <div>
-                        <div className="text-sm font-medium text-zinc-900">{account.name}</div>
-                        <div className="text-xs text-zinc-500">{account.email || '无邮箱'}</div>
-                        <div className="text-xs text-zinc-400 mt-1">
-                          创建于 {new Date(account.createdAt).toLocaleDateString()}
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedAccounts.has(account.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedAccounts)
+                            if (e.target.checked) {
+                              newSelected.add(account.id)
+                            } else {
+                              newSelected.delete(account.id)
+                            }
+                            setSelectedAccounts(newSelected)
+                          }}
+                          className="w-4 h-4 text-zinc-600 bg-white border-zinc-300 rounded focus:ring-zinc-500"
+                        />
+                        <div>
+                          <div className={`text-sm font-medium ${account.status === 'INACTIVE' ? 'text-zinc-500' : 'text-zinc-900'}`}>
+                            {account.name}
+                          </div>
+                          <div className="text-xs text-zinc-500">{account.email || '无邮箱'}</div>
+                          <div className="text-xs text-zinc-400 mt-1">
+                            创建于 {new Date(account.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -416,6 +612,24 @@ export default function AccountsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => toggleAccountStatus(account.id)}
+                          disabled={isTogglingStatus.has(account.id)}
+                          className={`${
+                            account.status === 'ACTIVE' 
+                              ? 'text-zinc-400 hover:text-orange-600' 
+                              : 'text-zinc-400 hover:text-green-600'
+                          } disabled:opacity-50`}
+                          title={account.status === 'ACTIVE' ? '禁用账号' : '启用账号'}
+                        >
+                          {isTogglingStatus.has(account.id) ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : account.status === 'ACTIVE' ? (
+                            <PowerOff className="w-4 h-4" />
+                          ) : (
+                            <Power className="w-4 h-4" />
+                          )}
+                        </button>
                         <button
                           onClick={() => performHealthCheck(account.id)}
                           className="text-zinc-400 hover:text-blue-600"
