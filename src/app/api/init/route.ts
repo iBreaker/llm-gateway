@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { hashPassword } from '@/lib/auth/password'
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-
-const execAsync = promisify(exec)
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
@@ -14,27 +10,6 @@ export const dynamic = 'force-dynamic'
 let initToken: string | null = null
 let initTokenExpiry: number | null = null
 
-/**
- * 自动推送数据库模式
- */
-async function ensureDatabase() {
-  try {
-    // 先尝试连接数据库，如果失败则推送模式
-    await prisma.user.count()
-  } catch (error) {
-    console.log('数据库模式不存在，正在自动创建...')
-    try {
-      await execAsync('npx prisma db push --accept-data-loss')
-      console.log('数据库模式创建成功')
-      // 重新生成客户端
-      await execAsync('npx prisma generate')
-      console.log('Prisma 客户端重新生成成功')
-    } catch (pushError) {
-      console.error('数据库推送失败:', pushError)
-      throw new Error('无法创建数据库模式: ' + pushError)
-    }
-  }
-}
 
 /**
  * 生成初始化令牌（仅在首次访问时）
@@ -60,9 +35,6 @@ function validateInitToken(token: string): boolean {
  */
 export async function POST(request: NextRequest) {
   try {
-    // 确保数据库模式存在
-    await ensureDatabase()
-    
     // 检查是否已有用户
     const userCount = await prisma.user.count()
     
@@ -162,9 +134,6 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    // 确保数据库模式存在
-    await ensureDatabase()
-    
     const userCount = await prisma.user.count()
     const needsInit = userCount === 0
     
