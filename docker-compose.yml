@@ -60,6 +60,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    profiles:
+      - devcontainer  # 只有指定 profile 时才启动
 
   # 独立开发模式 (不使用 Dev Container)
   app:
@@ -83,8 +85,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    profiles:
-      - standalone  # 只有指定 profile 时才启动
 
 volumes:
   postgres_data:
