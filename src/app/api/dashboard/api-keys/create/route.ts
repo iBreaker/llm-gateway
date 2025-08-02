@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDatabase } from '@/lib/server-init'
+import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
 // POST /api/dashboard/api-keys/create
@@ -37,17 +38,38 @@ export async function POST(request: NextRequest) {
     } catch (findError) {
       console.error('❌ 查询用户失败:', findError)
       
-      // 如果查询失败，尝试创建用户
-      console.log('🔄 尝试创建新用户...')
+      // 如果查询失败，尝试使用service role key直接操作
+      console.log('🔄 尝试使用service role key创建用户...')
       try {
-        userRecord = await db.create<{ id: number; email: string; username: string }>('users', {
-          email: userEmail,
-          username: userEmail.split('@')[0] || 'user',
-          password_hash: 'supabase_auth', // 标记为Supabase认证用户
-          role: 'user',
-          is_active: true
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        
+        if (!supabaseUrl || !serviceRoleKey) {
+          throw new Error('缺少service role key配置')
+        }
+        
+        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false }
         })
-        console.log('✅ 创建新用户记录成功:', userRecord)
+        
+        const { data, error } = await supabaseAdmin
+          .from('users')
+          .insert({
+            email: userEmail,
+            username: userEmail.split('@')[0] || 'user',
+            password_hash: 'supabase_auth',
+            role: 'user',
+            is_active: true
+          })
+          .select()
+          .single()
+        
+        if (error) {
+          throw error
+        }
+        
+        userRecord = data
+        console.log('✅ 使用service role创建用户成功:', userRecord)
       } catch (createError) {
         console.error('❌ 创建用户失败:', createError)
         
@@ -66,7 +88,8 @@ export async function POST(request: NextRequest) {
               '1. 检查Supabase连接配置',
               '2. 确认users表已创建',
               '3. 检查RLS策略设置',
-              '4. 尝试手动在Supabase Dashboard中创建用户'
+              '4. 尝试手动在Supabase Dashboard中创建用户',
+              '5. 或者创建exec_sql函数以绕过RLS限制'
             ]
           }
         }, { status: 500 })
