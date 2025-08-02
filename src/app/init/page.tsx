@@ -7,6 +7,8 @@ interface InitStatus {
   initialized: boolean
   userCount: number
   needsInit: boolean
+  initToken?: string
+  tokenExpiry?: number
 }
 
 interface InitResult {
@@ -48,6 +50,11 @@ export default function InitPage() {
   }
 
   const handleInit = async () => {
+    if (!status?.initToken) {
+      setError('缺少初始化令牌，请刷新页面重试')
+      return
+    }
+
     setLoading(true)
     setError('')
     
@@ -56,7 +63,10 @@ export default function InitPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          token: status.initToken
+        })
       })
       
       const data = await response.json()
@@ -64,7 +74,11 @@ export default function InitPage() {
       if (response.ok) {
         setResult(data)
       } else {
-        setError(data.message || '初始化失败')
+        if (data.error === 'INVALID_TOKEN') {
+          setError('初始化令牌已过期，请刷新页面重新获取')
+        } else {
+          setError(data.message || '初始化失败')
+        }
       }
     } catch (err) {
       setError('网络错误，请重试')

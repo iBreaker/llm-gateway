@@ -1,12 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { hashPassword } from '@/lib/auth/password'
+import crypto from 'crypto'
 
 const prisma = new PrismaClient()
 
+// 全局初始化令牌（重启后失效）
+let initToken: string | null = null
+let initTokenExpiry: number | null = null
+
+/**
+ * 生成初始化令牌（仅在首次访问时）
+ */
+function generateInitToken(): string {
+  if (!initToken || !initTokenExpiry || Date.now() > initTokenExpiry) {
+    initToken = crypto.randomBytes(32).toString('hex')
+    initTokenExpiry = Date.now() + 30 * 60 * 1000 // 30分钟过期
+  }
+  return initToken
+}
+
+/**
+ * 验证初始化令牌
+ */
+function validateInitToken(token: string): boolean {
+  return initToken === token && initTokenExpiry !== null && Date.now() <= initTokenExpiry
+}
+
 /**
  * 初始化系统 - 创建默认管理员账号
- * 只有在没有任何用户的情况下才能调用
+ * 需要提供初始化令牌（安全措施）
  */
 export async function POST(request: NextRequest) {
   try {
@@ -23,9 +46,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 验证初始化令牌
+    const body = await request.json()
+    const { token } = body
+    
+    if (!token || !validateInitToken(token)) {
+      return NextResponse.json(
+        { 
+          message: '无效的初始化令牌',
+          error: 'INVALID_TOKEN'
+        },
+        { status: 403 }
+      )
+    }
+
+    // 生成安全的随机密码
+    const generateSecurePassword = () => {
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
+      let password = ''
+      
+      // 确保包含各种字符类型
+      password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)] // 大写字母
+      password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)] // 小写字母  
+      password += '0123456789'[Math.floor(Math.random() * 10)] // 数字
+      password += '!@#$%^&*'[Math.floor(Math.random() * 8)] // 特殊字符
+      
+      // 填充剩余长度
+      for (let i = 4; i < 16; i++) {
+        password += chars[Math.floor(Math.random() * chars.length)]
+      }
+      
+      // 随机打乱密码
+      return password.split('').sort(() => Math.random() - 0.5).join('')
+    }
+
     // 默认管理员信息
     const email = 'admin@llm-gateway.com'
-    const password = 'Admin123!'
+    const password = generateSecurePassword()
     const username = 'admin'
     
     // 创建密码哈希
@@ -73,16 +130,22 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 检查系统初始化状态
+ * 检查系统初始化状态并获取初始化令牌
  */
 export async function GET() {
   try {
     const userCount = await prisma.user.count()
+    const needsInit = userCount === 0
+    
+    // 只有在需要初始化时才生成令牌
+    const token = needsInit ? generateInitToken() : null
     
     return NextResponse.json({
       initialized: userCount > 0,
       userCount,
-      needsInit: userCount === 0
+      needsInit,
+      initToken: token, // 初始化令牌（仅在需要时提供）
+      tokenExpiry: initTokenExpiry
     })
     
   } catch (error) {
