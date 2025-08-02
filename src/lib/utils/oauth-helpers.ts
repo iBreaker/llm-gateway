@@ -194,7 +194,7 @@ export async function getClaudeUserInfo(accessToken: string): Promise<{ email: s
   }
   
   try {
-    // 使用 organizations API，这是 relay 项目使用的主要端点
+    // 使用 organizations API 获取用户信息
     const response = await fetch(config.userInfoUrl, { headers })
     
     if (response.ok) {

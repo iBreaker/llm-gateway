@@ -3,7 +3,7 @@
 // 临时测试脚本 - 验证 Claude OAuth 配置
 const crypto = require('crypto')
 
-// 从项目复制的配置（基于 claude-relay-service 的真实配置）
+// Claude OAuth 配置
 const OAUTH_CONFIGS = {
   claude: {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
@@ -75,7 +75,7 @@ console.log('State:', result.state)
 console.log('\n🌐 完整授权 URL:')
 console.log(result.authUrl)
 
-console.log('\n🎯 与 claude-relay-service 项目完全匹配:')
+console.log('\n🎯 OAuth 配置验证:')
 console.log('✅ Client ID: 9d1c250a-e61b-44d9-88ed-5944d1962f5e')
 console.log('✅ Authorization URL: https://claude.ai/oauth/authorize')
 console.log('✅ Token URL: https://console.anthropic.com/v1/oauth/token')
@@ -83,7 +83,7 @@ console.log('✅ Redirect URI: https://console.anthropic.com/oauth/code/callback
 console.log('✅ Scopes: org:create_api_key user:profile user:inference')
 console.log('✅ User Info URL: https://console.anthropic.com/v1/organizations')
 console.log('✅ 包含必需的 code=true 参数')
-console.log('✅ Content-Type: application/json (与 relay 一致)')
+console.log('✅ Content-Type: application/json')
 console.log('✅ User-Agent: claude-cli/1.0.56 (external, cli)')
 
-console.log('\n🚀 Claude OAuth 配置现在与 claude-relay-service 完全一致!')
+console.log('\n🚀 Claude OAuth 配置验证完成!')
