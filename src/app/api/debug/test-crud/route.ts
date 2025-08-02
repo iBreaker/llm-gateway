@@ -176,7 +176,7 @@ export async function GET() {
     }
     
     // 清理测试数据
-    let cleanupResults: any = { deleted_api_keys: 0, deleted_users: 0 }
+    const cleanupResults: any = { deleted_api_keys: 0, deleted_users: 0 }
     
     if (testApiKeyId) {
       try {
