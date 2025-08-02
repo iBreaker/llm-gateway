@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { generateOAuthParams } from '@/lib/oauth/claude-oauth'
+import { generateOAuthParams } from '@/lib/oauth/anthropic-oauth'
 import { prisma } from '@/lib/prisma'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
 
 /**
- * 生成 Claude Code OAuth 授权 URL
+ * 生成 Anthropic OAuth 授权 URL
  */
 async function handleGenerateAuthUrl(request: AuthenticatedRequest) {
   try {
@@ -21,7 +21,7 @@ async function handleGenerateAuthUrl(request: AuthenticatedRequest) {
         codeVerifier: oauthParams.codeVerifier,
         state: oauthParams.state,
         codeChallenge: oauthParams.codeChallenge,
-        provider: 'CLAUDE_CODE',
+        provider: 'ANTHROPIC_OAUTH',
         expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10分钟过期
       }
     })

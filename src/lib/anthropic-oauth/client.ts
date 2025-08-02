@@ -1,16 +1,16 @@
 /**
- * Claude Code 客户端，用于健康检查和 API 调用
+ * Anthropic OAuth 客户端，用于健康检查和 API 调用
  */
 
-export interface ClaudeCodeCredentials {
-  type: 'CLAUDE_CODE'
+export interface AnthropicOAuthCredentials {
+  type: 'ANTHROPIC_OAUTH'
   accessToken: string
   refreshToken: string
   expiresAt: number
   scopes: string[]
 }
 
-export interface ClaudeCodeHealthResult {
+export interface AnthropicOAuthHealthResult {
   valid: boolean
   error?: string
   details?: any
@@ -22,19 +22,19 @@ export interface ClaudeCodeHealthResult {
 }
 
 /**
- * Claude Code 客户端
+ * Anthropic OAuth 客户端
  */
-export class ClaudeCodeClient {
-  private credentials: ClaudeCodeCredentials
+export class AnthropicOAuthClient {
+  private credentials: AnthropicOAuthCredentials
 
-  constructor(credentials: ClaudeCodeCredentials) {
+  constructor(credentials: AnthropicOAuthCredentials) {
     this.credentials = credentials
   }
 
   /**
    * 检查访问令牌是否有效
    */
-  async validateCredentials(): Promise<ClaudeCodeHealthResult> {
+  async validateCredentials(): Promise<AnthropicOAuthHealthResult> {
     try {
       // 检查令牌是否过期
       if (Date.now() >= this.credentials.expiresAt) {
@@ -44,7 +44,7 @@ export class ClaudeCodeClient {
         }
       }
 
-      console.log(`验证Claude Code访问令牌: ${this.credentials.accessToken.substring(0, 10)}...`)
+      console.log(`验证Anthropic OAuth访问令牌: ${this.credentials.accessToken.substring(0, 10)}...`)
       
       // 调用OAuth hello接口验证令牌
       const response = await fetch('https://console.anthropic.com/v1/oauth/hello', {
@@ -60,19 +60,19 @@ export class ClaudeCodeClient {
         }
       })
 
-      console.log(`Claude Code API响应状态: ${response.status} ${response.statusText}`)
+      console.log(`Anthropic OAuth API响应状态: ${response.status} ${response.statusText}`)
 
       if (response.ok) {
         try {
           const data = await response.json()
-          console.log('Claude Code OAuth验证成功:', data)
+          console.log('Anthropic OAuth验证成功:', data)
           
           return {
             valid: true,
             userInfo: {
-              id: 'claude-code-user',
+              id: 'anthropic-oauth-user',
               email: 'unknown',
-              name: 'Claude Code User'
+              name: 'Anthropic OAuth User'
             }
           }
         } catch (parseError) {
@@ -105,7 +105,7 @@ export class ClaudeCodeClient {
         }
       }
     } catch (error: any) {
-      console.error('Claude Code令牌验证失败:', error)
+      console.error('Anthropic OAuth令牌验证失败:', error)
       
       // 网络错误
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -162,15 +162,15 @@ export class ClaudeCodeClient {
 }
 
 /**
- * 验证 Claude Code 凭据格式
+ * 验证 Anthropic OAuth 凭据格式
  */
-export function validateClaudeCodeCredentials(credentials: any): { valid: boolean, error?: string } {
+export function validateAnthropicOAuthCredentials(credentials: any): { valid: boolean, error?: string } {
   if (!credentials || typeof credentials !== 'object') {
     return { valid: false, error: '凭据格式无效' }
   }
 
-  if (credentials.type !== 'CLAUDE_CODE') {
-    return { valid: false, error: '凭据类型不是 CLAUDE_CODE' }
+  if (credentials.type !== 'ANTHROPIC_OAUTH') {
+    return { valid: false, error: '凭据类型不是 ANTHROPIC_OAUTH' }
   }
 
   if (!credentials.accessToken || typeof credentials.accessToken !== 'string') {

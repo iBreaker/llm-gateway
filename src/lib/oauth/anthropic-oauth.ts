@@ -1,12 +1,12 @@
 /**
- * Claude Code OAuth 助手
+ * Anthropic OAuth 助手
  * 基于 claude-relay-service 的 oauthHelper.js 实现
  */
 
 import crypto from 'crypto'
 
 // OAuth 配置常量 - 来自 Claude CLI
-export const CLAUDE_OAUTH_CONFIG = {
+export const ANTHROPIC_OAUTH_CONFIG = {
   AUTHORIZE_URL: 'https://claude.ai/oauth/authorize',
   TOKEN_URL: 'https://console.anthropic.com/v1/oauth/token',
   CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
@@ -43,16 +43,16 @@ export function generateCodeChallenge(codeVerifier: string): string {
 export function generateAuthUrl(codeChallenge: string, state: string): string {
   const params = new URLSearchParams({
     code: 'true',
-    client_id: CLAUDE_OAUTH_CONFIG.CLIENT_ID,
+    client_id: ANTHROPIC_OAUTH_CONFIG.CLIENT_ID,
     response_type: 'code',
-    redirect_uri: CLAUDE_OAUTH_CONFIG.REDIRECT_URI,
-    scope: CLAUDE_OAUTH_CONFIG.SCOPES,
+    redirect_uri: ANTHROPIC_OAUTH_CONFIG.REDIRECT_URI,
+    scope: ANTHROPIC_OAUTH_CONFIG.SCOPES,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     state: state
   })
 
-  return `${CLAUDE_OAUTH_CONFIG.AUTHORIZE_URL}?${params.toString()}`
+  return `${ANTHROPIC_OAUTH_CONFIG.AUTHORIZE_URL}?${params.toString()}`
 }
 
 /**
@@ -137,15 +137,15 @@ export async function exchangeCodeForTokens(
   
   const params = {
     grant_type: 'authorization_code',
-    client_id: CLAUDE_OAUTH_CONFIG.CLIENT_ID,
+    client_id: ANTHROPIC_OAUTH_CONFIG.CLIENT_ID,
     code: cleanedCode,
-    redirect_uri: CLAUDE_OAUTH_CONFIG.REDIRECT_URI,
+    redirect_uri: ANTHROPIC_OAUTH_CONFIG.REDIRECT_URI,
     code_verifier: codeVerifier,
     state: state
   }
 
   try {
-    const response = await fetch(CLAUDE_OAUTH_CONFIG.TOKEN_URL, {
+    const response = await fetch(ANTHROPIC_OAUTH_CONFIG.TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -180,14 +180,14 @@ export async function exchangeCodeForTokens(
 /**
  * 格式化为标准凭据格式
  */
-export function formatClaudeCredentials(tokenData: {
+export function formatAnthropicCredentials(tokenData: {
   accessToken: string
   refreshToken: string
   expiresAt: number
   scopes: string[]
 }) {
   return {
-    type: 'CLAUDE_CODE',
+    type: 'ANTHROPIC_OAUTH',
     accessToken: tokenData.accessToken,
     refreshToken: tokenData.refreshToken,
     expiresAt: tokenData.expiresAt,

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
-import { parseCallbackUrl, exchangeCodeForTokens, formatClaudeCredentials } from '@/lib/oauth/claude-oauth'
+import { parseCallbackUrl, exchangeCodeForTokens, formatAnthropicCredentials } from '@/lib/oauth/anthropic-oauth'
 import { prisma } from '@/lib/prisma'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
 
 /**
- * 交换授权码获取 Claude Code 访问令牌
+ * 交换授权码获取 Anthropic OAuth 访问令牌
  */
 async function handleExchangeCode(request: AuthenticatedRequest) {
   try {
@@ -55,14 +55,14 @@ async function handleExchangeCode(request: AuthenticatedRequest) {
     )
 
     // 格式化凭据
-    const credentials = formatClaudeCredentials(tokenData)
+    const credentials = formatAnthropicCredentials(tokenData)
 
     // 创建上游账号
     const upstreamAccount = await prisma.upstreamAccount.create({
       data: {
         userId: request.user.id,
-        name: name || 'Claude Code Account',
-        type: 'CLAUDE_CODE',
+        name: name || 'Anthropic OAuth Account',
+        type: 'ANTHROPIC_OAUTH',
         credentials: credentials,
         config: {},
         status: 'ACTIVE',
@@ -76,7 +76,7 @@ async function handleExchangeCode(request: AuthenticatedRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Claude Code 账号添加成功',
+      message: 'Anthropic OAuth 账号添加成功',
       data: {
         id: upstreamAccount.id.toString(),
         name: upstreamAccount.name,

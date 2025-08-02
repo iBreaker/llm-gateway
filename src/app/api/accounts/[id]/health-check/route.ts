@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
 import { PrismaClient } from '@prisma/client'
 import { AnthropicClient } from '@/lib/anthropic/client'
-import { ClaudeCodeClient, validateClaudeCodeCredentials, type ClaudeCodeCredentials } from '@/lib/claude-code/client'
+import { AnthropicOAuthClient, validateAnthropicOAuthCredentials, type AnthropicOAuthCredentials } from '@/lib/anthropic-oauth/client'
 
 const prisma = new PrismaClient()
 
@@ -102,20 +102,20 @@ async function performHealthCheck(account: any) {
         }
       })
 
-    } else if (account.type === 'CLAUDE_CODE') {
+    } else if (account.type === 'ANTHROPIC_OAUTH') {
       const credentials = typeof account.credentials === 'string' 
         ? JSON.parse(account.credentials) 
         : account.credentials
 
       // 验证凭据格式
-      const credentialsValidation = validateClaudeCodeCredentials(credentials)
+      const credentialsValidation = validateAnthropicOAuthCredentials(credentials)
       if (!credentialsValidation.valid) {
         throw new Error(`凭据格式错误: ${credentialsValidation.error}`)
       }
 
-      const client = new ClaudeCodeClient(credentials as ClaudeCodeCredentials)
+      const client = new AnthropicOAuthClient(credentials as AnthropicOAuthCredentials)
       
-      console.log(`开始检查Claude Code账号 ${account.id} (${account.name}) 的健康状态...`)
+      console.log(`开始检查Anthropic OAuth账号 ${account.id} (${account.name}) 的健康状态...`)
       
       const validationResult = await client.validateCredentials()
       const responseTime = Date.now() - startTime
