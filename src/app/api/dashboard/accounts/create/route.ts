@@ -5,8 +5,12 @@ import { withAuth, logUserActivity } from '@/lib/utils/auth-helpers'
 
 // POST /api/dashboard/accounts/create
 export const POST = withAuth(async (request: NextRequest, { userId }) => {
+  const startTime = Date.now()
+  console.log('🔄 开始创建账号...', { userId, timestamp: new Date().toISOString() })
+  
   try {
     const body = await request.json()
+    console.log('📝 收到创建账号请求:', { type: body.type, email: body.email })
 
     // 验证账号类型
     const validTypes: AccountType[] = ['gemini_oauth', 'claude_oauth', 'llm_gateway']
@@ -78,8 +82,20 @@ export const POST = withAuth(async (request: NextRequest, { userId }) => {
         )
     }
 
-    // 使用统一账号管理器创建账号
-    const newAccount = await accountManager.createAccount(createInput)
+    // 使用统一账号管理器创建账号（添加超时保护）
+    console.log('💾 开始数据库操作...', { elapsed: Date.now() - startTime, timestamp: new Date().toISOString() })
+    
+    const createPromise = accountManager.createAccount(createInput)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('创建账号超时（25秒）')), 25000)
+    })
+    
+    const newAccount = await Promise.race([createPromise, timeoutPromise]) as any
+    console.log('✅ 账号创建成功:', { 
+      accountId: newAccount.id, 
+      elapsed: Date.now() - startTime,
+      timestamp: new Date().toISOString()
+    })
 
     // 记录用户活动
     await logUserActivity(
@@ -96,11 +112,18 @@ export const POST = withAuth(async (request: NextRequest, { userId }) => {
       account: newAccount
     })
   } catch (error) {
-    console.error('创建账号失败:', error)
+    const elapsed = Date.now() - startTime
+    console.error(`❌ 创建账号失败 (耗时: ${elapsed}ms):`, {
+      error: error instanceof Error ? error.message : '未知错误',
+      stack: error instanceof Error ? error.stack : undefined,
+      elapsed,
+      timestamp: new Date().toISOString()
+    })
     
     return NextResponse.json({
       error: '创建账号失败',
-      message: error instanceof Error ? error.message : '未知错误'
+      message: error instanceof Error ? error.message : '未知错误',
+      elapsed: `${elapsed}ms`
     }, {
       status: 500
     })

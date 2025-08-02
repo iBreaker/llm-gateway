@@ -195,34 +195,63 @@ export async function getClaudeUserInfo(accessToken: string): Promise<{ email: s
   
   try {
     // 使用 organizations API 获取用户信息
+    console.log('🔍 获取 Claude 用户信息...', { 
+      url: config.userInfoUrl,
+      tokenPrefix: accessToken.substring(0, 8)
+    })
+    
     const response = await fetch(config.userInfoUrl, { headers })
+    console.log('📡 Organizations API 响应:', { 
+      status: response.status,
+      statusText: response.statusText 
+    })
     
     if (response.ok) {
       const data = await response.json()
+      console.log('📄 Organizations API 数据结构:', { 
+        isArray: Array.isArray(data),
+        length: Array.isArray(data) ? data.length : undefined,
+        keys: Object.keys(data),
+        sampleData: Array.isArray(data) && data.length > 0 ? data[0] : data
+      })
       
       // 从组织数据中提取标识信息
       if (Array.isArray(data) && data.length > 0) {
         // 使用第一个组织的信息
         const org = data[0]
         const email = org.display_name || org.name || `claude-org-${org.uuid?.substring(0, 8) || 'unknown'}`
+        console.log('✅ 从组织数组提取用户信息:', { email })
         return { email }
       } else if (data.display_name || data.name) {
         // 单个组织对象
         const email = data.display_name || data.name
+        console.log('✅ 从单一对象提取用户信息:', { email })
         return { email }
       }
       
       // 如果没有找到有用的标识信息，使用 token 的一部分
-      return { email: `claude-user-${accessToken.substring(0, 8)}` }
+      const fallbackEmail = `claude-user-${accessToken.substring(0, 8)}`
+      console.log('⚠️ 未找到标识信息，使用备用方案:', { email: fallbackEmail })
+      return { email: fallbackEmail }
     } else {
-      console.warn(`Organizations API failed: ${response.status}`)
+      const errorText = await response.text()
+      console.warn(`❌ Organizations API failed: ${response.status} ${response.statusText}`, { 
+        errorBody: errorText.substring(0, 200) 
+      })
       // 使用 token 作为备用标识符
-      return { email: `claude-user-${accessToken.substring(0, 8)}` }
+      const fallbackEmail = `claude-user-${accessToken.substring(0, 8)}`
+      console.log('🔄 使用备用标识符:', { email: fallbackEmail })
+      return { email: fallbackEmail }
     }
   } catch (error) {
-    console.warn('Failed to fetch Claude user info:', error)
+    console.error('❌ 获取 Claude 用户信息失败:', {
+      error: error instanceof Error ? error.message : '未知错误',
+      stack: error instanceof Error ? error.stack : undefined
+    })
     // 如果所有都失败，生成一个基于token的标识符
-    return { email: `claude-user-${accessToken.substring(0, 8)}` }
+    const fallbackEmail = `claude-user-${accessToken.substring(0, 8)}`
+    console.log('🔄 异常情况使用备用标识符:', { email: fallbackEmail })
+    return { email: fallbackEmail }
   }
 }
 

@@ -43,7 +43,15 @@ export class UnifiedAccountManager implements AccountManager {
   }
 
   async createAccount(input: CreateAccountInput): Promise<UpstreamAccount> {
+    const startTime = Date.now()
+    console.log('💾 AccountManager: 开始创建账号...', { 
+      type: input.type, 
+      email: 'email' in input ? input.email : undefined,
+      timestamp: new Date().toISOString()
+    })
+    
     const db = await getDatabase()
+    console.log(`💾 AccountManager: 数据库连接获取完成 (耗时: ${Date.now() - startTime}ms)`)
     
     // 准备数据库插入数据
     const accountData: any = {
@@ -51,7 +59,8 @@ export class UnifiedAccountManager implements AccountManager {
       is_active: true,
       priority: input.priority || 1,
       weight: input.weight || 100,
-      health_status: 'unknown'
+      health_status: 'unknown',
+      user_id: input.user_id // 确保包含用户ID
     }
 
     // 根据账号类型设置特定字段
@@ -67,11 +76,33 @@ export class UnifiedAccountManager implements AccountManager {
         break
     }
 
-    // 插入数据库
-    const newAccount = await db.create('upstream_accounts', accountData)
+    console.log('💾 AccountManager: 准备插入数据...', { 
+      type: accountData.type,
+      hasCredentials: !!accountData.credentials,
+      elapsed: Date.now() - startTime
+    })
+
+    // 插入数据库（添加超时保护）
+    const insertPromise = db.create('upstream_accounts', accountData)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('数据库插入操作超时（20秒）')), 20000)
+    })
+    
+    const newAccount = await Promise.race([insertPromise, timeoutPromise]) as any
+    console.log('✅ AccountManager: 数据库插入成功', { 
+      accountId: newAccount.id,
+      totalElapsed: Date.now() - startTime,
+      timestamp: new Date().toISOString()
+    })
     
     // 返回格式化的账号数据
-    return this.formatAccount(newAccount)
+    const formatted = this.formatAccount(newAccount)
+    console.log('🎯 AccountManager: 账号创建完成', { 
+      finalAccountId: formatted.id,
+      totalElapsed: Date.now() - startTime
+    })
+    
+    return formatted
   }
 
   async updateAccount(id: number, updates: Partial<UpstreamAccount>): Promise<UpstreamAccount> {
