@@ -50,7 +50,7 @@ export interface QueryOptions {
 }
 
 export interface DatabaseConfig {
-  type: 'sqlite' | 'postgresql' | 'supabase'
+  type: 'sqlite' | 'prisma'
   url: string
   options?: {
     maxConnections?: number

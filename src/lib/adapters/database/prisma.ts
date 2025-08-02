@@ -25,23 +25,17 @@ export class PrismaAdapter implements DatabaseAdapter {
 
   async connect(): Promise<void> {
     try {
-      // 使用 Vercel 标准环境变量优先级
-      // POSTGRES_URL_NON_POOLING 优先于 POSTGRES_URL (避免连接池限制)
-      const databaseUrl = process.env.POSTGRES_URL_NON_POOLING || 
-                         process.env.POSTGRES_URL || 
-                         process.env.DATABASE_URL ||
-                         this.config.url
+      // 使用配置中的数据库连接字符串（已经通过统一逻辑确定优先级）
+      const databaseUrl = this.config.url
 
       if (!databaseUrl) {
-        throw new Error('缺少数据库连接字符串 (需要 POSTGRES_URL, POSTGRES_URL_NON_POOLING 或 DATABASE_URL)')
+        throw new Error('数据库连接字符串不能为空')
       }
 
       console.log('🔍 Prisma 适配器连接配置:', {
         hasUrl: !!databaseUrl,
         urlPrefix: databaseUrl.substring(0, 30) + '...',
-        source: process.env.POSTGRES_URL_NON_POOLING ? 'POSTGRES_URL_NON_POOLING' :
-                process.env.POSTGRES_URL ? 'POSTGRES_URL' :
-                process.env.DATABASE_URL ? 'DATABASE_URL' : 'config.url'
+        configType: this.config.type
       })
 
       this.client = new PrismaClient({

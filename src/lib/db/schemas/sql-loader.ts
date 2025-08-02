@@ -72,7 +72,7 @@ export class SqlLoader {
   /**
    * 根据数据库类型适配SQL
    */
-  adaptSqlForDatabase(sql: string, dbType: 'postgresql' | 'mysql' | 'sqlite'): string {
+  adaptSqlForDatabase(sql: string, dbType: 'postgresql' | 'sqlite'): string {
     if (!sql) return ''
 
     let adaptedSql = sql
@@ -80,17 +80,6 @@ export class SqlLoader {
     switch (dbType) {
       case 'postgresql':
         // PostgreSQL 已经是标准格式，无需修改
-        break
-      
-      case 'mysql':
-        // MySQL 适配
-        adaptedSql = adaptedSql
-          .replace(/BIGSERIAL/g, 'BIGINT AUTO_INCREMENT')
-          .replace(/SERIAL/g, 'INT AUTO_INCREMENT')
-          .replace(/JSONB/g, 'JSON')
-          .replace(/TIMESTAMPTZ/g, 'TIMESTAMP')
-          .replace(/::jsonb/g, '')
-          .replace(/gen_random_uuid\(\)/g, 'UUID()')
         break
       
       case 'sqlite':

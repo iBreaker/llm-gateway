@@ -12,14 +12,6 @@ export async function createDatabaseAdapter(
       const { SqliteAdapter } = await import('./database/sqlite')
       return new SqliteAdapter(config)
     }
-    case 'postgresql': {
-      const { PostgresAdapter } = await import('./database/postgres')
-      return new PostgresAdapter(config)
-    }
-    case 'supabase': {
-      const { SupabaseSimpleAdapter } = await import('./database/supabase-simple')
-      return new SupabaseSimpleAdapter(config)
-    }
     case 'prisma': {
       const { PrismaAdapter } = await import('./database/prisma')
       return new PrismaAdapter(config)
