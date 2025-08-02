@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withApiKey, ApiKeyAuthRequest, recordUsage } from '@/lib/auth/api-key'
 import { AnthropicClient, validateAnthropicRequest } from '@/lib/anthropic/client'
+import { ClaudeCodeClient } from '@/lib/claude-code/client'
 import { nanoid } from 'nanoid'
 import { PrismaClient } from '@prisma/client'
 import { loadBalancer } from '@/lib/load-balancer'
@@ -37,10 +38,10 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
       )
     }
 
-    // 使用负载均衡器选择最优的上游账号
+    // 使用负载均衡器选择最优的上游账号（所有类型）
     upstreamAccount = await loadBalancer.selectAccount(
       request.apiKey.userId, 
-      'ANTHROPIC_API'
+      'ALL'
     )
     if (!upstreamAccount) {
       await recordUsage(request.apiKey.id, null, {
@@ -50,13 +51,13 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
         model: requestBody.model,  // 添加模型信息
         statusCode: 503,
         responseTime: Date.now() - startTime,
-        errorMessage: '无可用的Anthropic账号',
+        errorMessage: '无可用的上游账号',
         userAgent: request.headers.get('user-agent') || undefined,
         clientIp: getClientIP(request)
       })
 
       return NextResponse.json(
-        { error: 'service_unavailable', message: '服务暂时不可用：无可用的Anthropic账号' },
+        { error: 'service_unavailable', message: '服务暂时不可用：无可用的上游账号' },
         { status: 503 }
       )
     }
@@ -128,28 +129,85 @@ async function handleNonStreamRequest(
   requestId: string,
   startTime: number
 ) {
-  // 创建Anthropic客户端
-  const anthropicClient = new AnthropicClient(credentials.api_key, credentials.base_url)
+  let anthropicResponse: any
+  let cost: number = 0
 
-  // 发送请求到Anthropic
-  const anthropicResponse = await anthropicClient.createMessage({
-    model: requestBody.model,
-    max_tokens: requestBody.max_tokens,
-    messages: requestBody.messages,
-    temperature: requestBody.temperature,
-    top_p: requestBody.top_p,
-    top_k: requestBody.top_k,
-    stream: false, // 确保非流式
-    stop_sequences: requestBody.stop_sequences,
-    system: requestBody.system
-  })
+  if (upstreamAccount.type === 'CLAUDE_CODE') {
+    // 使用Claude Code OAuth token进行请求 - 参考relay项目的实现
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${credentials.accessToken}`,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+        // Claude Code特定headers - 来自relay项目
+        'x-stainless-retry-count': '0',
+        'x-stainless-timeout': '60',
+        'x-stainless-lang': 'js',
+        'x-stainless-package-version': '0.55.1',
+        'x-stainless-os': 'Windows',
+        'x-stainless-arch': 'x64',
+        'x-stainless-runtime': 'node',
+        'x-stainless-runtime-version': 'v20.19.2',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'x-app': 'cli',
+        'user-agent': 'claude-cli/1.0.57 (external, cli)',
+        'accept-language': '*',
+        'sec-fetch-mode': 'cors'
+      },
+      body: JSON.stringify({
+        model: requestBody.model,
+        max_tokens: requestBody.max_tokens,
+        messages: requestBody.messages,
+        temperature: requestBody.temperature,
+        top_p: requestBody.top_p,
+        top_k: requestBody.top_k,
+        stream: false,
+        stop_sequences: requestBody.stop_sequences,
+        system: requestBody.system
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Claude Code API错误: ${response.status} - ${errorText}`)
+    }
+
+    anthropicResponse = await response.json()
+    
+    // 为Claude Code计算成本（使用标准定价）
+    const inputTokens = anthropicResponse.usage?.input_tokens || 0
+    const outputTokens = anthropicResponse.usage?.output_tokens || 0
+    cost = calculateTokenCost(requestBody.model, inputTokens, outputTokens)
+    
+  } else {
+    // 使用Anthropic API
+    const anthropicClient = new AnthropicClient(credentials.api_key, credentials.base_url)
+
+    anthropicResponse = await anthropicClient.createMessage({
+      model: requestBody.model,
+      max_tokens: requestBody.max_tokens,
+      messages: requestBody.messages,
+      temperature: requestBody.temperature,
+      top_p: requestBody.top_p,
+      top_k: requestBody.top_k,
+      stream: false,
+      stop_sequences: requestBody.stop_sequences,
+      system: requestBody.system
+    })
+
+    cost = anthropicClient.calculateCost(requestBody.model, 
+      anthropicResponse.usage?.input_tokens || 0,
+      anthropicResponse.usage?.output_tokens || 0
+    )
+  }
 
   const responseTime = Date.now() - startTime
   const inputTokens = anthropicResponse.usage?.input_tokens || 0
   const outputTokens = anthropicResponse.usage?.output_tokens || 0
   const cacheCreationInputTokens = anthropicResponse.usage?.cache_creation_input_tokens || 0
   const cacheReadInputTokens = anthropicResponse.usage?.cache_read_input_tokens || 0
-  const cost = anthropicClient.calculateCost(requestBody.model, inputTokens, outputTokens)
 
   // 记录使用统计
   await recordUsage(request.apiKey!.id, upstreamAccount.id, {
@@ -173,6 +231,21 @@ async function handleNonStreamRequest(
   await loadBalancer.updateAccountUsage(upstreamAccount.id, true, responseTime)
 
   return NextResponse.json(anthropicResponse)
+}
+
+/**
+ * 简单的token成本计算（用于Claude Code）
+ */
+function calculateTokenCost(model: string, inputTokens: number, outputTokens: number): number {
+  // 基于模型的简单定价（美元）
+  const pricing: Record<string, { input: number, output: number }> = {
+    'claude-3-5-sonnet-20241022': { input: 3 / 1000000, output: 15 / 1000000 },
+    'claude-3-5-haiku-20241022': { input: 1 / 1000000, output: 5 / 1000000 },
+    'claude-3-opus-20240229': { input: 15 / 1000000, output: 75 / 1000000 }
+  }
+  
+  const modelPricing = pricing[model] || pricing['claude-3-5-sonnet-20241022']
+  return (inputTokens * modelPricing.input) + (outputTokens * modelPricing.output)
 }
 
 /**
@@ -219,16 +292,49 @@ async function handleStreamRequest(
       }
 
       try {
-        // 直接使用fetch进行流式请求到上游服务
-        const upstreamResponse = await fetch(`${credentials.base_url}/v1/messages`, {
-          method: 'POST',
-          headers: {
+        // 根据账号类型构建请求
+        let apiUrl: string
+        let headers: Record<string, string>
+        
+        if (upstreamAccount.type === 'CLAUDE_CODE') {
+          apiUrl = 'https://api.anthropic.com/v1/messages'
+          headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${credentials.accessToken}`,
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+            'accept': 'text/event-stream',
+            'cache-control': 'no-cache',
+            // Claude Code特定headers
+            'x-stainless-retry-count': '0',
+            'x-stainless-timeout': '60',
+            'x-stainless-lang': 'js',
+            'x-stainless-package-version': '0.55.1',
+            'x-stainless-os': 'Windows',
+            'x-stainless-arch': 'x64',
+            'x-stainless-runtime': 'node',
+            'x-stainless-runtime-version': 'v20.19.2',
+            'anthropic-dangerous-direct-browser-access': 'true',
+            'x-app': 'cli',
+            'user-agent': 'claude-cli/1.0.57 (external, cli)',
+            'accept-language': '*',
+            'sec-fetch-mode': 'cors'
+          }
+        } else {
+          apiUrl = `${credentials.base_url}/v1/messages`
+          headers = {
             'Content-Type': 'application/json',
             'x-api-key': credentials.api_key,
             'anthropic-version': '2023-06-01',
             'accept': 'text/event-stream',
             'cache-control': 'no-cache'
-          },
+          }
+        }
+        
+        // 发送流式请求到上游服务
+        const upstreamResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
           body: JSON.stringify({
             ...requestBody,
             stream: true
