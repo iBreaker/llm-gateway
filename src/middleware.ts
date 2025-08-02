@@ -18,6 +18,7 @@ const AUTH_PATHS = [
 const PUBLIC_API_PATHS = [
   '/api/health',
   '/api/oauth',
+  '/api/debug',
 ]
 
 // 管理员专用路径
