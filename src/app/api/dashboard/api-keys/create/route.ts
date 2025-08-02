@@ -70,11 +70,39 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('创建API密钥失败:', error)
     
+    // 提供更详细的错误信息
+    let errorMessage = '未知错误'
+    let statusCode = 500
+    
+    if (error instanceof Error) {
+      errorMessage = error.message
+      
+      // 检查是否是表不存在的错误
+      if (errorMessage.includes('relation "api_keys" does not exist') || 
+          errorMessage.includes('table "api_keys" does not exist')) {
+        errorMessage = '数据库表未创建，请先在Supabase Dashboard中执行supabase-init.sql'
+        statusCode = 503 // Service Unavailable
+      }
+    }
+    
     return NextResponse.json({
       error: '创建API密钥失败',
-      message: error instanceof Error ? error.message : '未知错误'
+      message: errorMessage,
+      details: error instanceof Error ? {
+        name: error.name,
+        stack: error.stack
+      } : undefined,
+      recommendation: statusCode === 503 ? {
+        action: '请执行数据库初始化',
+        steps: [
+          '1. 登录Supabase Dashboard',
+          '2. 进入SQL Editor',
+          '3. 执行项目根目录的supabase-init.sql文件',
+          '4. 重新尝试创建API密钥'
+        ]
+      } : undefined
     }, {
-      status: 500
+      status: statusCode
     })
   }
 }
