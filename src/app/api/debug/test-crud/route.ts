@@ -52,7 +52,7 @@ export async function GET() {
     let testUserId: any = null
     try {
       const testEmail = `test-${Date.now()}@example.com`
-      const testUser = await db.create('users', {
+      const testUser = await db.create<{ id: number; email: string; username: string }>('users', {
         email: testEmail,
         username: `testuser_${Date.now()}`,
         password_hash: 'test_hash_' + crypto.randomBytes(16).toString('hex'),
@@ -81,7 +81,7 @@ export async function GET() {
     // 测试4：查询用户
     if (testUserId) {
       try {
-        const foundUser = await db.findOne('users', { id: testUserId })
+        const foundUser = await db.findOne<{ id: number; email: string; username: string }>('users', { id: testUserId })
         results.tests.push({
           name: '查询用户',
           status: foundUser ? 'success' : 'error',
@@ -103,7 +103,7 @@ export async function GET() {
         const apiKey = 'llmgw_sk_' + crypto.randomBytes(32).toString('hex')
         const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex')
         
-        const testApiKey = await db.create('api_keys', {
+        const testApiKey = await db.create<{ id: number; name: string; user_id: number }>('api_keys', {
           user_id: testUserId,
           name: `test-key-${Date.now()}`,
           key_hash: keyHash,
@@ -134,7 +134,7 @@ export async function GET() {
     // 测试6：更新用户
     if (testUserId) {
       try {
-        const updatedUser = await db.update('users', 
+        const updatedUser = await db.update<{ id: number; role: string }>('users', 
           { id: testUserId }, 
           { role: 'premium' }
         )
@@ -158,7 +158,7 @@ export async function GET() {
     
     // 测试7：批量查询
     try {
-      const allUsers = await db.findMany('users', {}, { limit: 10 })
+      const allUsers = await db.findMany<{ id: number; email: string; username: string }>('users', {}, { limit: 10 })
       results.tests.push({
         name: '批量查询用户',
         status: 'success',
