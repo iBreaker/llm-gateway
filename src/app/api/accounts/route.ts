@@ -85,7 +85,7 @@ async function handleCreateAccount(request: AuthenticatedRequest) {
     }
 
     // 验证账号类型
-    const validTypes = ['ANTHROPIC_API', 'CLAUDE_CODE', 'GEMINI_CLI', 'OPENAI_API']
+    const validTypes = ['ANTHROPIC_API', 'ANTHROPIC_OAUTH', 'GEMINI_CLI', 'OPENAI_API']
     if (!validTypes.includes(type)) {
       return NextResponse.json(
         { message: '无效的账号类型' },

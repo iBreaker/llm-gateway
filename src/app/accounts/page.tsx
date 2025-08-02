@@ -6,7 +6,7 @@ import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, P
 interface UpstreamAccount {
   id: string
   name: string
-  type: 'ANTHROPIC_API' | 'CLAUDE_CODE' | 'GEMINI_CLI' | 'OPENAI_API'
+  type: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'GEMINI_CLI' | 'OPENAI_API'
   email: string | null
   status: 'ACTIVE' | 'INACTIVE' | 'ERROR' | 'PENDING'
   priority: number
@@ -27,7 +27,7 @@ interface UpstreamAccount {
 
 interface CreateAccountData {
   name: string
-  type: 'ANTHROPIC_API' | 'CLAUDE_CODE' | 'GEMINI_CLI' | 'OPENAI_API'
+  type: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'GEMINI_CLI' | 'OPENAI_API'
   email?: string // 对于 ANTHROPIC_API 不需要
   credentials: {
     api_key?: string
@@ -232,7 +232,11 @@ export default function AccountsPage() {
 
   // 切换账号状态
   const toggleAccountStatus = async (id: string) => {
-    setIsTogglingStatus(prev => new Set([...prev, id]))
+    setIsTogglingStatus(prev => {
+      const newSet = new Set(prev)
+      newSet.add(id)
+      return newSet
+    })
     
     try {
       const account = accounts.find(a => a.id === id)
@@ -382,7 +386,7 @@ export default function AccountsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900">上游账号</h1>
-          <p className="text-sm text-zinc-600 mt-1">管理Claude Code、Anthropic API等上游服务账号</p>
+          <p className="text-sm text-zinc-600 mt-1">管理Anthropic OAuth、Anthropic API等上游服务账号</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -404,7 +408,7 @@ export default function AccountsPage() {
           >
             <option value="all">全部</option>
             <option value="ANTHROPIC_API">Anthropic API</option>
-            <option value="CLAUDE_CODE">Claude Code</option>
+            <option value="ANTHROPIC_OAUTH">Anthropic OAuth</option>
             <option value="GEMINI_CLI">Gemini CLI</option>
             <option value="OPENAI_API">OpenAI API</option>
           </select>
@@ -718,8 +722,8 @@ interface TypeBadgeProps {
 
 function TypeBadge({ type }: TypeBadgeProps) {
   const typeConfig = {
-    ANTHROPIC_API: { color: 'bg-purple-100 text-purple-700', text: 'Anthropic' },
-    CLAUDE_CODE: { color: 'bg-blue-100 text-blue-700', text: 'Claude Code' },
+    ANTHROPIC_API: { color: 'bg-purple-100 text-purple-700', text: 'Anthropic API' },
+    ANTHROPIC_OAUTH: { color: 'bg-blue-100 text-blue-700', text: 'Anthropic OAuth' },
     GEMINI_CLI: { color: 'bg-green-100 text-green-700', text: 'Gemini CLI' },
     OPENAI_API: { color: 'bg-orange-100 text-orange-700', text: 'OpenAI' }
   }
@@ -807,7 +811,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
     setIsGeneratingAuth(true)
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch('/api/accounts/oauth/claude/generate-auth-url', {
+      const response = await fetch('/api/accounts/oauth/anthropic/generate-auth-url', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -840,7 +844,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
     setIsExchangingCode(true)
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch('/api/accounts/oauth/claude/exchange-code', {
+      const response = await fetch('/api/accounts/oauth/anthropic/exchange-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -856,7 +860,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
 
       if (response.ok) {
         // OAuth 成功，关闭模态框并刷新账号列表
-        alert('Claude Code 账号添加成功！')
+        alert('Anthropic OAuth 账号添加成功！')
         onClose()
         window.location.reload() // 简单刷新页面
       } else {
@@ -931,24 +935,24 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
                 className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
               >
                 <option value="ANTHROPIC_API">Anthropic API</option>
-                <option value="CLAUDE_CODE">Claude Code</option>
+                <option value="ANTHROPIC_OAUTH">Anthropic OAuth</option>
                 <option value="GEMINI_CLI">Gemini CLI</option>
                 <option value="OPENAI_API">OpenAI API</option>
               </select>
             </div>
           </div>
 
-          {formData.type === 'CLAUDE_CODE' && (
+          {formData.type === 'ANTHROPIC_OAUTH' && (
             <div className="bg-blue-50 border border-blue-200 rounded-sm p-4">
               <div className="flex items-center space-x-2 mb-3">
                 <Link className="w-5 h-5 text-blue-600" />
-                <h3 className="text-sm font-medium text-blue-900">Claude Code OAuth 授权</h3>
+                <h3 className="text-sm font-medium text-blue-900">Anthropic OAuth 授权</h3>
               </div>
               
               {!showOAuthFlow ? (
                 <div>
                   <p className="text-sm text-blue-700 mb-3">
-                    点击下方按钮生成授权链接，通过官方 OAuth 方式安全添加 Claude Code 账号
+                    点击下方按钮生成授权链接，通过官方 OAuth 方式安全添加 Anthropic 账号
                   </p>
                   <button
                     type="button"
@@ -1014,7 +1018,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="例如：我的Claude账号"
+                      placeholder="例如：我的Anthropic账号"
                       className="w-full px-3 py-2 border border-blue-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                     />
                   </div>
@@ -1039,7 +1043,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </div>
           )}
 
-          {formData.type !== 'ANTHROPIC_API' && formData.type !== 'CLAUDE_CODE' && (
+          {formData.type !== 'ANTHROPIC_API' && formData.type !== 'ANTHROPIC_OAUTH' && (
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">
                 邮箱地址
@@ -1092,7 +1096,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </>
           )}
 
-          {formData.type !== 'CLAUDE_CODE' && (
+          {formData.type !== 'ANTHROPIC_OAUTH' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 mb-1">
@@ -1123,7 +1127,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </div>
           )}
 
-          {formData.type !== 'CLAUDE_CODE' && (
+          {formData.type !== 'ANTHROPIC_OAUTH' && (
             <div className="flex justify-end space-x-3 pt-4">
               <button
                 type="button"
@@ -1142,7 +1146,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </div>
           )}
 
-          {formData.type === 'CLAUDE_CODE' && (
+          {formData.type === 'ANTHROPIC_OAUTH' && (
             <div className="flex justify-end space-x-3 pt-4">
               <button
                 type="button"

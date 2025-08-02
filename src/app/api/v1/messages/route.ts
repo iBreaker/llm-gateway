@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withApiKey, ApiKeyAuthRequest, recordUsage } from '@/lib/auth/api-key'
 import { AnthropicClient, validateAnthropicRequest } from '@/lib/anthropic/client'
-import { ClaudeCodeClient } from '@/lib/claude-code/client'
+import { AnthropicOAuthClient } from '@/lib/anthropic-oauth/client'
 import { nanoid } from 'nanoid'
 import { PrismaClient } from '@prisma/client'
 import { loadBalancer } from '@/lib/load-balancer'
@@ -132,7 +132,7 @@ async function handleNonStreamRequest(
   let anthropicResponse: any
   let cost: number = 0
 
-  if (upstreamAccount.type === 'CLAUDE_CODE') {
+  if (upstreamAccount.type === 'ANTHROPIC_OAUTH') {
     // 使用Claude Code OAuth token进行请求 - 参考relay项目的实现
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -296,7 +296,7 @@ async function handleStreamRequest(
         let apiUrl: string
         let headers: Record<string, string>
         
-        if (upstreamAccount.type === 'CLAUDE_CODE') {
+        if (upstreamAccount.type === 'ANTHROPIC_OAUTH') {
           apiUrl = 'https://api.anthropic.com/v1/messages'
           headers = {
             'Content-Type': 'application/json',

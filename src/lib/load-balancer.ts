@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 export interface UpstreamAccount {
   id: bigint
   name: string
-  type: 'ANTHROPIC_API' | 'CLAUDE_CODE'
+  type: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH'
   email: string
   credentials: any
   config: any
@@ -44,7 +44,7 @@ export class LoadBalancer {
    */
   async selectAccount(
     userId: bigint, 
-    accountType: 'ANTHROPIC_API' | 'CLAUDE_CODE' | 'ALL' = 'ALL',
+    accountType: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'ALL' = 'ALL',
     options: LoadBalancerOptions = {}
   ): Promise<UpstreamAccount | null> {
     
