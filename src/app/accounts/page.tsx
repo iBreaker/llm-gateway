@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw } from 'lucide-react'
+import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink } from 'lucide-react'
 
 interface UpstreamAccount {
   id: string
@@ -61,6 +61,13 @@ interface UpdateAccountData {
   priority: number
   weight: number
   status: 'ACTIVE' | 'INACTIVE' | 'ERROR' | 'PENDING'
+}
+
+interface OAuthSession {
+  authUrl: string
+  sessionId: string
+  expiresAt: string
+  instructions: string[]
 }
 
 export default function AccountsPage() {
@@ -574,6 +581,99 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
     weight: 100
   })
 
+  // Claude Code OAuth 状态
+  const [oauthSession, setOauthSession] = useState<OAuthSession | null>(null)
+  const [isGeneratingAuth, setIsGeneratingAuth] = useState(false)
+  const [isExchangingCode, setIsExchangingCode] = useState(false)
+  const [authorizationInput, setAuthorizationInput] = useState('')
+  const [showOAuthFlow, setShowOAuthFlow] = useState(false)
+
+  // 生成 Claude Code OAuth 授权链接
+  const generateOAuthUrl = async () => {
+    setIsGeneratingAuth(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch('/api/accounts/oauth/claude/generate-auth-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setOauthSession(data.data)
+        setShowOAuthFlow(true)
+      } else {
+        alert(data.message || '生成授权链接失败')
+      }
+    } catch (error) {
+      alert('网络错误')
+    } finally {
+      setIsGeneratingAuth(false)
+    }
+  }
+
+  // 使用授权码交换访问令牌
+  const exchangeAuthorizationCode = async () => {
+    if (!oauthSession || !authorizationInput.trim()) {
+      alert('请输入授权码或回调URL')
+      return
+    }
+
+    setIsExchangingCode(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch('/api/accounts/oauth/claude/exchange-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sessionId: oauthSession.sessionId,
+          callbackUrl: authorizationInput.trim()
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // OAuth 成功，关闭模态框并刷新账号列表
+        alert('Claude Code 账号添加成功！')
+        onClose()
+        window.location.reload() // 简单刷新页面
+      } else {
+        alert(data.message || '授权码交换失败')
+      }
+    } catch (error) {
+      alert('网络错误')
+    } finally {
+      setIsExchangingCode(false)
+    }
+  }
+
+  // 复制授权链接到剪贴板
+  const copyAuthUrl = async () => {
+    if (oauthSession) {
+      try {
+        await navigator.clipboard.writeText(oauthSession.authUrl)
+        alert('授权链接已复制到剪贴板')
+      } catch (error) {
+        // 降级处理
+        const textArea = document.createElement('textarea')
+        textArea.value = oauthSession.authUrl
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+        alert('授权链接已复制到剪贴板')
+      }
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit(formData)
@@ -624,7 +724,108 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </div>
           </div>
 
-          {formData.type !== 'ANTHROPIC_API' && (
+          {formData.type === 'CLAUDE_CODE' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-sm p-4">
+              <div className="flex items-center space-x-2 mb-3">
+                <Link className="w-5 h-5 text-blue-600" />
+                <h3 className="text-sm font-medium text-blue-900">Claude Code OAuth 授权</h3>
+              </div>
+              
+              {!showOAuthFlow ? (
+                <div>
+                  <p className="text-sm text-blue-700 mb-3">
+                    点击下方按钮生成授权链接，通过官方 OAuth 方式安全添加 Claude Code 账号
+                  </p>
+                  <button
+                    type="button"
+                    onClick={generateOAuthUrl}
+                    disabled={isGeneratingAuth}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>{isGeneratingAuth ? '生成中...' : '生成授权链接'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-blue-900 mb-2">
+                      步骤 1: 访问授权链接
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={oauthSession?.authUrl || ''}
+                        readOnly
+                        className="flex-1 px-3 py-2 border border-blue-200 rounded-sm bg-blue-50 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={copyAuthUrl}
+                        className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700"
+                      >
+                        <Copy className="w-4 h-4" />
+                        <span>复制</span>
+                      </button>
+                      <a
+                        href={oauthSession?.authUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>打开</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-blue-900 mb-2">
+                      步骤 2: 粘贴回调URL或授权码
+                    </label>
+                    <textarea
+                      value={authorizationInput}
+                      onChange={(e) => setAuthorizationInput(e.target.value)}
+                      placeholder="完成授权后，复制浏览器地址栏中的完整URL或授权码到此处..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-blue-900 mb-1">
+                      账号名称（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="例如：我的Claude账号"
+                      className="w-full px-3 py-2 border border-blue-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={exchangeAuthorizationCode}
+                    disabled={isExchangingCode || !authorizationInput.trim()}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-sm hover:bg-green-700 disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{isExchangingCode ? '添加中...' : '完成授权并添加账号'}</span>
+                  </button>
+
+                  <div className="text-xs text-blue-600 space-y-1">
+                    {oauthSession?.instructions.map((instruction, index) => (
+                      <div key={index}>• {instruction}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {formData.type !== 'ANTHROPIC_API' && formData.type !== 'CLAUDE_CODE' && (
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">
                 邮箱地址
@@ -677,51 +878,67 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                优先级
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
+          {formData.type !== 'CLAUDE_CODE' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  优先级
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  权重
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={formData.weight}
+                  onChange={(e) => setFormData({ ...formData, weight: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                权重
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="1000"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-          </div>
+          )}
 
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-300 rounded-sm hover:bg-zinc-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-sm hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {isLoading ? '创建中...' : '创建账号'}
-            </button>
-          </div>
+          {formData.type !== 'CLAUDE_CODE' && (
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-300 rounded-sm hover:bg-zinc-50"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-sm hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {isLoading ? '创建中...' : '创建账号'}
+              </button>
+            </div>
+          )}
+
+          {formData.type === 'CLAUDE_CODE' && (
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-300 rounded-sm hover:bg-zinc-50"
+              >
+                关闭
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
