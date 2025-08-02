@@ -13,7 +13,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 
 # 安装全局 npm 包
 RUN npm install -g \
-    @prisma/cli \
+    prisma \
     typescript \
     ts-node \
     nodemon
