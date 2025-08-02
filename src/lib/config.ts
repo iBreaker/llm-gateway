@@ -50,8 +50,8 @@ export function createSystemConfig(): SystemConfig {
   
   // 数据库配置 - 根据部署环境自动选择
   const databaseConfig: DatabaseConfig = shouldUsePostgreSQL ? {
-    // PostgreSQL/Supabase
-    type: env.SUPABASE_URL ? 'supabase' : 'postgresql',
+    // 使用 Prisma 连接 Supabase/PostgreSQL
+    type: 'prisma',
     url: databaseUrl,
     options: {
       maxConnections: isVercel ? 5 : (env.NODE_ENV === 'production' ? 10 : 5),

@@ -20,6 +20,10 @@ export async function createDatabaseAdapter(
       const { SupabaseSimpleAdapter } = await import('./database/supabase-simple')
       return new SupabaseSimpleAdapter(config)
     }
+    case 'prisma': {
+      const { PrismaAdapter } = await import('./database/prisma')
+      return new PrismaAdapter(config)
+    }
     default:
       throw new Error(`不支持的数据库类型: ${config.type}`)
   }
