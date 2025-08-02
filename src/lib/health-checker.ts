@@ -261,7 +261,6 @@ export class HealthChecker {
    */
   async disconnect(): Promise<void> {
     this.stopPeriodicHealthCheck()
-    await prisma.$disconnect()
   }
 }
 

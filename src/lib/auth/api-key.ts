@@ -100,8 +100,6 @@ export async function validateApiKey(request: NextRequest): Promise<{
   } catch (error) {
     console.error('API Key验证失败:', error)
     return { success: false, error: '服务器内部错误' }
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -233,7 +231,5 @@ export async function recordUsage(
     })
   } catch (error) {
     console.error('记录使用记录失败:', error)
-  } finally {
-    await prisma.$disconnect()
   }
 }

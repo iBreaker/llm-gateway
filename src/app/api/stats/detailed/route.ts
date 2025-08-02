@@ -136,8 +136,6 @@ async function handleGetDetailedStats(request: AuthenticatedRequest) {
       { message: '服务器内部错误' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
