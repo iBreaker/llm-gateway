@@ -49,9 +49,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // 检查是否为公开API路径
-  const isPublicApiPath = PUBLIC_API_PATHS.some(path => pathname.startsWith(path))
+  // 检查是否为公开API路径（优先检查）
+  const isPublicApiPath = PUBLIC_API_PATHS.some(path => pathname === path || pathname.startsWith(path))
   if (isPublicApiPath) {
+    console.log('🔓 公开API路径:', pathname)
     return response
   }
 
@@ -60,6 +61,7 @@ export async function middleware(request: NextRequest) {
   
   // 如果是受保护的路径但用户未登录，重定向到登录页
   if (isProtectedPath && !user) {
+    console.log('🔒 受保护路径，用户未登录:', pathname)
     const redirectUrl = new URL('/auth/login', request.url)
     redirectUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(redirectUrl)
