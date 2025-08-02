@@ -27,11 +27,11 @@ export async function POST(request: NextRequest) {
 
     // 首先检查或创建用户记录（将Supabase UUID映射到我们的用户表）
     const userEmail = request.headers.get('x-user-email') || ''
-    let userRecord = await db.findOne('users', { email: userEmail })
+    let userRecord = await db.findOne<{ id: number; email: string; username: string }>('users', { email: userEmail })
     
     if (!userRecord) {
       // 创建用户记录
-      userRecord = await db.create('users', {
+      userRecord = await db.create<{ id: number; email: string; username: string }>('users', {
         email: userEmail,
         username: userEmail.split('@')[0] || 'user',
         password_hash: 'supabase_auth', // 标记为Supabase认证用户
