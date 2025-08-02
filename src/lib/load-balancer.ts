@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 export interface UpstreamAccount {
   id: bigint
@@ -33,10 +31,8 @@ export interface LoadBalancerOptions {
  * 负载均衡器 - 选择最优的上游账号
  */
 export class LoadBalancer {
-  private prisma: PrismaClient
-
   constructor() {
-    this.prisma = prisma
+    // 使用统一的prisma实例
   }
 
   /**
@@ -107,7 +103,7 @@ export class LoadBalancer {
       whereClause.status = { in: ['ACTIVE', 'PENDING'] }
     }
 
-    const accounts = await this.prisma.upstreamAccount.findMany({
+    const accounts = await prisma.upstreamAccount.findMany({
       where: whereClause,
       orderBy: [
         { priority: 'desc' },
@@ -227,7 +223,7 @@ export class LoadBalancer {
         updateData.errorCount = { increment: 1 }
       }
 
-      await this.prisma.upstreamAccount.update({
+      await prisma.upstreamAccount.update({
         where: { id: accountId },
         data: updateData
       })
@@ -258,7 +254,7 @@ export class LoadBalancer {
         error: success ? undefined : 'Request failed'
       }
 
-      await this.prisma.upstreamAccount.update({
+      await prisma.upstreamAccount.update({
         where: { id: accountId },
         data: {
           status: success ? 'ACTIVE' : 'ERROR',
@@ -281,7 +277,7 @@ export class LoadBalancer {
     error: number
     byType: Record<string, number>
   }> {
-    const accounts = await this.prisma.upstreamAccount.findMany({
+    const accounts = await prisma.upstreamAccount.findMany({
       where: { userId },
       select: { type: true, status: true }
     })
@@ -302,10 +298,10 @@ export class LoadBalancer {
   }
 
   /**
-   * 清理资源
+   * 清理资源（已使用统一prisma实例，无需手动断开）
    */
   async disconnect(): Promise<void> {
-    await this.prisma.$disconnect()
+    // 不需要手动断开连接，使用统一的prisma实例
   }
 }
 
