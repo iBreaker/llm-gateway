@@ -27,13 +27,22 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
   async connect(): Promise<void> {
     try {
-      // 从 DATABASE_URL 解析 Supabase 配置
-      const url = new URL(this.config.url)
-      const supabaseUrl = `https://${url.hostname}`
-      const supabaseKey = url.password || process.env.SUPABASE_ANON_KEY
+      // 获取 Supabase URL 和 API Key
+      const supabaseUrl = process.env.SUPABASE_URL || this.config.url
+      const supabaseKey = process.env.SUPABASE_ANON_KEY
+      
+      console.log('🔍 Supabase 连接配置:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseKey,
+        urlPrefix: supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'NOT_SET'
+      })
+      
+      if (!supabaseUrl) {
+        throw new Error('缺少 Supabase URL (SUPABASE_URL)')
+      }
       
       if (!supabaseKey) {
-        throw new Error('缺少 Supabase API Key')
+        throw new Error('缺少 Supabase API Key (SUPABASE_ANON_KEY)')
       }
 
       this.client = createClient(supabaseUrl, supabaseKey, {
@@ -46,14 +55,21 @@ export class SupabaseAdapter implements DatabaseAdapter {
       // 初始化迁移管理器
       this.migrationManager = new MigrationManager(this)
 
-      // 测试连接
-      const { error } = await this.client.from('_health_check').select('1').limit(1)
-      if (error && !error.message.includes('relation "_health_check" does not exist')) {
+      // 测试连接 - 使用一个必定存在的系统表
+      console.log('🔍 测试 Supabase 连接...')
+      const { data, error } = await this.client
+        .from('information_schema.tables')
+        .select('table_name')
+        .limit(1)
+      
+      if (error) {
+        console.error('❌ Supabase 连接测试失败:', error)
         throw error
       }
 
       console.log('✅ Supabase 数据库连接成功')
     } catch (error) {
+      console.error('❌ Supabase 连接详细错误:', error)
       throw new DatabaseConnectionError('Supabase 连接失败', error as Error)
     }
   }
