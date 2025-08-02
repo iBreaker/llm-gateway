@@ -34,21 +34,24 @@ export function createSystemConfig(): SystemConfig {
   
   // 根据 Vercel 标准环境变量确定数据库
   const databaseUrl = env.SUPABASE_URL || env.POSTGRES_URL || env.DATABASE_URL
-  const isPostgreSQL = databaseUrl.includes('postgresql') || databaseUrl.includes('supabase')
+  const isPostgreSQL = databaseUrl && (databaseUrl.includes('postgresql') || databaseUrl.includes('supabase'))
+  
+  // 在 Vercel 环境中强制使用 PostgreSQL/Supabase
+  const shouldUsePostgreSQL = isPostgreSQL || (isVercel && env.SUPABASE_URL)
   
   // 调试信息
   console.log('🔍 数据库配置检测:', {
     isVercel,
     SUPABASE_URL: env.SUPABASE_URL ? 'SET' : 'NOT_SET',
     POSTGRES_URL: env.POSTGRES_URL ? 'SET' : 'NOT_SET',
-    isPostgreSQL,
-    detectedType: isPostgreSQL ? 'PostgreSQL/Supabase' : 'SQLite'
+    shouldUsePostgreSQL,
+    detectedType: shouldUsePostgreSQL ? 'PostgreSQL/Supabase' : 'SQLite'
   })
   
   // 数据库配置 - 根据部署环境自动选择
-  const databaseConfig: DatabaseConfig = isPostgreSQL ? {
+  const databaseConfig: DatabaseConfig = shouldUsePostgreSQL ? {
     // PostgreSQL/Supabase
-    type: 'postgresql',
+    type: env.SUPABASE_URL ? 'supabase' : 'postgresql',
     url: databaseUrl,
     options: {
       maxConnections: isVercel ? 5 : (env.NODE_ENV === 'production' ? 10 : 5),
@@ -62,11 +65,11 @@ export function createSystemConfig(): SystemConfig {
     url: env.DATABASE_URL,
     options: {
       maxConnections: 1, // SQLite 是单连接
-      connectionTimeout: 30000,
-      queryTimeout: 60000,
+      connectionTimeout: isVercel ? 5000 : 30000,  // Vercel 环境快速超时
+      queryTimeout: isVercel ? 8000 : 60000,       // Vercel 环境快速超时
     },
-    // Vercel 环境使用 Blob 存储
-    blob: isVercel ? {
+    // Vercel 环境暂时禁用 Blob 存储，避免超时问题
+    blob: false ? {
       enabled: true,
       key: 'llmgw-database.db',
       syncInterval: 300, // 5 分钟同步一次
