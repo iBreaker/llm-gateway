@@ -58,6 +58,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
       // 测试连接 - 跳过连接测试，直接标记为已连接
       console.log('🔍 Supabase 客户端创建成功，跳过连接测试')
 
+      // 自动执行数据库迁移
+      console.log('🚀 开始执行数据库迁移...')
+      await this.migrationManager.migrate()
+
       console.log('✅ Supabase 数据库连接成功')
     } catch (error) {
       console.error('❌ Supabase 连接详细错误:', error)
