@@ -9,8 +9,9 @@ import type {
   QueryOptions
 } from '../../interfaces/database'
 import {
-  ConnectionError,
-  QueryError
+  DatabaseConnectionError,
+  DatabaseQueryError,
+  DatabaseTransactionError
 } from '../../interfaces/database'
 
 export class SqliteAdapter implements DatabaseAdapter {
@@ -52,7 +53,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
       console.log(`✅ SQLite 数据库连接成功: ${dbPath}`)
     } catch (error) {
-      throw new ConnectionError('连接 SQLite 数据库失败', error as Error)
+      throw new DatabaseConnectionError('连接 SQLite 数据库失败', error as Error)
     }
   }
 
@@ -69,7 +70,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async transaction<T>(callback: (tx: DatabaseTransaction) => Promise<T>): Promise<T> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
 
     try {
       return this.db.transaction(() => {
@@ -97,13 +98,13 @@ export class SqliteAdapter implements DatabaseAdapter {
         return callback(tx)
       })()
     } catch (error) {
-      throw new QueryError('事务执行失败', error as Error)
+      throw new DatabaseQueryError('事务执行失败', error as Error)
     }
   }
 
   // 基础 CRUD 操作
   async findOne<T>(table: string, where: Record<string, any>): Promise<T | null> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const whereClause = Object.keys(where).map(key => `${key} = ?`).join(' AND ')
     const values = Object.values(where)
@@ -115,7 +116,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async findMany<T>(table: string, where?: Record<string, any>, options?: QueryOptions): Promise<T[]> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     let sql = `SELECT * FROM ${table}`
     const values: any[] = []
@@ -148,7 +149,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async create<T>(table: string, data: Record<string, any>): Promise<T> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const keys = Object.keys(data)
     const values = Object.values(data)
@@ -163,7 +164,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async update<T>(table: string, where: Record<string, any>, data: Record<string, any>): Promise<T> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const setClause = Object.keys(data).map(key => `${key} = ?`).join(', ')
     const whereClause = Object.keys(where).map(key => `${key} = ?`).join(' AND ')
@@ -177,7 +178,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async delete(table: string, where: Record<string, any>): Promise<number> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const whereClause = Object.keys(where).map(key => `${key} = ?`).join(' AND ')
     const values = Object.values(where)
@@ -189,7 +190,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async createMany<T>(table: string, data: Record<string, any>[]): Promise<T[]> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     if (data.length === 0) return []
     
@@ -209,7 +210,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async updateMany(table: string, where: Record<string, any>, data: Record<string, any>): Promise<number> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const setClause = Object.keys(data).map(key => `${key} = ?`).join(', ')
     const whereClause = Object.keys(where).map(key => `${key} = ?`).join(' AND ')
@@ -222,7 +223,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async deleteMany(table: string, where: Record<string, any>): Promise<number> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     const whereClause = Object.keys(where).map(key => `${key} = ?`).join(' AND ')
     const values = Object.values(where)
@@ -234,7 +235,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async count(table: string, where?: Record<string, any>): Promise<number> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     let sql = `SELECT COUNT(*) as count FROM ${table}`
     const values: any[] = []
@@ -257,7 +258,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async raw<T>(sql: string, params?: any[]): Promise<T[]> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
     
     try {
       const stmt = this.db.prepare(sql)
@@ -269,12 +270,12 @@ export class SqliteAdapter implements DatabaseAdapter {
         return [] as T[]
       }
     } catch (error) {
-      throw new QueryError(`SQL 执行失败: ${sql}`, error as Error)
+      throw new DatabaseQueryError(`SQL 执行失败: ${sql}`, error as Error)
     }
   }
 
   async migrate(): Promise<void> {
-    if (!this.db) throw new ConnectionError('数据库未连接')
+    if (!this.db) throw new DatabaseConnectionError('数据库未连接')
 
     try {
       // 创建用户表
@@ -357,12 +358,35 @@ export class SqliteAdapter implements DatabaseAdapter {
 
       console.log('✅ SQLite 数据库迁移完成')
     } catch (error) {
-      throw new QueryError('数据库迁移失败', error as Error)
+      throw new DatabaseQueryError('数据库迁移失败', error as Error)
     }
   }
 
   async seed(): Promise<void> {
     // 数据填充的具体实现
     console.log('SQLite 数据填充完成')
+  }
+
+  async healthCheck(): Promise<{ status: string; connected: boolean; latency?: number }> {
+    if (!this.db) {
+      return { status: 'disconnected', connected: false }
+    }
+
+    try {
+      const startTime = Date.now()
+      this.db.prepare('SELECT 1').get()
+      const latency = Date.now() - startTime
+      
+      return { 
+        status: 'healthy', 
+        connected: true, 
+        latency 
+      }
+    } catch (error) {
+      return { 
+        status: 'error', 
+        connected: false 
+      }
+    }
   }
 }

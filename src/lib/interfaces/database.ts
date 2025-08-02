@@ -30,6 +30,9 @@ export interface DatabaseAdapter {
   // 数据库特定操作
   migrate(): Promise<void>
   seed(): Promise<void>
+  
+  // 健康检查
+  healthCheck(): Promise<{ status: string; connected: boolean; latency?: number }>
 }
 
 export interface DatabaseTransaction {
@@ -73,31 +76,11 @@ export interface SqliteConfig extends DatabaseConfig {
 }
 
 
-// 错误类型
-export class DatabaseError extends Error {
-  constructor(message: string, public code?: string, public cause?: Error) {
-    super(message)
-    this.name = 'DatabaseError'
-  }
-}
-
-export class ConnectionError extends DatabaseError {
-  constructor(message: string, cause?: Error) {
-    super(message, 'CONNECTION_ERROR', cause)
-    this.name = 'ConnectionError'
-  }
-}
-
-export class QueryError extends DatabaseError {
-  constructor(message: string, cause?: Error) {
-    super(message, 'QUERY_ERROR', cause)
-    this.name = 'QueryError'
-  }
-}
+// 已移除重复的错误类定义，统一使用下方的专门错误类型
 
 // 数据库实体类型定义
 export interface DatabaseUser {
-  id: number
+  id: number | bigint  // 支持两种类型以兼容不同数据库
   email: string
   username: string
   passwordHash: string
@@ -108,8 +91,8 @@ export interface DatabaseUser {
 }
 
 export interface DatabaseApiKey {
-  id: number
-  userId: number
+  id: number | bigint
+  userId: number | bigint
   name: string
   keyHash: string
   permissions: string[]
@@ -122,7 +105,7 @@ export interface DatabaseApiKey {
 }
 
 export interface DatabaseUpstreamAccount {
-  id: number
+  id: number | bigint
   type: string
   email: string
   credentials: Record<string, any>
@@ -138,9 +121,9 @@ export interface DatabaseUpstreamAccount {
 }
 
 export interface DatabaseUsageRecord {
-  id: number
-  apiKeyId: number
-  upstreamAccountId?: number
+  id: number | bigint
+  apiKeyId: number | bigint
+  upstreamAccountId?: number | bigint
   requestId: string
   method: string
   endpoint: string
