@@ -346,3 +346,5 @@ CLAUDE.md
 .claude
 data/
 tmp/
+.vercel
+.env*.local
