@@ -11,7 +11,15 @@ let systemServices: {
 
 // 确保系统只初始化一次（单例模式）
 export async function ensureSystemInitialized() {
+  const startTime = Date.now()
+  console.log('🔄 系统初始化检查...', { 
+    initialized: systemInitialized, 
+    hasServices: !!systemServices,
+    timestamp: new Date().toISOString()
+  })
+  
   if (systemInitialized && systemServices) {
+    console.log(`✅ 系统已初始化，直接返回 (耗时: ${Date.now() - startTime}ms)`)
     return systemServices
   }
 
