@@ -63,8 +63,10 @@ export function validateDatabaseConfig(config: DatabaseConfig): void {
     throw new Error('数据库URL不能为空')
   }
 
-  if (config.type === 'prisma' && !config.url.includes('postgresql')) {
-    throw new Error('Prisma 适配器需要 PostgreSQL 数据库')
+  if (config.type === 'prisma' && 
+      !config.url.includes('postgresql') && 
+      !config.url.includes('supabase')) {
+    throw new Error('Prisma 适配器需要 PostgreSQL 或 Supabase 数据库')
   }
 
   if (config.type === 'sqlite' && config.url.includes('postgresql')) {
