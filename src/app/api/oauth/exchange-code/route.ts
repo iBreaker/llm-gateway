@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
           })
         }
 
-        // 解析并清理授权码 - 参考 claude-relay-service 的 parseCallbackUrl 方法
+        // 解析并清理授权码
         let actualCode = code.trim()
         
         console.log('🔍 原始授权码:', actualCode)
@@ -61,7 +61,6 @@ export async function POST(request: NextRequest) {
         }
         
         // 清理授权码：移除 URL fragments 和额外参数
-        // 参考 claude-relay-service 的处理：split('#')[0]?.split('&')[0]
         const cleanedCode = actualCode.split('#')[0]?.split('&')[0] ?? actualCode
         actualCode = cleanedCode.trim()
         
