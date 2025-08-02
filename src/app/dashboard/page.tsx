@@ -1,7 +1,8 @@
 'use client'
-import DashboardLayout from '@/components/dashboard/DashboardLayout'
+
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { MainLayout } from '@/components/layout/MainLayout'
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
@@ -24,60 +25,63 @@ export default function DashboardPage() {
 
     fetchStats()
   }, [])
+
   return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        {/* 欢迎区域 */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">控制台</h1>
-          <p className="text-gray-600">LLM Gateway 管理后台</p>
-        </div>
-
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard title="总请求数" value={loading ? "加载中..." : (stats ? stats.totalRequests.toLocaleString() : "---")} />
-          <StatsCard title="活跃账号" value={loading ? "加载中..." : (stats ? stats.activeAccounts.toString() : "---")} />
-          <StatsCard title="API 密钥" value={loading ? "加载中..." : (stats ? stats.apiKeysCount.toString() : "---")} />
-          <StatsCard title="成功率" value={loading ? "加载中..." : (stats ? `${stats.successRate}%` : "---")} />
-        </div>
-
-        {/* 功能区域 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* 快速操作 */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">快速操作</h2>
-            <div className="space-y-4">
-              <ActionButton 
-                title="添加上游账号"
-                description="连接 Claude 或 Gemini 账号"
-                href="/dashboard/accounts"
-              />
-              <ActionButton 
-                title="创建 API 密钥"
-                description="生成新的访问密钥"
-                href="/dashboard/api-keys"
-              />
-              <ActionButton 
-                title="查看统计报告"
-                description="使用情况和成本分析"
-                href="/dashboard/stats"
-              />
-            </div>
+    <MainLayout>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
+          {/* 欢迎区域 */}
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">仪表板</h1>
+            <p className="text-gray-600">LLM Gateway 系统概览</p>
           </div>
 
-          {/* 系统状态 */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">系统状态</h2>
-            <div className="space-y-4">
-              <StatusItem label="数据库服务" status="正常" />
-              <StatusItem label="缓存服务" status="正常" />
-              <StatusItem label="上游账号" status={loading ? "检查中..." : (stats ? `${stats.activeAccounts} 个活跃` : "未知")} />
-              <StatusItem label="API 响应" status="245ms" />
+          {/* 统计卡片 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatsCard title="总请求数" value={loading ? "加载中..." : (stats ? stats.totalRequests.toLocaleString() : "---")} />
+            <StatsCard title="活跃账号" value={loading ? "加载中..." : (stats ? stats.activeAccounts.toString() : "---")} />
+            <StatsCard title="API 密钥" value={loading ? "加载中..." : (stats ? stats.apiKeysCount.toString() : "---")} />
+            <StatsCard title="成功率" value={loading ? "加载中..." : (stats ? `${stats.successRate}%` : "---")} />
+          </div>
+
+          {/* 功能区域 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* 快速操作 */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">快速操作</h2>
+              <div className="space-y-4">
+                <ActionButton 
+                  title="添加上游账号"
+                  description="连接 Claude 或 Gemini 账号"
+                  href="/accounts"
+                />
+                <ActionButton 
+                  title="创建 API 密钥"
+                  description="生成新的访问密钥"
+                  href="/api-keys"
+                />
+                <ActionButton 
+                  title="查看统计报告"
+                  description="使用情况和成本分析"
+                  href="/stats"
+                />
+              </div>
+            </div>
+
+            {/* 系统状态 */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">系统状态</h2>
+              <div className="space-y-4">
+                <StatusItem label="数据库服务" status="正常" />
+                <StatusItem label="缓存服务" status="正常" />
+                <StatusItem label="上游账号" status={loading ? "检查中..." : (stats ? `${stats.activeAccounts} 个活跃` : "未知")} />
+                <StatusItem label="API 响应" status="245ms" />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </MainLayout>
   )
 }
 
