@@ -10,8 +10,8 @@ services:
       POSTGRES_DB: llm_gateway
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "15432:5432"
+    # ports:
+    #   - "15432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
@@ -37,7 +37,7 @@ services:
       retries: 5
 
   # LLM Gateway 应用 (Dev Container 模式)
-  app:
+  app-dev-container:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
@@ -47,8 +47,8 @@ services:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
       - REDIS_URL=redis://redis:6379
-    ports:
-      - "13000:3000"
+    # ports:
+    #   - "13000:3000"
     volumes:
       # Dev Container 使用：挂载工作空间
       - ../..:/workspaces:cached
@@ -62,7 +62,7 @@ services:
         condition: service_healthy
 
   # 独立开发模式 (不使用 Dev Container)
-  app-standalone:
+  app:
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -73,7 +73,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
       - REDIS_URL=redis://redis:6379
     ports:
-      - "13001:3000"
+      - "13010:3000"
     volumes:
       - .:/app
       - node_modules_standalone:/app/node_modules
