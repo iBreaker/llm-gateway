@@ -43,6 +43,7 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
         requestId,
         method: request.method,
         endpoint: '/v1/messages',
+        model: requestBody.model,  // 添加模型信息
         statusCode: 503,
         responseTime: Date.now() - startTime,
         errorMessage: '无可用的Anthropic账号',
@@ -86,6 +87,7 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
       requestId,
       method: request.method,
       endpoint: '/v1/messages',
+      model: requestBody?.model,  // 添加模型信息
       statusCode: 500,
       responseTime,
       errorMessage: error.message,
@@ -149,6 +151,7 @@ async function handleNonStreamRequest(
     requestId,
     method: request.method,
     endpoint: '/v1/messages',
+    model: requestBody.model,  // 添加模型信息
     statusCode: 200,
     responseTime,
     tokensUsed: totalTokens,
@@ -180,6 +183,32 @@ async function handleStreamRequest(
 
   const stream = new ReadableStream({
     async start(controller) {
+      let isControllerClosed = false
+      
+      // 安全关闭 controller 的辅助函数
+      const safeClose = () => {
+        if (!isControllerClosed) {
+          try {
+            controller.close()
+            isControllerClosed = true
+          } catch (e) {
+            // 忽略重复关闭错误
+          }
+        }
+      }
+
+      // 安全报错的辅助函数
+      const safeError = (error: Error) => {
+        if (!isControllerClosed) {
+          try {
+            controller.error(error)
+            isControllerClosed = true
+          } catch (e) {
+            // 忽略重复关闭错误
+          }
+        }
+      }
+
       try {
         // 直接使用fetch进行流式请求到上游服务
         const upstreamResponse = await fetch(`${credentials.base_url}/v1/messages`, {
@@ -200,13 +229,13 @@ async function handleStreamRequest(
         if (!upstreamResponse.ok) {
           const errorText = await upstreamResponse.text()
           console.error('上游流式请求失败:', upstreamResponse.status, errorText)
-          controller.error(new Error(`上游服务错误: ${upstreamResponse.status}`))
+          safeError(new Error(`上游服务错误: ${upstreamResponse.status}`))
           return
         }
 
         const reader = upstreamResponse.body?.getReader()
         if (!reader) {
-          controller.error(new Error('无法获取响应流'))
+          safeError(new Error('无法获取响应流'))
           return
         }
 
@@ -221,6 +250,11 @@ async function handleStreamRequest(
               break
             }
 
+            // 检查 controller 是否已关闭
+            if (isControllerClosed) {
+              break
+            }
+
             // 解码chunk并处理
             const chunk = new TextDecoder().decode(value)
             buffer += chunk
@@ -230,8 +264,19 @@ async function handleStreamRequest(
             buffer = lines.pop() || '' // 保留最后的不完整行
 
             for (const line of lines) {
+              // 检查 controller 是否已关闭
+              if (isControllerClosed) {
+                break
+              }
+
               // 转发SSE数据到客户端
-              controller.enqueue(encoder.encode(line + '\n'))
+              try {
+                controller.enqueue(encoder.encode(line + '\n'))
+              } catch (enqueueError) {
+                // 如果 enqueue 失败，说明流已关闭
+                isControllerClosed = true
+                break
+              }
 
               // 解析使用统计数据
               if (line.startsWith('data: ') && line.length > 6) {
@@ -275,6 +320,7 @@ async function handleStreamRequest(
                           requestId,
                           method: request.method,
                           endpoint: '/v1/messages',
+                          model: finalUsageData.model || requestBody.model,  // 优先使用实际响应的模型
                           statusCode: 200,
                           responseTime,
                           tokensUsed: totalTokens,
@@ -302,19 +348,25 @@ async function handleStreamRequest(
           }
 
           // 处理剩余的buffer
-          if (buffer.trim()) {
-            controller.enqueue(encoder.encode(buffer))
+          if (buffer.trim() && !isControllerClosed) {
+            try {
+              controller.enqueue(encoder.encode(buffer))
+            } catch (enqueueError) {
+              // 如果 enqueue 失败，说明流已关闭
+              isControllerClosed = true
+            }
           }
 
         } finally {
           reader.releaseLock()
         }
 
+        // 正常结束，关闭流
+        safeClose()
+
       } catch (error) {
         console.error('流式处理错误:', error)
-        controller.error(error)
-      } finally {
-        controller.close()
+        safeError(error)
       }
     }
   })
