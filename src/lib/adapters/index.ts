@@ -17,8 +17,8 @@ export async function createDatabaseAdapter(
       return new PostgresAdapter(config)
     }
     case 'supabase': {
-      const { SupabaseAdapter } = await import('./database/supabase-clean')
-      return new SupabaseAdapter(config)
+      const { SupabaseSimpleAdapter } = await import('./database/supabase-simple')
+      return new SupabaseSimpleAdapter(config)
     }
     default:
       throw new Error(`不支持的数据库类型: ${config.type}`)
