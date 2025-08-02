@@ -112,7 +112,12 @@ model UsageRecord {
   model             String?  // 添加模型字段存储实际使用的模型
   statusCode        Int?     @map("status_code")
   responseTime      Int?     @map("response_time") // 毫秒
-  tokensUsed        BigInt   @default(0) @map("tokens_used")
+  // Token 详细信息
+  inputTokens       BigInt   @default(0) @map("input_tokens")
+  outputTokens      BigInt   @default(0) @map("output_tokens")
+  cacheCreationInputTokens BigInt @default(0) @map("cache_creation_input_tokens")
+  cacheReadInputTokens     BigInt @default(0) @map("cache_read_input_tokens")
+  tokensUsed        BigInt   @default(0) @map("tokens_used") // 总计，保持向后兼容
   cost              Decimal  @default(0) @db.Decimal(10, 4)
   errorMessage      String?  @map("error_message")
   // 添加更多上下文信息
