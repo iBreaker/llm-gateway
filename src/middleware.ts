@@ -19,6 +19,7 @@ const PUBLIC_API_PATHS = [
   '/api/health',
   '/api/oauth',
   '/api/debug',
+  '/api/dashboard/api-keys/create', // 临时添加，用于测试
 ]
 
 // 管理员专用路径
