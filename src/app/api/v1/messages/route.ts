@@ -11,6 +11,7 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
   const requestId = nanoid()
   const startTime = Date.now()
   let upstreamAccount: any = null
+  let requestBody: any = null
   
   try {
     // 检查权限
@@ -22,7 +23,7 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
     }
 
     // 解析请求体
-    const requestBody = await request.json()
+    requestBody = await request.json()
     
     // 验证请求格式
     const validation = validateAnthropicRequest(requestBody)
@@ -143,18 +144,23 @@ async function handleNonStreamRequest(
   const responseTime = Date.now() - startTime
   const inputTokens = anthropicResponse.usage?.input_tokens || 0
   const outputTokens = anthropicResponse.usage?.output_tokens || 0
-  const totalTokens = inputTokens + outputTokens
+  const cacheCreationInputTokens = anthropicResponse.usage?.cache_creation_input_tokens || 0
+  const cacheReadInputTokens = anthropicResponse.usage?.cache_read_input_tokens || 0
   const cost = anthropicClient.calculateCost(requestBody.model, inputTokens, outputTokens)
 
   // 记录使用统计
-  await recordUsage(request.apiKey.id, upstreamAccount.id, {
+  await recordUsage(request.apiKey!.id, upstreamAccount.id, {
     requestId,
     method: request.method,
     endpoint: '/v1/messages',
-    model: requestBody.model,  // 添加模型信息
+    model: requestBody.model,
     statusCode: 200,
     responseTime,
-    tokensUsed: totalTokens,
+    // 详细 token 信息
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
     cost,
     userAgent: request.headers.get('user-agent') || undefined,
     clientIp: getClientIP(request)
@@ -303,10 +309,6 @@ async function handleStreamRequest(
                       // 记录完整的使用统计
                       if (!usageRecorded) {
                         const responseTime = Date.now() - startTime
-                        const totalTokens = (finalUsageData.input_tokens || 0) + 
-                                          (finalUsageData.output_tokens || 0) +
-                                          (finalUsageData.cache_creation_input_tokens || 0) +
-                                          (finalUsageData.cache_read_input_tokens || 0)
                         
                         const anthropicClient = new AnthropicClient(credentials.api_key, credentials.base_url)
                         const cost = anthropicClient.calculateCost(
@@ -316,14 +318,18 @@ async function handleStreamRequest(
                         )
 
                         // 异步记录使用统计
-                        recordUsage(request.apiKey.id, upstreamAccount.id, {
+                        recordUsage(request.apiKey!.id, upstreamAccount.id, {
                           requestId,
                           method: request.method,
                           endpoint: '/v1/messages',
-                          model: finalUsageData.model || requestBody.model,  // 优先使用实际响应的模型
+                          model: finalUsageData.model || requestBody.model,
                           statusCode: 200,
                           responseTime,
-                          tokensUsed: totalTokens,
+                          // 详细 token 信息
+                          inputTokens: finalUsageData.input_tokens || 0,
+                          outputTokens: finalUsageData.output_tokens || 0,
+                          cacheCreationInputTokens: finalUsageData.cache_creation_input_tokens || 0,
+                          cacheReadInputTokens: finalUsageData.cache_read_input_tokens || 0,
                           cost,
                           userAgent: request.headers.get('user-agent') || undefined,
                           clientIp: getClientIP(request)

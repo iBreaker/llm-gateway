@@ -188,10 +188,15 @@ export async function recordUsage(
     requestId: string
     method: string
     endpoint: string
-    model?: string  // 添加模型字段
+    model?: string
     statusCode?: number
     responseTime?: number
-    tokensUsed?: number
+    // 详细 token 信息
+    inputTokens?: number
+    outputTokens?: number
+    cacheCreationInputTokens?: number
+    cacheReadInputTokens?: number
+    tokensUsed?: number  // 总计，保持向后兼容
     cost?: number
     errorMessage?: string
     userAgent?: string
@@ -199,6 +204,13 @@ export async function recordUsage(
   }
 ) {
   try {
+    // 计算总 tokens（如果没有提供的话）
+    const totalTokens = requestData.tokensUsed || 
+      (requestData.inputTokens || 0) + 
+      (requestData.outputTokens || 0) + 
+      (requestData.cacheCreationInputTokens || 0) + 
+      (requestData.cacheReadInputTokens || 0)
+
     await prisma.usageRecord.create({
       data: {
         apiKeyId,
@@ -206,10 +218,15 @@ export async function recordUsage(
         requestId: requestData.requestId,
         method: requestData.method,
         endpoint: requestData.endpoint,
-        model: requestData.model,  // 添加模型字段到数据库
+        model: requestData.model,
         statusCode: requestData.statusCode,
         responseTime: requestData.responseTime,
-        tokensUsed: BigInt(requestData.tokensUsed || 0),
+        // 详细 token 信息
+        inputTokens: BigInt(requestData.inputTokens || 0),
+        outputTokens: BigInt(requestData.outputTokens || 0),
+        cacheCreationInputTokens: BigInt(requestData.cacheCreationInputTokens || 0),
+        cacheReadInputTokens: BigInt(requestData.cacheReadInputTokens || 0),
+        tokensUsed: BigInt(totalTokens),
         cost: requestData.cost || 0,
         errorMessage: requestData.errorMessage,
         userAgent: requestData.userAgent,
