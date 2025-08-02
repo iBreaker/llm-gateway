@@ -78,7 +78,7 @@ model UpstreamAccount {
   userId          BigInt        @map("user_id") // 添加管理员关联
   name            String // 账号显示名称
   type            UpstreamType
-  email           String
+  email           String?
   credentials     Json // 加密存储的凭据
   config          Json          @default("{}") // 配置项：超时、重试等
   status          AccountStatus @default(PENDING)
