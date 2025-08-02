@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
 import { PrismaClient } from '@prisma/client'
 import { AnthropicClient } from '@/lib/anthropic/client'
+import { ClaudeCodeClient, validateClaudeCodeCredentials, type ClaudeCodeCredentials } from '@/lib/claude-code/client'
 
 const prisma = new PrismaClient()
 
@@ -89,6 +90,67 @@ async function performHealthCheck(account: any) {
           console.error('错误详情:', validationResult.details)
         }
         throw new Error(validationResult.error || 'API Key验证失败')
+      }
+
+      // 更新数据库中的健康状态
+      await prisma.upstreamAccount.update({
+        where: { id: account.id },
+        data: {
+          status: 'ACTIVE',
+          lastHealthCheck: new Date(),
+          healthStatus: JSON.parse(JSON.stringify(healthStatus))
+        }
+      })
+
+    } else if (account.type === 'CLAUDE_CODE') {
+      const credentials = typeof account.credentials === 'string' 
+        ? JSON.parse(account.credentials) 
+        : account.credentials
+
+      // 验证凭据格式
+      const credentialsValidation = validateClaudeCodeCredentials(credentials)
+      if (!credentialsValidation.valid) {
+        throw new Error(`凭据格式错误: ${credentialsValidation.error}`)
+      }
+
+      const client = new ClaudeCodeClient(credentials as ClaudeCodeCredentials)
+      
+      console.log(`开始检查Claude Code账号 ${account.id} (${account.name}) 的健康状态...`)
+      
+      const validationResult = await client.validateCredentials()
+      const responseTime = Date.now() - startTime
+
+      console.log(`Claude Code账号 ${account.id} 验证结果:`, validationResult)
+      console.log(`响应时间: ${responseTime}ms`)
+
+      if (validationResult.valid) {
+        const timeToExpiry = client.getFormattedTimeToExpiry()
+        const isExpiringSoon = client.isTokenExpiringSoon()
+        
+        healthStatus = {
+          status: 'success',
+          responseTime,
+          lastCheck: new Date().toISOString(),
+          message: '访问令牌验证成功',
+          tokenInfo: {
+            timeToExpiry,
+            isExpiringSoon,
+            expiresAt: new Date(credentials.expiresAt).toISOString()
+          },
+          userInfo: validationResult.userInfo
+        }
+        
+        if (isExpiringSoon) {
+          healthStatus.message += ' (令牌即将过期，建议刷新)'
+        }
+        
+        console.log(`Claude Code账号 ${account.id} 健康检查成功`)
+      } else {
+        console.error(`Claude Code账号 ${account.id} 健康检查失败: ${validationResult.error}`)
+        if (validationResult.details) {
+          console.error('错误详情:', validationResult.details)
+        }
+        throw new Error(validationResult.error || '访问令牌验证失败')
       }
 
       // 更新数据库中的健康状态

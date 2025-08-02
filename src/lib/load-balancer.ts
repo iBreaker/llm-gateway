@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 export interface UpstreamAccount {
   id: bigint
   name: string
-  type: 'ANTHROPIC_API'
+  type: 'ANTHROPIC_API' | 'CLAUDE_CODE'
   email: string
   credentials: any
   config: any
@@ -44,7 +44,7 @@ export class LoadBalancer {
    */
   async selectAccount(
     userId: bigint, 
-    accountType: 'ANTHROPIC_API',
+    accountType: 'ANTHROPIC_API' | 'CLAUDE_CODE' | 'ALL' = 'ALL',
     options: LoadBalancerOptions = {}
   ): Promise<UpstreamAccount | null> {
     
@@ -94,11 +94,16 @@ export class LoadBalancer {
     includeInactive: boolean
   ): Promise<any[]> {
     const whereClause: any = {
-      userId,
-      type: accountType
+      userId
+    }
+
+    // 如果指定了具体账号类型，添加类型过滤
+    if (accountType !== 'ALL') {
+      whereClause.type = accountType
     }
 
     if (!includeInactive) {
+      // 默认只包含ACTIVE和PENDING状态的账号，排除INACTIVE和ERROR状态
       whereClause.status = { in: ['ACTIVE', 'PENDING'] }
     }
 
