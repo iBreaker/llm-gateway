@@ -46,6 +46,8 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - POSTGRES_URL_NON_POOLING=postgresql://postgres:postgres@postgres:5432/llm_gateway
       - REDIS_URL=redis://redis:6379
     # ports:
     #   - "13000:3000"
@@ -73,6 +75,8 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - POSTGRES_URL_NON_POOLING=postgresql://postgres:postgres@postgres:5432/llm_gateway
       - REDIS_URL=redis://redis:6379
     ports:
       - "13010:3000"
