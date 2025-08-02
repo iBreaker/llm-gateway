@@ -4,10 +4,10 @@
   "description": "智能大语言模型网关服务 - 为 Claude Code 和 Gemini CLI 提供统一代理服务",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev -p 13010",
+    "dev": "next dev -H 0.0.0.0",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
-    "start": "next start -p 13010",
+    "start": "next start -H 0.0.0.0",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
