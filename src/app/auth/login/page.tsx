@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,7 +10,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isCheckingInit, setIsCheckingInit] = useState(true)
   const router = useRouter()
+
+  // 检查系统是否需要初始化
+  useEffect(() => {
+    const checkInitStatus = async () => {
+      try {
+        const response = await fetch('/api/init')
+        const data = await response.json()
+        
+        if (data.needsInit) {
+          // 需要初始化，跳转到初始化页面
+          router.replace('/init')
+          return
+        }
+      } catch (error) {
+        console.error('检查初始化状态失败:', error)
+        // 如果检查失败，继续显示登录页面
+      } finally {
+        setIsCheckingInit(false)
+      }
+    }
+
+    checkInitStatus()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,6 +64,26 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // 如果正在检查初始化状态，显示加载
+  if (isCheckingInit) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 py-12 px-4">
+        <div className="max-w-sm w-full">
+          <div className="bg-white border border-zinc-200 rounded-sm p-6">
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-zinc-900 mb-4">
+                LLM Gateway
+              </h2>
+              <p className="text-sm text-zinc-600">
+                正在检查系统状态...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

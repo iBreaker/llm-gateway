@@ -55,10 +55,10 @@ export function useInitStatus(): UseInitStatusResult {
     }
   }, [])
 
-  // 组件挂载时获取状态
+  // 组件挂载时获取状态，只执行一次
   useEffect(() => {
     fetchStatus()
-  }, [fetchStatus])
+  }, []) // 移除 fetchStatus 依赖，避免无限循环
 
   // 令牌过期检查
   useEffect(() => {

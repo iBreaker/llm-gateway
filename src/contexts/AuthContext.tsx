@@ -32,8 +32,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // 如果是登录页面，跳过认证检查
-      if (pathname === '/auth/login') {
+      // 如果是登录页面或初始化页面，跳过认证检查
+      if (pathname === '/auth/login' || pathname === '/init') {
         setIsLoading(false)
         return
       }

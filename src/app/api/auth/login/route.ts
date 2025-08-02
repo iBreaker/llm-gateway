@@ -5,6 +5,9 @@ import { generateToken } from '@/lib/auth/jwt'
 
 const prisma = new PrismaClient()
 
+// 强制动态渲染
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()

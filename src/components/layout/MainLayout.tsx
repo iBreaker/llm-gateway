@@ -13,8 +13,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const { user, isLoading, logout } = useAuth()
   const pathname = usePathname()
 
-  // 如果是登录页面，不显示主布局
-  if (pathname === '/auth/login') {
+  // 如果是登录页面或初始化页面，不显示主布局
+  if (pathname === '/auth/login' || pathname === '/init') {
     return <>{children}</>
   }
 

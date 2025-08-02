@@ -7,6 +7,9 @@ import { loadBalancer } from '@/lib/load-balancer'
 
 const prisma = new PrismaClient()
 
+// 强制动态渲染
+export const dynamic = 'force-dynamic'
+
 async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
   const requestId = nanoid()
   const startTime = Date.now()
