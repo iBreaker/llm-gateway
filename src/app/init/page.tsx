@@ -1,15 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-interface InitStatus {
-  initialized: boolean
-  userCount: number
-  needsInit: boolean
-  initToken?: string
-  tokenExpiry?: number
-}
+import { useInitStatus } from '@/lib/hooks/useInitStatus'
 
 interface InitResult {
   message: string
@@ -29,25 +22,10 @@ interface InitResult {
 
 export default function InitPage() {
   const router = useRouter()
-  const [status, setStatus] = useState<InitStatus | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { status, loading: statusLoading, error: statusError, refetch } = useInitStatus()
+  const [initLoading, setInitLoading] = useState(false)
   const [result, setResult] = useState<InitResult | null>(null)
   const [error, setError] = useState('')
-
-  // 检查初始化状态
-  useEffect(() => {
-    checkInitStatus()
-  }, [])
-
-  const checkInitStatus = async () => {
-    try {
-      const response = await fetch('/api/init')
-      const data = await response.json()
-      setStatus(data)
-    } catch (err) {
-      setError('检查初始化状态失败')
-    }
-  }
 
   const handleInit = async () => {
     if (!status?.initToken) {
@@ -55,7 +33,7 @@ export default function InitPage() {
       return
     }
 
-    setLoading(true)
+    setInitLoading(true)
     setError('')
     
     try {
@@ -83,7 +61,7 @@ export default function InitPage() {
     } catch (err) {
       setError('网络错误，请重试')
     } finally {
-      setLoading(false)
+      setInitLoading(false)
     }
   }
 
@@ -91,12 +69,32 @@ export default function InitPage() {
     router.push('/auth/login')
   }
 
-  if (!status) {
+  // 显示加载状态
+  if (statusLoading || !status) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">检查系统状态...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // 显示状态错误
+  if (statusError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <span className="text-red-500 text-3xl">❌</span>
+          <h3 className="mt-2 text-lg font-medium text-red-900">系统状态检查失败</h3>
+          <p className="mt-2 text-sm text-red-700">{statusError}</p>
+          <button
+            onClick={refetch}
+            className="mt-4 bg-red-600 text-white px-4 py-2 rounded-md text-sm hover:bg-red-700"
+          >
+            重试
+          </button>
         </div>
       </div>
     )
@@ -114,30 +112,7 @@ export default function InitPage() {
           </p>
         </div>
 
-        {/* 已初始化状态 */}
-        {status.initialized && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <span className="text-green-500 text-xl">✅</span>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">
-                  系统已初始化
-                </h3>
-                <p className="mt-1 text-sm text-green-700">
-                  系统已有 {status.userCount} 个用户账号，可以直接登录使用。
-                </p>
-                <button
-                  onClick={goToLogin}
-                  className="mt-3 bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700"
-                >
-                  前往登录
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 注意：已初始化的情况会被中间件重定向，这里不会显示 */}
 
         {/* 需要初始化状态 */}
         {status.needsInit && !result && (
@@ -156,10 +131,10 @@ export default function InitPage() {
               
               <button
                 onClick={handleInit}
-                disabled={loading}
+                disabled={initLoading}
                 className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {loading ? '初始化中...' : '创建管理员账号'}
+                {initLoading ? '初始化中...' : '创建管理员账号'}
               </button>
             </div>
           </div>
