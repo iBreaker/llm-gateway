@@ -179,3 +179,17 @@ model AuditLog {
   @@index([action, createdAt])
   @@map("audit_logs")
 }
+
+// 新增：OAuth 会话表（临时存储）
+model OAuthSession {
+  id            String   @id @default(cuid())
+  codeVerifier  String   @map("code_verifier")
+  state         String
+  codeChallenge String   @map("code_challenge")
+  provider      String   @default("CLAUDE_CODE") // 支持扩展其他 OAuth 提供商
+  expiresAt     DateTime @map("expires_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("oauth_sessions")
+}
