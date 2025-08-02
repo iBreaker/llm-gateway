@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: llm-gateway-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: llm_gateway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存 (可选)
+  redis:
+    image: redis:7-alpine
+    container_name: llm-gateway-redis
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # LLM Gateway 应用 (Dev Container 模式)
+  app:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: llm-gateway-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "13000:3000"
+    volumes:
+      # Dev Container 使用：挂载工作空间
+      - ../..:/workspaces:cached
+      - node_modules:/workspaces/llm-gateway/node_modules
+    working_dir: /workspaces/llm-gateway
+    command: sleep infinity  # Dev Container 保持运行
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 独立开发模式 (不使用 Dev Container)
+  app-standalone:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: llm-gateway-standalone
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/llm_gateway
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "13001:3000"
+    volumes:
+      - .:/app
+      - node_modules_standalone:/app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - standalone  # 只有指定 profile 时才启动
+
+volumes:
+  postgres_data:
+  redis_data:
+  node_modules:            # Dev Container 使用
+  node_modules_standalone: # 独立开发使用
