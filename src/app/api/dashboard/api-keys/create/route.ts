@@ -27,18 +27,58 @@ export async function POST(request: NextRequest) {
 
     // 首先检查或创建用户记录（将Supabase UUID映射到我们的用户表）
     const userEmail = request.headers.get('x-user-email') || ''
-    let userRecord = await db.findOne<{ id: number; email: string; username: string }>('users', { email: userEmail })
+    console.log('🔍 尝试查找用户:', userEmail)
+    
+    let userRecord: any = null
+    
+    try {
+      userRecord = await db.findOne<{ id: number; email: string; username: string }>('users', { email: userEmail })
+      console.log('✅ 用户查询结果:', userRecord ? '找到用户' : '未找到用户')
+    } catch (findError) {
+      console.error('❌ 查询用户失败:', findError)
+      
+      // 如果查询失败，尝试创建用户
+      console.log('🔄 尝试创建新用户...')
+      try {
+        userRecord = await db.create<{ id: number; email: string; username: string }>('users', {
+          email: userEmail,
+          username: userEmail.split('@')[0] || 'user',
+          password_hash: 'supabase_auth', // 标记为Supabase认证用户
+          role: 'user',
+          is_active: true
+        })
+        console.log('✅ 创建新用户记录成功:', userRecord)
+      } catch (createError) {
+        console.error('❌ 创建用户失败:', createError)
+        
+        // 如果创建也失败，返回详细错误信息
+        return NextResponse.json({
+          error: '创建API密钥失败',
+          message: '无法查询或创建用户记录',
+          details: {
+            findError: findError instanceof Error ? findError.message : '未知错误',
+            createError: createError instanceof Error ? createError.message : '未知错误',
+            userEmail: userEmail
+          },
+          recommendation: {
+            action: '请检查数据库连接和表结构',
+            steps: [
+              '1. 检查Supabase连接配置',
+              '2. 确认users表已创建',
+              '3. 检查RLS策略设置',
+              '4. 尝试手动在Supabase Dashboard中创建用户'
+            ]
+          }
+        }, { status: 500 })
+      }
+    }
     
     if (!userRecord) {
-      // 创建用户记录
-      userRecord = await db.create<{ id: number; email: string; username: string }>('users', {
-        email: userEmail,
-        username: userEmail.split('@')[0] || 'user',
-        password_hash: 'supabase_auth', // 标记为Supabase认证用户
-        role: 'user',
-        is_active: true
-      })
-      console.log('创建新用户记录:', userRecord)
+      return NextResponse.json({
+        error: '创建API密钥失败',
+        message: '无法获取用户记录',
+        details: { userEmail }
+      }, { status: 500 })
     }
 
     // 生成API密钥
@@ -58,7 +98,9 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }
 
+    console.log('🔍 尝试创建API密钥...')
     const newApiKey = await db.create('api_keys', apiKeyData)
+    console.log('✅ API密钥创建成功')
 
     return NextResponse.json({
       success: true,
@@ -68,7 +110,7 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('创建API密钥失败:', error)
+    console.error('❌ 创建API密钥失败:', error)
     
     // 提供更详细的错误信息
     let errorMessage = '未知错误'
@@ -79,7 +121,9 @@ export async function POST(request: NextRequest) {
       
       // 检查是否是表不存在的错误
       if (errorMessage.includes('relation "api_keys" does not exist') || 
-          errorMessage.includes('table "api_keys" does not exist')) {
+          errorMessage.includes('table "api_keys" does not exist') ||
+          errorMessage.includes('relation "users" does not exist') ||
+          errorMessage.includes('table "users" does not exist')) {
         errorMessage = '数据库表未创建，请先在Supabase Dashboard中执行supabase-init.sql'
         statusCode = 503 // Service Unavailable
       }
