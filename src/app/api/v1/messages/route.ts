@@ -5,6 +5,9 @@ import { AnthropicOAuthClient } from '@/lib/anthropic-oauth/client'
 import { nanoid } from 'nanoid'
 import { prisma } from '@/lib/prisma'
 import { loadBalancer } from '@/lib/load-balancer'
+import { createStreamResponse, StreamController, StreamResourceManager, StreamTextProcessor } from '@/lib/utils/stream-handler'
+import { secureLog } from '@/lib/utils/secure-logger'
+import { InputValidator, validate, sanitize } from '@/lib/utils/input-validator'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
@@ -27,9 +30,26 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
     // 解析请求体
     requestBody = await request.json()
     
+    // 安全验证用户输入
+    if (requestBody.messages && Array.isArray(requestBody.messages)) {
+      requestBody.messages = requestBody.messages.map((msg: any) => ({
+        ...msg,
+        content: typeof msg.content === 'string' ? sanitize(msg.content) : msg.content
+      }))
+    }
+    
+    if (requestBody.system && typeof requestBody.system === 'string') {
+      requestBody.system = sanitize(requestBody.system)
+    }
+    
     // 验证请求格式
     const validation = validateAnthropicRequest(requestBody)
     if (!validation.valid) {
+      secureLog.security('无效的API请求格式', 'medium', {
+        requestId,
+        validationError: validation.error,
+        apiKeyId: request.apiKey?.id
+      })
       return NextResponse.json(
         { error: 'invalid_request', message: validation.error },
         { status: 400 }
@@ -78,7 +98,13 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
 
   } catch (error: any) {
     const responseTime = Date.now() - startTime
-    console.error('Anthropic API请求失败:', error)
+    secureLog.error('Anthropic API请求失败', error, {
+      requestId,
+      endpoint: '/v1/messages',
+      upstreamAccountId: upstreamAccount?.id,
+      apiKeyId: request.apiKey?.id,
+      model: requestBody?.model
+    })
 
     // 如果已选择了上游账号，更新其错误统计
     if (upstreamAccount) {
@@ -167,7 +193,12 @@ async function handleNonStreamRequest(
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`Claude Code API错误: ${response.status} - ${errorText}`)
+      secureLog.security('Claude Code API错误', 'medium', {
+        status: response.status,
+        endpoint: 'https://api.anthropic.com/v1/messages',
+        requestId
+      })
+      throw new Error(`Claude Code API错误: ${response.status} - ${sanitize(errorText)}`)
     }
 
     anthropicResponse = await response.json()
@@ -255,230 +286,190 @@ async function handleStreamRequest(
   requestId: string,
   startTime: number
 ) {
-  // 创建流式响应
-  const encoder = new TextEncoder()
   let usageRecorded = false
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let isControllerClosed = false
+  return createStreamResponse(async (stream: StreamController) => {
+    const resources = new StreamResourceManager()
+    const textProcessor = new StreamTextProcessor()
+
+    try {
+      // 根据账号类型构建请求
+      let apiUrl: string
+      let headers: Record<string, string>
       
-      // 安全关闭 controller 的辅助函数
-      const safeClose = () => {
-        if (!isControllerClosed) {
-          try {
-            controller.close()
-            isControllerClosed = true
-          } catch (e) {
-            // 忽略重复关闭错误
-          }
+      if (upstreamAccount.type === 'ANTHROPIC_OAUTH') {
+        apiUrl = 'https://api.anthropic.com/v1/messages'
+        headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${credentials.accessToken}`,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+          'accept': 'text/event-stream',
+          'cache-control': 'no-cache',
+          // Claude Code特定headers
+          'x-stainless-retry-count': '0',
+          'x-stainless-timeout': '60',
+          'x-stainless-lang': 'js',
+          'x-stainless-package-version': '0.55.1',
+          'x-stainless-os': 'Windows',
+          'x-stainless-arch': 'x64',
+          'x-stainless-runtime': 'node',
+          'x-stainless-runtime-version': 'v20.19.2',
+          'anthropic-dangerous-direct-browser-access': 'true',
+          'x-app': 'cli',
+          'user-agent': 'claude-cli/1.0.57 (external, cli)',
+          'accept-language': '*',
+          'sec-fetch-mode': 'cors'
+        }
+      } else {
+        apiUrl = `${credentials.base_url}/v1/messages`
+        headers = {
+          'Content-Type': 'application/json',
+          'x-api-key': credentials.api_key,
+          'anthropic-version': '2023-06-01',
+          'accept': 'text/event-stream',
+          'cache-control': 'no-cache'
         }
       }
-
-      // 安全报错的辅助函数
-      const safeError = (error: Error) => {
-        if (!isControllerClosed) {
-          try {
-            controller.error(error)
-            isControllerClosed = true
-          } catch (e) {
-            // 忽略重复关闭错误
-          }
-        }
-      }
-
-      try {
-        // 根据账号类型构建请求
-        let apiUrl: string
-        let headers: Record<string, string>
-        
-        if (upstreamAccount.type === 'ANTHROPIC_OAUTH') {
-          apiUrl = 'https://api.anthropic.com/v1/messages'
-          headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${credentials.accessToken}`,
-            'anthropic-version': '2023-06-01',
-            'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
-            'accept': 'text/event-stream',
-            'cache-control': 'no-cache',
-            // Claude Code特定headers
-            'x-stainless-retry-count': '0',
-            'x-stainless-timeout': '60',
-            'x-stainless-lang': 'js',
-            'x-stainless-package-version': '0.55.1',
-            'x-stainless-os': 'Windows',
-            'x-stainless-arch': 'x64',
-            'x-stainless-runtime': 'node',
-            'x-stainless-runtime-version': 'v20.19.2',
-            'anthropic-dangerous-direct-browser-access': 'true',
-            'x-app': 'cli',
-            'user-agent': 'claude-cli/1.0.57 (external, cli)',
-            'accept-language': '*',
-            'sec-fetch-mode': 'cors'
-          }
-        } else {
-          apiUrl = `${credentials.base_url}/v1/messages`
-          headers = {
-            'Content-Type': 'application/json',
-            'x-api-key': credentials.api_key,
-            'anthropic-version': '2023-06-01',
-            'accept': 'text/event-stream',
-            'cache-control': 'no-cache'
-          }
-        }
-        
-        // 发送流式请求到上游服务
-        const upstreamResponse = await fetch(apiUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            ...requestBody,
-            stream: true
-          })
+      
+      // 发送流式请求到上游服务
+      const upstreamResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...requestBody,
+          stream: true
         })
+      })
 
-        if (!upstreamResponse.ok) {
-          const errorText = await upstreamResponse.text()
-          console.error('上游流式请求失败:', upstreamResponse.status, errorText)
-          safeError(new Error(`上游服务错误: ${upstreamResponse.status}`))
-          return
+      if (!upstreamResponse.ok) {
+        const errorText = await upstreamResponse.text()
+        secureLog.error('上游流式请求失败', undefined, {
+          status: upstreamResponse.status,
+          endpoint: apiUrl,
+          requestId,
+          error: sanitize(errorText)
+        })
+        throw new Error(`上游服务错误: ${upstreamResponse.status}`)
+      }
+
+      const reader = upstreamResponse.body?.getReader()
+      if (!reader) {
+        throw new Error('无法获取响应流')
+      }
+
+      // 添加reader到资源管理器
+      resources.addResource(() => reader.releaseLock())
+
+      let buffer = ''
+      let finalUsageData: any = null
+
+      // 处理流数据
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          break
         }
 
-        const reader = upstreamResponse.body?.getReader()
-        if (!reader) {
-          safeError(new Error('无法获取响应流'))
-          return
-        }
+        // 解码chunk并处理
+        const chunk = new TextDecoder().decode(value)
+        buffer += chunk
 
-        let buffer = ''
-        let finalUsageData: any = null
+        // 处理完整的SSE行
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 保留最后的不完整行
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            
-            if (done) {
-              break
-            }
+        for (const line of lines) {
+          // 转发SSE数据到客户端
+          if (!stream.enqueue(line + '\n')) {
+            // 流已关闭，停止处理
+            return
+          }
 
-            // 检查 controller 是否已关闭
-            if (isControllerClosed) {
-              break
-            }
-
-            // 解码chunk并处理
-            const chunk = new TextDecoder().decode(value)
-            buffer += chunk
-
-            // 处理完整的SSE行
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || '' // 保留最后的不完整行
-
-            for (const line of lines) {
-              // 检查 controller 是否已关闭
-              if (isControllerClosed) {
-                break
-              }
-
-              // 转发SSE数据到客户端
-              try {
-                controller.enqueue(encoder.encode(line + '\n'))
-              } catch (enqueueError) {
-                // 如果 enqueue 失败，说明流已关闭
-                isControllerClosed = true
-                break
-              }
-
-              // 解析使用统计数据
-              if (line.startsWith('data: ') && line.length > 6) {
-                try {
-                  const jsonStr = line.slice(6)
-                  if (jsonStr.trim() === '[DONE]') continue
-                  
-                  const data = JSON.parse(jsonStr)
-                  
-                  // 收集使用统计
-                  if (data.type === 'message_start' && data.message?.usage) {
-                    finalUsageData = {
-                      input_tokens: data.message.usage.input_tokens || 0,
-                      cache_creation_input_tokens: data.message.usage.cache_creation_input_tokens || 0,
-                      cache_read_input_tokens: data.message.usage.cache_read_input_tokens || 0,
-                      model: data.message.model
-                    }
-                  }
-                  
-                  if (data.type === 'message_delta' && data.usage?.output_tokens !== undefined) {
-                    if (finalUsageData) {
-                      finalUsageData.output_tokens = data.usage.output_tokens || 0
-                      
-                      // 记录完整的使用统计
-                      if (!usageRecorded) {
-                        const responseTime = Date.now() - startTime
-                        
-                        const anthropicClient = new AnthropicClient(credentials.api_key, credentials.base_url)
-                        const cost = anthropicClient.calculateCost(
-                          finalUsageData.model || requestBody.model,
-                          finalUsageData.input_tokens || 0,
-                          finalUsageData.output_tokens || 0
-                        )
-
-                        // 异步记录使用统计
-                        recordUsage(request.apiKey!.id, upstreamAccount.id, {
-                          requestId,
-                          method: request.method,
-                          endpoint: '/v1/messages',
-                          model: finalUsageData.model || requestBody.model,
-                          statusCode: 200,
-                          responseTime,
-                          // 详细 token 信息
-                          inputTokens: finalUsageData.input_tokens || 0,
-                          outputTokens: finalUsageData.output_tokens || 0,
-                          cacheCreationInputTokens: finalUsageData.cache_creation_input_tokens || 0,
-                          cacheReadInputTokens: finalUsageData.cache_read_input_tokens || 0,
-                          cost,
-                          userAgent: request.headers.get('user-agent') || undefined,
-                          clientIp: getClientIP(request)
-                        }).catch(error => {
-                          console.error('记录使用统计失败:', error)
-                        })
-
-                        // 更新账号使用统计
-                        loadBalancer.updateAccountUsage(upstreamAccount.id, true, responseTime).catch(error => {
-                          console.error('更新账号统计失败:', error)
-                        })
-
-                        usageRecorded = true
-                      }
-                    }
-                  }
-                } catch (parseError) {
-                  // 忽略JSON解析错误，继续处理
+          // 解析使用统计数据
+          if (line.startsWith('data: ') && line.length > 6) {
+            try {
+              const jsonStr = line.slice(6)
+              if (jsonStr.trim() === '[DONE]') continue
+              
+              const data = JSON.parse(jsonStr)
+              
+              // 收集使用统计
+              if (data.type === 'message_start' && data.message?.usage) {
+                finalUsageData = {
+                  input_tokens: data.message.usage.input_tokens || 0,
+                  cache_creation_input_tokens: data.message.usage.cache_creation_input_tokens || 0,
+                  cache_read_input_tokens: data.message.usage.cache_read_input_tokens || 0,
+                  model: data.message.model
                 }
               }
+              
+              if (data.type === 'message_delta' && data.usage?.output_tokens !== undefined) {
+                if (finalUsageData) {
+                  finalUsageData.output_tokens = data.usage.output_tokens || 0
+                  
+                  // 记录完整的使用统计
+                  if (!usageRecorded) {
+                    const responseTime = Date.now() - startTime
+                    
+                    const anthropicClient = new AnthropicClient(credentials.api_key, credentials.base_url)
+                    const cost = anthropicClient.calculateCost(
+                      finalUsageData.model || requestBody.model,
+                      finalUsageData.input_tokens || 0,
+                      finalUsageData.output_tokens || 0
+                    )
+
+                    // 异步记录使用统计
+                    recordUsage(request.apiKey!.id, upstreamAccount.id, {
+                      requestId,
+                      method: request.method,
+                      endpoint: '/v1/messages',
+                      model: finalUsageData.model || requestBody.model,
+                      statusCode: 200,
+                      responseTime,
+                      // 详细 token 信息
+                      inputTokens: finalUsageData.input_tokens || 0,
+                      outputTokens: finalUsageData.output_tokens || 0,
+                      cacheCreationInputTokens: finalUsageData.cache_creation_input_tokens || 0,
+                      cacheReadInputTokens: finalUsageData.cache_read_input_tokens || 0,
+                      cost,
+                      userAgent: request.headers.get('user-agent') || undefined,
+                      clientIp: getClientIP(request)
+                    }).catch(error => {
+                      secureLog.error('记录使用统计失败', error, { requestId })
+                    })
+
+                    // 更新账号使用统计
+                    loadBalancer.updateAccountUsage(upstreamAccount.id, true, responseTime).catch(error => {
+                      secureLog.error('更新账号统计失败', error, { requestId, accountId: upstreamAccount.id })
+                    })
+
+                    usageRecorded = true
+                  }
+                }
+              }
+            } catch (parseError) {
+              // 忽略JSON解析错误，继续处理
             }
           }
-
-          // 处理剩余的buffer
-          if (buffer.trim() && !isControllerClosed) {
-            try {
-              controller.enqueue(encoder.encode(buffer))
-            } catch (enqueueError) {
-              // 如果 enqueue 失败，说明流已关闭
-              isControllerClosed = true
-            }
-          }
-
-        } finally {
-          reader.releaseLock()
         }
-
-        // 正常结束，关闭流
-        safeClose()
-
-      } catch (error) {
-        console.error('流式处理错误:', error)
-        safeError(error as Error)
       }
+
+      // 处理剩余的buffer
+      if (buffer.trim()) {
+        stream.enqueue(buffer)
+      }
+
+    } catch (error) {
+      secureLog.error('流式处理错误', error as Error, {
+        requestId,
+        upstreamAccountId: upstreamAccount.id,
+        endpoint: '/v1/messages'
+      })
+      throw error
+    } finally {
+      resources.cleanup()
     }
   })
 
@@ -494,18 +485,36 @@ async function handleStreamRequest(
 }
 
 /**
- * 获取客户端IP地址
+ * 获取客户端IP地址（安全版本）
  */
 function getClientIP(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for')
   const realIP = request.headers.get('x-real-ip')
   const remoteAddress = request.headers.get('x-remote-address')
+  const cfIP = request.headers.get('cf-connecting-ip')
+  
+  let clientIP = 'unknown'
   
   if (forwarded) {
-    return forwarded.split(',')[0].trim()
+    clientIP = forwarded.split(',')[0].trim()
+  } else if (cfIP) {
+    clientIP = cfIP.trim()
+  } else if (realIP) {
+    clientIP = realIP.trim()
+  } else if (remoteAddress) {
+    clientIP = remoteAddress.trim()
   }
   
-  return realIP || remoteAddress || 'unknown'
+  // 验证IP格式
+  if (clientIP !== 'unknown' && !InputValidator.validateIP(clientIP)) {
+    secureLog.security('无效的客户端IP格式', 'low', { 
+      invalidIP: sanitize(clientIP),
+      userAgent: request.headers.get('user-agent')
+    })
+    return 'invalid'
+  }
+  
+  return clientIP
 }
 
 export const POST = withApiKey(handleAnthropicMessages as any, { 

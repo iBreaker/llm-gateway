@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { UserRole } from '@prisma/client';
 import { ServiceError, PaginatedResponse, PaginationParams, SortParams } from './index';
+import { formatUser, formatUsers, formatPaginatedResponse } from '@/lib/utils/response-formatter';
+import { toBigInt, parseRequestId, formatEntityWithId } from '@/lib/utils/id-converter';
 
 // 用户相关类型定义
 export interface CreateUserData {
@@ -193,10 +195,11 @@ export class UserService {
   /**
    * 根据ID获取用户
    */
-  static async getUserById(userId: bigint): Promise<UserPublicInfo | null> {
+  static async getUserById(userId: string | number | bigint): Promise<UserPublicInfo | null> {
     try {
+      const id = toBigInt(userId);
       const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id },
         select: {
           id: true,
           email: true,
@@ -238,7 +241,7 @@ export class UserService {
   /**
    * 更新用户信息
    */
-  static async updateUser(userId: bigint, updateData: UpdateUserData): Promise<UserPublicInfo> {
+  static async updateUser(userId: string | number | bigint, updateData: UpdateUserData): Promise<UserPublicInfo> {
     // 检查用户是否存在
     const existingUser = await this.getUserById(userId);
     if (!existingUser) {
@@ -275,8 +278,9 @@ export class UserService {
         delete updatePayload.password;
       }
 
+      const id = toBigInt(userId);
       const user = await prisma.user.update({
-        where: { id: userId },
+        where: { id },
         data: updatePayload,
         select: {
           id: true,
@@ -304,10 +308,11 @@ export class UserService {
   /**
    * 删除用户
    */
-  static async deleteUser(userId: bigint): Promise<boolean> {
+  static async deleteUser(userId: string | number | bigint): Promise<boolean> {
     try {
+      const id = toBigInt(userId);
       await prisma.user.delete({
-        where: { id: userId }
+        where: { id }
       });
       return true;
     } catch (error: any) {
@@ -349,22 +354,13 @@ export class UserService {
    * 格式化用户信息（移除敏感数据，统一格式）
    */
   private static formatUserInfo(user: any): UserPublicInfo {
-    return {
-      id: user.id.toString(),
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      isActive: user.isActive,
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-      lastLoginAt: null // TODO: 实现登录日志功能后从数据库获取
-    };
+    return formatUser(user);
   }
 
   /**
    * 检查用户是否有指定权限
    */
-  static async hasPermission(userId: bigint, requiredRoles: UserRole[]): Promise<boolean> {
+  static async hasPermission(userId: string | number | bigint, requiredRoles: UserRole[]): Promise<boolean> {
     const user = await this.getUserById(userId);
     return user ? requiredRoles.includes(user.role as UserRole) : false;
   }
