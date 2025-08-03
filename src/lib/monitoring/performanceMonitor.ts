@@ -426,8 +426,9 @@ export class PerformanceMonitor {
   private cleanupExpiredMetrics(): void {
     const cutoff = Date.now() - (24 * 60 * 60 * 1000) // 24小时前
 
-    for (const [name, metricList] of this.metrics.entries()) {
-      const filteredMetrics = metricList.filter(m => m.timestamp >= cutoff)
+    const entries = Array.from(this.metrics.entries())
+    for (const [name, metricList] of entries) {
+      const filteredMetrics = metricList.filter((m: any) => m.timestamp >= cutoff)
       
       if (filteredMetrics.length !== metricList.length) {
         this.metrics.set(name, filteredMetrics)

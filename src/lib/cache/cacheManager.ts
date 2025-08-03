@@ -156,7 +156,8 @@ export class CacheManager {
     let oldestKey = ''
     let oldestTime = Date.now()
 
-    for (const [key, item] of this.cache.entries()) {
+    const entries = Array.from(this.cache.entries())
+    for (const [key, item] of entries) {
       if (item.lastAccess < oldestTime) {
         oldestTime = item.lastAccess
         oldestKey = key
@@ -175,7 +176,8 @@ export class CacheManager {
     const now = Date.now()
     let cleanedCount = 0
 
-    for (const [key, item] of this.cache.entries()) {
+    const entries = Array.from(this.cache.entries())
+    for (const [key, item] of entries) {
       if (now > item.expiry) {
         this.cache.delete(key)
         cleanedCount++

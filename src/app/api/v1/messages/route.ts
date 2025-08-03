@@ -8,6 +8,7 @@ import { loadBalancer } from '@/lib/load-balancer'
 import { createStreamResponse, StreamController, StreamResourceManager, StreamTextProcessor } from '@/lib/utils/stream-handler'
 import { secureLog } from '@/lib/utils/secure-logger'
 import { InputValidator, validate, sanitize } from '@/lib/utils/input-validator'
+import { performanceMonitor } from '@/lib/monitoring/performanceMonitor'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,13 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
   const startTime = Date.now()
   let upstreamAccount: any = null
   let requestBody: any = null
+
+  // 开始性能监控
+  performanceMonitor.startRequest(requestId, '/v1/messages', request.method, {
+    userAgent: request.headers.get('user-agent') || undefined,
+    clientIP: getClientIP(request),
+    apiKeyId: request.apiKey?.id?.toString()
+  })
   
   try {
     // 检查权限
@@ -98,6 +106,14 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
 
   } catch (error: any) {
     const responseTime = Date.now() - startTime
+    
+    // 结束性能监控（错误情况）
+    performanceMonitor.endRequest(requestId, 500, {
+      upstreamAccountId: upstreamAccount?.id?.toString(),
+      model: requestBody?.model,
+      error: error.message
+    })
+    
     secureLog.error('Anthropic API请求失败', error, {
       requestId,
       endpoint: '/v1/messages',
@@ -256,6 +272,15 @@ async function handleNonStreamRequest(
 
   // 使用负载均衡器更新账号使用统计
   await loadBalancer.updateAccountUsage(upstreamAccount.id, true, responseTime)
+
+  // 结束性能监控（成功情况）
+  performanceMonitor.endRequest(requestId, 200, {
+    upstreamAccountId: upstreamAccount.id?.toString(),
+    model: requestBody.model,
+    inputTokens,
+    outputTokens,
+    cost
+  })
 
   return NextResponse.json(anthropicResponse)
 }
@@ -470,16 +495,6 @@ async function handleStreamRequest(
       throw error
     } finally {
       resources.cleanup()
-    }
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'X-Accel-Buffering': 'no'
     }
   })
 }
