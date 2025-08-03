@@ -28,9 +28,12 @@ const customJestConfig = {
       statements: 75,
     },
   },
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(nanoid)/)'
+  ],
   testTimeout: 30000,
   clearMocks: true,
   resetMocks: true,
