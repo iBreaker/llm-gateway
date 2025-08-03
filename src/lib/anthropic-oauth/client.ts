@@ -3,7 +3,7 @@
  */
 
 export interface AnthropicOAuthCredentials {
-  type: 'ANTHROPIC_OAUTH'
+  type: 'ANTHROPIC_OAUTH' | 'CLAUDE_CODE'
   accessToken: string
   refreshToken: string
   expiresAt: number
@@ -171,16 +171,16 @@ export class AnthropicOAuthClient {
       const response = await fetch('https://console.anthropic.com/v1/oauth/token', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'claude-cli/1.0.56 (external, cli)',
           'Accept': 'application/json',
           'Origin': 'https://claude.ai',
           'Referer': 'https://claude.ai/'
         },
-        body: JSON.stringify({
+        body: new URLSearchParams({
           grant_type: 'refresh_token',
           refresh_token: this.credentials.refreshToken
-        })
+        }).toString()
       })
 
       if (!response.ok) {
@@ -200,7 +200,7 @@ export class AnthropicOAuthClient {
       const expiresAt = Date.now() + (tokenData.expires_in * 1000)
       
       const newCredentials: AnthropicOAuthCredentials = {
-        type: 'ANTHROPIC_OAUTH',
+        type: this.credentials.type, // 保持原来的类型
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token || this.credentials.refreshToken, // 某些实现可能不返回新的refresh token
         expiresAt,
@@ -282,8 +282,8 @@ export function validateAnthropicOAuthCredentials(credentials: any): { valid: bo
     return { valid: false, error: '凭据格式无效' }
   }
 
-  if (credentials.type !== 'ANTHROPIC_OAUTH') {
-    return { valid: false, error: '凭据类型不是 ANTHROPIC_OAUTH' }
+  if (credentials.type !== 'ANTHROPIC_OAUTH' && credentials.type !== 'CLAUDE_CODE') {
+    return { valid: false, error: `不支持的凭据类型: ${credentials.type}` }
   }
 
   if (!credentials.accessToken || typeof credentials.accessToken !== 'string') {

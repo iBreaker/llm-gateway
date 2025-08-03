@@ -138,12 +138,13 @@ export class OAuthTokenManager {
       // 解析凭据
       const creds = typeof credentials === 'object' ? credentials : JSON.parse(credentials as string)
       
-      if (creds.type !== 'ANTHROPIC_OAUTH') {
+      // 检查是否是支持的OAuth类型
+      if (creds.type !== 'ANTHROPIC_OAUTH' && creds.type !== 'CLAUDE_CODE') {
         return {
           accountId,
           success: false,
           refreshed: false,
-          error: '不是OAuth类型账号'
+          error: `不支持的凭据类型: ${creds.type}`
         }
       }
 
@@ -234,7 +235,7 @@ export class OAuthTokenManager {
       await this.prisma.upstreamAccount.update({
         where: { id: accountId },
         data: {
-          status: 'FAILED' as any,
+          status: 'ERROR' as any,
           healthStatus: {
             status: 'error',
             lastCheck: new Date().toISOString(),
