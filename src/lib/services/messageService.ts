@@ -143,8 +143,14 @@ export class MessageService {
       let credentials: any
 
       if (account.type === 'ANTHROPIC_OAUTH') {
-        const oauthClient = new AnthropicOAuthClient({ accessToken: '', refreshToken: '', expiresAt: 0 })
         credentials = JSON.parse(account.credentials as string)
+        const oauthClient = new AnthropicOAuthClient({
+          type: 'ANTHROPIC_OAUTH',
+          accessToken: credentials.accessToken,
+          refreshToken: credentials.refreshToken,
+          expiresAt: credentials.expiresAt,
+          scopes: credentials.scopes || []
+        })
       } else {
         credentials = JSON.parse(account.credentials as string)
       }

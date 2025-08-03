@@ -28,12 +28,8 @@ const customJestConfig = {
       statements: 75,
     },
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(nanoid|uuid)/)'
-  ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^nanoid$': '<rootDir>/node_modules/nanoid/index.js',
   },
   testTimeout: 30000,
   clearMocks: true,
