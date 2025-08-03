@@ -437,7 +437,8 @@ export class PerformanceMonitor {
 
     // 清理过期的请求指标（超过1小时未完成的请求）
     const requestCutoff = Date.now() - (60 * 60 * 1000)
-    for (const [requestId, metric] of this.requestMetrics.entries()) {
+    const requestEntries = Array.from(this.requestMetrics.entries())
+    for (const [requestId, metric] of requestEntries) {
       if (metric.startTime < requestCutoff) {
         this.requestMetrics.delete(requestId)
       }
@@ -571,7 +572,8 @@ export class PerformanceMonitor {
     summary: Record<string, any>
   } {
     const allMetrics: PerformanceMetric[] = []
-    for (const metricList of this.metrics.values()) {
+    const metricValues = Array.from(this.metrics.values())
+    for (const metricList of metricValues) {
       allMetrics.push(...metricList)
     }
 

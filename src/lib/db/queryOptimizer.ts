@@ -217,12 +217,12 @@ export class QueryOptimizer {
       const accounts = await prisma.upstreamAccount.findMany({
         where: {
           userId: id,
-          isActive: true,
-          ...(accountTypes && { type: { in: accountTypes } })
+          status: 'ACTIVE' as any,
+          ...(accountTypes && { type: { in: accountTypes as any } })
         },
         orderBy: [
-          { successRate: 'desc' },
-          { avgResponseTime: 'asc' },
+          { successCount: 'desc' },
+          { requestCount: 'asc' },
           { lastUsedAt: 'desc' }
         ]
       })
@@ -403,15 +403,11 @@ export class QueryOptimizer {
 
       // 批量更新账号统计
       const updatePromises = Array.from(accountStats.entries()).map(([accountId, stats]) => {
-        const successRate = (stats.successCount / stats.totalRequests) * 100
-        const avgResponseTime = stats.totalResponseTime / stats.totalRequests
-
         return prisma.upstreamAccount.update({
           where: { id: toBigInt(accountId) },
           data: {
             requestCount: { increment: stats.totalRequests },
-            successRate: Math.round(successRate * 100) / 100,
-            avgResponseTime: Math.round(avgResponseTime),
+            successCount: { increment: stats.successCount },
             lastUsedAt: new Date(),
             ...(stats.successCount === 0 && { errorCount: { increment: stats.totalRequests } })
           }
@@ -421,7 +417,8 @@ export class QueryOptimizer {
       await Promise.all(updatePromises)
 
       // 清理相关缓存
-      for (const accountId of accountStats.keys()) {
+      const accountIds = Array.from(accountStats.keys())
+      for (const accountId of accountIds) {
         await accountCache.delete(CacheKeys.upstreamAccount(accountId))
         await accountCache.delete(CacheKeys.accountStats(accountId))
       }

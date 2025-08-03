@@ -59,7 +59,7 @@ export function isValidId(id: unknown): id is string | number | bigint {
     }
     
     if (typeof id === 'bigint') {
-      return id >= 0n
+      return id >= BigInt(0)
     }
     
     if (typeof id === 'number') {

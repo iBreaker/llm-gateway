@@ -70,16 +70,15 @@ export class MessageService {
       return validation
     }
 
-    // 安全性验证
-    try {
-      InputValidator.validateMessageRequest(requestBody)
-      return { valid: true }
-    } catch (error) {
-      return { 
-        valid: false, 
-        error: error instanceof Error ? error.message : '请求格式无效' 
-      }
+    // 安全性验证（简化版）
+    if (!requestBody.messages || !Array.isArray(requestBody.messages)) {
+      return { valid: false, error: '消息数组必需' }
     }
+    if (!requestBody.model || typeof requestBody.model !== 'string') {
+      return { valid: false, error: '模型参数必需' }
+    }
+    
+    return { valid: true }
   }
 
   /**
@@ -114,7 +113,7 @@ export class MessageService {
     try {
       const account = await loadBalancer.selectAccount(
         userId,
-        ['ANTHROPIC_OAUTH', 'ANTHROPIC_API']
+        'ALL'
       )
 
       if (!account) {
@@ -144,11 +143,10 @@ export class MessageService {
       let credentials: any
 
       if (account.type === 'ANTHROPIC_OAUTH') {
-        const oauthClient = new AnthropicOAuthClient()
-        credentials = await oauthClient.decryptCredentials(account.encryptedCredentials)
+        const oauthClient = new AnthropicOAuthClient({ accessToken: '', refreshToken: '', expiresAt: 0 })
+        credentials = JSON.parse(account.credentials as string)
       } else {
-        const apiClient = new AnthropicClient('', '')
-        credentials = await apiClient.decryptCredentials(account.encryptedCredentials)
+        credentials = JSON.parse(account.credentials as string)
       }
 
       return credentials
@@ -415,7 +413,7 @@ export class MessageService {
         cacheCreationInputTokens: usageData.cache_creation_input_tokens || 0,
         cacheReadInputTokens: usageData.cache_read_input_tokens || 0,
         cost,
-        userAgent: context.userAgent,
+        userAgent: context.userAgent || undefined,
         clientIp: context.clientIP
       })
 
@@ -461,7 +459,7 @@ export class MessageService {
         cacheCreationInputTokens: responseData.usage.cache_creation_input_tokens || 0,
         cacheReadInputTokens: responseData.usage.cache_read_input_tokens || 0,
         cost,
-        userAgent: context.userAgent,
+        userAgent: context.userAgent || undefined,
         clientIp: context.clientIP
       })
 

@@ -248,7 +248,7 @@ export class UserService {
       const conflicts = await prisma.user.findFirst({
         where: {
           AND: [
-            { id: { not: userId } }, // 排除当前用户
+            { id: { not: toBigInt(userId) } }, // 排除当前用户
             {
               OR: [
                 updateData.email ? { email: updateData.email } : {},
@@ -349,7 +349,7 @@ export class UserService {
    * 格式化用户信息（移除敏感数据，统一格式）
    */
   private static formatUserInfo(user: any): UserPublicInfo {
-    return formatUser(user);
+    return formatUser(user) as UserPublicInfo;
   }
 
   /**
