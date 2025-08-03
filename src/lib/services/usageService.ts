@@ -34,6 +34,7 @@ export interface UsageStats {
 export interface DetailedStats {
   requestsByHour: Array<{ hour: string; count: number }>;
   requestsByModel: Array<{ model: string; count: number }>;
+  requestsByDate: Array<{ date: string; count: number }>; // 添加前端期望的字段
   topEndpoints: Array<{ endpoint: string; count: number }>;
   errorsByType: Array<{ errorType: string; count: number }>;
   costBreakdown: Array<{ period: string; cost: number }>;
@@ -42,6 +43,12 @@ export interface DetailedStats {
     totalOutputTokens: number;
     totalCacheTokens: number;
   };
+  // 为前端兼容性添加的字段
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  averageResponseTime: number;
+  totalCost: number;
 }
 
 export interface UsageListParams extends PaginationParams, SortParams {
@@ -174,6 +181,31 @@ export class UsageService {
         whereClause.apiKey = { userId };
       }
 
+      // 获取基础统计信息
+      const [
+        totalRequests,
+        successfulRequests,
+        failedRequests,
+        avgResponseResult,
+        totalCostResult
+      ] = await Promise.all([
+        prisma.usageRecord.count({ where: whereClause }),
+        prisma.usageRecord.count({ 
+          where: { ...whereClause, statusCode: { lt: 400 } } 
+        }),
+        prisma.usageRecord.count({ 
+          where: { ...whereClause, statusCode: { gte: 400 } } 
+        }),
+        prisma.usageRecord.aggregate({
+          where: { ...whereClause, responseTime: { not: null } },
+          _avg: { responseTime: true }
+        }),
+        prisma.usageRecord.aggregate({
+          where: whereClause,
+          _sum: { cost: true }
+        })
+      ]);
+
       // 获取过去24小时的请求分布
       const past24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const requestsByHour = await prisma.usageRecord.groupBy({
@@ -185,8 +217,22 @@ export class UsageService {
         _count: { requestId: true }
       });
 
+      // 获取过去7天的请求分布（用于 requestsByDate）
+      const past7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const requestsByDate = await prisma.usageRecord.groupBy({
+        by: ['createdAt'],
+        where: {
+          ...whereClause,
+          createdAt: { gte: past7Days }
+        },
+        _count: { requestId: true }
+      });
+
       // 按小时聚合数据
       const hourlyStats = this.aggregateByHour(requestsByHour);
+      
+      // 按日期聚合数据
+      const dailyStats = this.aggregateByDay(requestsByDate);
 
       // 按模型统计请求数
       const requestsByModel = await prisma.usageRecord.groupBy({
@@ -221,7 +267,6 @@ export class UsageService {
       });
 
       // 成本分解（过去7天）
-      const past7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const costBreakdown = await prisma.usageRecord.groupBy({
         by: ['createdAt'],
         where: {
@@ -243,7 +288,16 @@ export class UsageService {
       });
 
       return {
+        // 前端兼容性字段
+        totalRequests,
+        successfulRequests,
+        failedRequests,
+        averageResponseTime: Math.round(avgResponseResult._avg.responseTime || 0),
+        totalCost: Number(totalCostResult._sum.cost || 0),
+        
+        // 详细统计数据
         requestsByHour: hourlyStats,
+        requestsByDate: dailyStats, // 前端期望的字段
         requestsByModel: requestsByModel.map(item => ({
           model: item.model || 'unknown',
           count: item._count.requestId
@@ -449,6 +503,30 @@ export class UsageService {
     return Object.entries(hourlyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([hour, count]) => ({ hour, count }));
+  }
+
+  /**
+   * 按日期聚合数据
+   */
+  private static aggregateByDay(records: any[]): Array<{ date: string; count: number }> {
+    const dailyData: Record<string, number> = {};
+    
+    // 初始化过去7天的数据
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const dayKey = day.toISOString().slice(0, 10);
+      dailyData[dayKey] = 0;
+    }
+
+    // 聚合实际数据
+    records.forEach(record => {
+      const day = new Date(record.createdAt).toISOString().slice(0, 10);
+      dailyData[day] = (dailyData[day] || 0) + record._count.requestId;
+    });
+
+    return Object.entries(dailyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
   }
 
   /**
