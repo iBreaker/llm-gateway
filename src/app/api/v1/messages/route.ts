@@ -110,8 +110,6 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
       { error: 'internal_error', message: '服务器内部错误' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
