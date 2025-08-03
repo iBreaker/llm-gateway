@@ -89,7 +89,7 @@ export async function GET() {
       
       const expiresAt = new Date(credentials.expiresAt)
       const now = new Date()
-      const timeLeft = expiresAt - now
+      const timeLeft = expiresAt.getTime() - now.getTime()
 
       return {
         id: account.id.toString(),
