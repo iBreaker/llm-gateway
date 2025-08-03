@@ -100,8 +100,8 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
       // 流式响应处理，带故障转移机制
       return handleStreamRequestWithFailover(requestBody, credentials, upstreamAccount, request, requestId, startTime)
     } else {
-      // 非流式响应处理
-      return handleNonStreamRequest(requestBody, credentials, upstreamAccount, request, requestId, startTime)
+      // 非流式响应处理，带故障转移机制
+      return handleNonStreamRequestWithFailover(requestBody, credentials, upstreamAccount, request, requestId, startTime)
     }
 
   } catch (error: any) {
@@ -140,21 +140,157 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
       clientIp: getClientIP(request)
     })
 
-    // 根据错误类型返回不同的状态码
-    if (error.message.includes('API错误')) {
-      return NextResponse.json(
-        { error: 'upstream_error', message: error.message },
-        { status: 502 }
-      )
-    }
-
+    // 解析错误类型并返回相应状态码
+    const statusMatch = error.message.match(/(\d{3})/)
+    const statusCode = statusMatch ? parseInt(statusMatch[1]) : 500
+    const parsedError = parseUpstreamError(error.message, statusCode)
+    
     return NextResponse.json(
-      { error: 'internal_error', message: '服务器内部错误' },
-      { status: 500 }
+      { 
+        error: parsedError.errorType, 
+        message: parsedError.message,
+        details: error.message
+      },
+      { status: parsedError.status }
     )
   }
 }
 
+
+/**
+ * 分析上游API错误并返回相应的状态码和消息
+ */
+function parseUpstreamError(errorMessage: string, statusCode: number): { 
+  status: number, 
+  errorType: string, 
+  message: string,
+  shouldFailover: boolean 
+} {
+  const lowerError = errorMessage.toLowerCase()
+  
+  // 认证错误 - 需要故障转移
+  if (statusCode === 401 || lowerError.includes('unauthorized') || lowerError.includes('invalid api key')) {
+    return {
+      status: 401,
+      errorType: 'authentication_error',
+      message: '认证失败，请检查API密钥',
+      shouldFailover: true
+    }
+  }
+  
+  // 权限错误 - 需要故障转移
+  if (statusCode === 403 || lowerError.includes('forbidden') || lowerError.includes('permission')) {
+    return {
+      status: 403,
+      errorType: 'permission_error', 
+      message: '权限不足，请检查API密钥权限',
+      shouldFailover: true
+    }
+  }
+  
+  // 率限制错误 - 不需要故障转移，直接透传
+  if (statusCode === 429 || lowerError.includes('rate limit') || lowerError.includes('quota')) {
+    return {
+      status: 429,
+      errorType: 'rate_limit_exceeded',
+      message: '请求频率过高，请稍后再试',
+      shouldFailover: false
+    }
+  }
+  
+  // 模型不存在或不可用
+  if (statusCode === 404 || lowerError.includes('model') && lowerError.includes('not found')) {
+    return {
+      status: 400,
+      errorType: 'model_not_found',
+      message: '模型不存在或不可用',
+      shouldFailover: false
+    }
+  }
+  
+  // 请求格式错误
+  if (statusCode === 400 || lowerError.includes('bad request') || lowerError.includes('invalid request')) {
+    return {
+      status: 400,
+      errorType: 'invalid_request',
+      message: '请求格式错误',
+      shouldFailover: false
+    }
+  }
+  
+  // 上游服务错误 - 可能需要故障转移
+  if (statusCode >= 500) {
+    return {
+      status: 502,
+      errorType: 'upstream_error',
+      message: '上游服务暂时不可用',
+      shouldFailover: true
+    }
+  }
+  
+  // 其他错误
+  return {
+    status: 502,
+    errorType: 'upstream_error',
+    message: errorMessage,
+    shouldFailover: false
+  }
+}
+
+/**
+ * 带故障转移的非流式请求处理器
+ */
+async function handleNonStreamRequestWithFailover(
+  requestBody: any,
+  credentials: any,
+  upstreamAccount: any,
+  request: ApiKeyAuthRequest,
+  requestId: string,
+  startTime: number
+): Promise<NextResponse> {
+  try {
+    // 尝试使用当前账号
+    return await handleNonStreamRequest(requestBody, credentials, upstreamAccount, request, requestId, startTime, false)
+  } catch (error: any) {
+    console.log('非流式请求错误:', error.message)
+    
+    // 解析错误类型
+    const statusMatch = error.message.match(/(\d{3})/)
+    const statusCode = statusMatch ? parseInt(statusMatch[1]) : 500
+    const parsedError = parseUpstreamError(error.message, statusCode)
+    
+    // 如果需要故障转移且有可用的API密钥
+    if (parsedError.shouldFailover && request.apiKey) {
+      console.log(`账号 ${upstreamAccount.id} 出现错误，尝试故障转移...`)
+      
+      const alternativeAccount = await loadBalancer.markAccountFailedAndSelectAlternative(
+        upstreamAccount.id,
+        request.apiKey.userId,
+        'ALL'
+      )
+      
+      if (alternativeAccount) {
+        console.log(`故障转移到账号 ${alternativeAccount.id}，重新发起请求`)
+        const newCredentials = typeof alternativeAccount.credentials === 'object' 
+          ? alternativeAccount.credentials 
+          : JSON.parse(alternativeAccount.credentials as string)
+        
+        // 使用新账号重新尝试，标记为故障转移尝试
+        return await handleNonStreamRequest(requestBody, newCredentials, alternativeAccount, request, requestId, startTime, true)
+      }
+    }
+    
+    // 直接返回解析后的错误（不再故障转移或无可用账号）
+    return NextResponse.json(
+      { 
+        error: parsedError.errorType,
+        message: parsedError.message,
+        details: error.message
+      },
+      { status: parsedError.status }
+    )
+  }
+}
 
 /**
  * 处理非流式请求
@@ -165,8 +301,9 @@ async function handleNonStreamRequest(
   upstreamAccount: any,
   request: ApiKeyAuthRequest,
   requestId: string,
-  startTime: number
-) {
+  startTime: number,
+  isFailoverAttempt: boolean = false
+): Promise<NextResponse> {
   let anthropicResponse: any
   let cost: number = 0
 
