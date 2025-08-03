@@ -8,8 +8,27 @@ interface UsageStats {
   failedRequests: number
   averageResponseTime: number
   totalCost: number
-  requestsByModel: { model: string; count: number }[]
-  requestsByDate: { date: string; count: number }[]
+  // Token统计
+  totalTokens: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheCreationTokens: number
+  totalCacheReadTokens: number
+  averageTokensPerRequest: number
+  // 按类型分组
+  requestsByModel: { model: string; count: number; tokens: number; cost: number }[]
+  requestsByDate: { date: string; count: number; tokens: number; cost: number }[]
+  // 账号效率
+  accountStats: {
+    id: string
+    name: string
+    type: string
+    requestCount: number
+    totalTokens: number
+    totalCost: number
+    averageTokensPerRequest: number
+    averageCostPerRequest: number
+  }[]
 }
 
 export default function StatsPage() {
@@ -70,10 +89,15 @@ export default function StatsPage() {
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="总请求数"
           value={stats?.totalRequests || 0}
+        />
+        <StatCard
+          title="Token总量"
+          value={`${(stats?.totalTokens || 0).toLocaleString()}`}
+          subtitle={`平均 ${(stats?.averageTokensPerRequest || 0).toFixed(0)} /请求`}
         />
         <StatCard
           title="成功率"
@@ -85,11 +109,51 @@ export default function StatsPage() {
         />
         <StatCard
           title="总费用"
-          value={`$${(stats?.totalCost || 0).toFixed(2)}`}
+          value={`$${(stats?.totalCost || 0).toFixed(4)}`}
+          subtitle={`平均 $${stats?.totalRequests ? (stats.totalCost / stats.totalRequests).toFixed(4) : '0.0000'} /请求`}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Token详细统计 */}
+      <div className="bg-white border border-zinc-200 rounded-sm">
+        <div className="p-4 border-b border-zinc-200">
+          <h2 className="text-base font-semibold text-zinc-900">Token使用详情</h2>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <p className="text-xs text-zinc-500 uppercase tracking-wide">输入Token</p>
+              <p className="text-lg font-bold text-blue-600 mt-1">{(stats?.totalInputTokens || 0).toLocaleString()}</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {stats?.totalTokens ? ((stats.totalInputTokens / stats.totalTokens) * 100).toFixed(1) : 0}% 占比
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase tracking-wide">输出Token</p>
+              <p className="text-lg font-bold text-green-600 mt-1">{(stats?.totalOutputTokens || 0).toLocaleString()}</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {stats?.totalTokens ? ((stats.totalOutputTokens / stats.totalTokens) * 100).toFixed(1) : 0}% 占比
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase tracking-wide">缓存创建Token</p>
+              <p className="text-lg font-bold text-orange-600 mt-1">{(stats?.totalCacheCreationTokens || 0).toLocaleString()}</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {stats?.totalTokens ? ((stats.totalCacheCreationTokens / stats.totalTokens) * 100).toFixed(1) : 0}% 占比
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase tracking-wide">缓存读取Token</p>
+              <p className="text-lg font-bold text-purple-600 mt-1">{(stats?.totalCacheReadTokens || 0).toLocaleString()}</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {stats?.totalTokens ? ((stats.totalCacheReadTokens / stats.totalTokens) * 100).toFixed(1) : 0}% 占比
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 按模型分布 */}
         <div className="bg-white border border-zinc-200 rounded-sm">
           <div className="p-4 border-b border-zinc-200">
@@ -99,9 +163,15 @@ export default function StatsPage() {
             {stats?.requestsByModel.length ? (
               <div className="space-y-3">
                 {stats.requestsByModel.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-700">{item.model}</span>
-                    <span className="text-sm font-medium text-zinc-900">{item.count.toLocaleString()}</span>
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-700 font-medium">{item.model}</span>
+                      <span className="text-sm font-medium text-zinc-900">{item.count.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-zinc-500">
+                      <span>{item.tokens?.toLocaleString() || 0} tokens</span>
+                      <span>${(item.cost || 0).toFixed(4)}</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -120,11 +190,53 @@ export default function StatsPage() {
             {stats?.requestsByDate.length ? (
               <div className="space-y-3">
                 {stats.requestsByDate.slice(-7).map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-700">
-                      {new Date(item.date).toLocaleDateString()}
-                    </span>
-                    <span className="text-sm font-medium text-zinc-900">{item.count.toLocaleString()}</span>
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-700">
+                        {new Date(item.date).toLocaleDateString()}
+                      </span>
+                      <span className="text-sm font-medium text-zinc-900">{item.count.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-zinc-500">
+                      <span>{item.tokens?.toLocaleString() || 0} tokens</span>
+                      <span>${(item.cost || 0).toFixed(4)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-500">暂无数据</p>
+            )}
+          </div>
+        </div>
+
+        {/* 账号效率统计 */}
+        <div className="bg-white border border-zinc-200 rounded-sm">
+          <div className="p-4 border-b border-zinc-200">
+            <h2 className="text-base font-semibold text-zinc-900">账号效率</h2>
+          </div>
+          <div className="p-4">
+            {stats?.accountStats.length ? (
+              <div className="space-y-4">
+                {stats.accountStats.map((account, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium text-zinc-900">{account.name}</span>
+                        <span className="text-xs text-zinc-500 ml-2">({account.type})</span>
+                      </div>
+                      <span className="text-xs text-zinc-500">{account.requestCount} 请求</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-zinc-500">平均Token:</span>
+                        <span className="font-medium ml-1">{account.averageTokensPerRequest.toFixed(0)}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">平均成本:</span>
+                        <span className="font-medium ml-1">${account.averageCostPerRequest.toFixed(4)}</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -166,14 +278,18 @@ export default function StatsPage() {
 interface StatCardProps {
   title: string
   value: string | number
+  subtitle?: string
 }
 
-function StatCard({ title, value }: StatCardProps) {
+function StatCard({ title, value, subtitle }: StatCardProps) {
   return (
     <div className="bg-white border border-zinc-200 rounded-sm p-4">
       <div>
         <p className="text-xs text-zinc-500 uppercase tracking-wide">{title}</p>
         <p className="text-2xl font-bold text-zinc-900 mt-1">{value}</p>
+        {subtitle && (
+          <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>
+        )}
       </div>
     </div>
   )

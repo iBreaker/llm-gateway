@@ -33,8 +33,8 @@ export interface UsageStats {
 
 export interface DetailedStats {
   requestsByHour: Array<{ hour: string; count: number }>;
-  requestsByModel: Array<{ model: string; count: number }>;
-  requestsByDate: Array<{ date: string; count: number }>; // 添加前端期望的字段
+  requestsByModel: Array<{ model: string; count: number; tokens: number; cost: number }>;
+  requestsByDate: Array<{ date: string; count: number; tokens: number; cost: number }>; // 添加前端期望的字段
   topEndpoints: Array<{ endpoint: string; count: number }>;
   errorsByType: Array<{ errorType: string; count: number }>;
   costBreakdown: Array<{ period: string; cost: number }>;
@@ -49,6 +49,24 @@ export interface DetailedStats {
   failedRequests: number;
   averageResponseTime: number;
   totalCost: number;
+  // Token统计
+  totalTokens: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheCreationTokens: number;
+  totalCacheReadTokens: number;
+  averageTokensPerRequest: number;
+  // 账号效率
+  accountStats: {
+    id: string;
+    name: string;
+    type: string;
+    requestCount: number;
+    totalTokens: number;
+    totalCost: number;
+    averageTokensPerRequest: number;
+    averageCostPerRequest: number;
+  }[];
 }
 
 export interface UsageListParams extends PaginationParams, SortParams {
@@ -225,7 +243,11 @@ export class UsageService {
           ...whereClause,
           createdAt: { gte: past7Days }
         },
-        _count: { requestId: true }
+        _count: { requestId: true },
+        _sum: {
+          tokensUsed: true,
+          cost: true
+        }
       });
 
       // 按小时聚合数据
@@ -234,7 +256,7 @@ export class UsageService {
       // 按日期聚合数据
       const dailyStats = this.aggregateByDay(requestsByDate);
 
-      // 按模型统计请求数
+      // 按模型统计请求数、Token和成本
       const requestsByModel = await prisma.usageRecord.groupBy({
         by: ['model'],
         where: {
@@ -242,6 +264,10 @@ export class UsageService {
           model: { not: null }
         },
         _count: { requestId: true },
+        _sum: { 
+          tokensUsed: true,
+          cost: true
+        },
         orderBy: { _count: { requestId: 'desc' } },
         take: 10
       });
@@ -283,9 +309,57 @@ export class UsageService {
           inputTokens: true,
           outputTokens: true,
           cacheCreationInputTokens: true,
-          cacheReadInputTokens: true
+          cacheReadInputTokens: true,
+          tokensUsed: true
         }
       });
+
+      // 按账号统计效率 (账号效率分析)
+      const accountStatsRaw = await prisma.usageRecord.groupBy({
+        by: ['upstreamAccountId'],
+        where: {
+          ...whereClause,
+          upstreamAccountId: { not: null }
+        },
+        _count: { requestId: true },
+        _sum: {
+          tokensUsed: true,
+          cost: true
+        }
+      });
+
+      // 获取账号信息
+      const accountIds = accountStatsRaw.map(stat => stat.upstreamAccountId!);
+      const accounts = await prisma.upstreamAccount.findMany({
+        where: { id: { in: accountIds } },
+        select: { id: true, name: true, type: true }
+      });
+
+      const accountStats = accountStatsRaw.map(stat => {
+        const account = accounts.find(acc => acc.id === stat.upstreamAccountId);
+        const requestCount = stat._count.requestId;
+        const totalTokens = Number(stat._sum.tokensUsed || 0);
+        const totalCost = Number(stat._sum.cost || 0);
+        
+        return {
+          id: stat.upstreamAccountId!.toString(),
+          name: account?.name || 'Unknown',
+          type: account?.type || 'Unknown',
+          requestCount,
+          totalTokens,
+          totalCost,
+          averageTokensPerRequest: requestCount > 0 ? totalTokens / requestCount : 0,
+          averageCostPerRequest: requestCount > 0 ? totalCost / requestCount : 0
+        };
+      }).sort((a, b) => b.totalTokens - a.totalTokens);
+
+      // 计算总Token统计
+      const totalInputTokens = Number(tokenUsage._sum.inputTokens || 0);
+      const totalOutputTokens = Number(tokenUsage._sum.outputTokens || 0);
+      const totalCacheCreationTokens = Number(tokenUsage._sum.cacheCreationInputTokens || 0);
+      const totalCacheReadTokens = Number(tokenUsage._sum.cacheReadInputTokens || 0);
+      const totalTokens = Number(tokenUsage._sum.tokensUsed || 0);
+      const averageTokensPerRequest = totalRequests > 0 ? totalTokens / totalRequests : 0;
 
       return {
         // 前端兼容性字段
@@ -295,12 +369,25 @@ export class UsageService {
         averageResponseTime: Math.round(avgResponseResult._avg.responseTime || 0),
         totalCost: Number(totalCostResult._sum.cost || 0),
         
+        // Token统计
+        totalTokens,
+        totalInputTokens,
+        totalOutputTokens,
+        totalCacheCreationTokens,
+        totalCacheReadTokens,
+        averageTokensPerRequest,
+        
+        // 账号效率
+        accountStats,
+        
         // 详细统计数据
         requestsByHour: hourlyStats,
-        requestsByDate: dailyStats, // 前端期望的字段
+        requestsByDate: this.aggregateByDayWithTokens(requestsByDate), // 前端期望的字段
         requestsByModel: requestsByModel.map(item => ({
           model: item.model || 'unknown',
-          count: item._count.requestId
+          count: item._count.requestId,
+          tokens: Number(item._sum.tokensUsed || 0),
+          cost: Number(item._sum.cost || 0)
         })),
         topEndpoints: topEndpoints.map(item => ({
           endpoint: item.endpoint,
@@ -312,10 +399,9 @@ export class UsageService {
         })),
         costBreakdown: this.aggregateCostByDay(costBreakdown),
         tokenUsage: {
-          totalInputTokens: Number(tokenUsage._sum.inputTokens || 0),
-          totalOutputTokens: Number(tokenUsage._sum.outputTokens || 0),
-          totalCacheTokens: Number(tokenUsage._sum.cacheCreationInputTokens || 0) + 
-                           Number(tokenUsage._sum.cacheReadInputTokens || 0)
+          totalInputTokens,
+          totalOutputTokens,
+          totalCacheTokens: totalCacheCreationTokens + totalCacheReadTokens
         }
       };
     } catch (error) {
@@ -527,6 +613,40 @@ export class UsageService {
     return Object.entries(dailyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }));
+  }
+
+  /**
+   * 按日期聚合数据，包含Token和成本信息
+   */
+  private static aggregateByDayWithTokens(records: any[]): Array<{ date: string; count: number; tokens: number; cost: number }> {
+    const dailyData: Record<string, { count: number; tokens: number; cost: number }> = {};
+    
+    // 初始化过去7天的数据
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const dayKey = day.toISOString().slice(0, 10);
+      dailyData[dayKey] = { count: 0, tokens: 0, cost: 0 };
+    }
+
+    // 聚合实际数据
+    records.forEach(record => {
+      const day = new Date(record.createdAt).toISOString().slice(0, 10);
+      if (!dailyData[day]) {
+        dailyData[day] = { count: 0, tokens: 0, cost: 0 };
+      }
+      dailyData[day].count += record._count.requestId;
+      dailyData[day].tokens += Number(record._sum.tokensUsed || 0);
+      dailyData[day].cost += Number(record._sum.cost || 0);
+    });
+
+    return Object.entries(dailyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, data]) => ({ 
+        date, 
+        count: data.count, 
+        tokens: data.tokens, 
+        cost: data.cost 
+      }));
   }
 
   /**
