@@ -159,6 +159,119 @@ export class AnthropicOAuthClient {
       return `${minutes}分钟`
     }
   }
+
+  /**
+   * 使用refresh token刷新访问令牌
+   */
+  async refreshAccessToken(): Promise<{ success: boolean, credentials?: AnthropicOAuthCredentials, error?: string }> {
+    try {
+      console.log('正在刷新Anthropic OAuth访问令牌...')
+      
+      // Claude AI OAuth token refresh endpoint
+      const response = await fetch('https://console.anthropic.com/v1/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+          'Accept': 'application/json',
+          'Origin': 'https://claude.ai',
+          'Referer': 'https://claude.ai/'
+        },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          refresh_token: this.credentials.refreshToken
+        })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '无法读取错误响应')
+        console.error(`Token刷新失败: ${response.status} ${response.statusText}`, errorText)
+        
+        return {
+          success: false,
+          error: `HTTP ${response.status}: ${response.statusText} - ${errorText}`
+        }
+      }
+
+      const tokenData = await response.json()
+      console.log('Token刷新成功，收到新token')
+
+      // 计算新的过期时间
+      const expiresAt = Date.now() + (tokenData.expires_in * 1000)
+      
+      const newCredentials: AnthropicOAuthCredentials = {
+        type: 'ANTHROPIC_OAUTH',
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || this.credentials.refreshToken, // 某些实现可能不返回新的refresh token
+        expiresAt,
+        scopes: this.credentials.scopes
+      }
+
+      // 更新当前实例的凭据
+      this.credentials = newCredentials
+
+      return {
+        success: true,
+        credentials: newCredentials
+      }
+
+    } catch (error: any) {
+      console.error('Token刷新过程中发生错误:', error)
+      
+      return {
+        success: false,
+        error: `刷新失败: ${error.message}`
+      }
+    }
+  }
+
+  /**
+   * 自动检查并刷新token（如果需要的话）
+   * @param forceRefresh 是否强制刷新，无论是否即将过期
+   */
+  async ensureValidToken(forceRefresh: boolean = false): Promise<{ success: boolean, refreshed: boolean, credentials?: AnthropicOAuthCredentials, error?: string }> {
+    try {
+      // 检查是否需要刷新
+      const isExpired = Date.now() >= this.credentials.expiresAt
+      const expiringSoon = this.isTokenExpiringSoon()
+      
+      if (!forceRefresh && !isExpired && !expiringSoon) {
+        return {
+          success: true,
+          refreshed: false,
+          credentials: this.credentials
+        }
+      }
+
+      console.log(`Token需要刷新: 已过期=${isExpired}, 即将过期=${expiringSoon}, 强制刷新=${forceRefresh}`)
+
+      // 尝试刷新token
+      const refreshResult = await this.refreshAccessToken()
+      
+      if (refreshResult.success) {
+        return {
+          success: true,
+          refreshed: true,
+          credentials: refreshResult.credentials
+        }
+      } else {
+        return {
+          success: false,
+          refreshed: false,
+          error: refreshResult.error
+        }
+      }
+
+    } catch (error: any) {
+      console.error('确保有效token时发生错误:', error)
+      
+      return {
+        success: false,
+        refreshed: false,
+        error: `检查token时出错: ${error.message}`
+      }
+    }
+  }
 }
 
 /**

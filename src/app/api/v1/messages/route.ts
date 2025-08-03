@@ -8,7 +8,9 @@ import { loadBalancer } from '@/lib/load-balancer'
 import { createStreamResponse, StreamController, StreamResourceManager, StreamTextProcessor } from '@/lib/utils/stream-handler'
 import { secureLog } from '@/lib/utils/secure-logger'
 import { InputValidator, validate, sanitize } from '@/lib/utils/input-validator'
+import { getOAuthTokenManager } from '@/lib/services/oauth-token-manager'
 import { performanceMonitor } from '@/lib/monitoring/performanceMonitor'
+import { initializeApp } from '@/lib/startup'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
@@ -18,6 +20,9 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
   const startTime = Date.now()
   let upstreamAccount: any = null
   let requestBody: any = null
+
+  // 确保应用已初始化（包括OAuth token自动刷新服务）
+  await initializeApp()
 
   // 开始性能监控
   performanceMonitor.startRequest(requestId, '/v1/messages', request.method, {
@@ -261,8 +266,39 @@ async function handleNonStreamRequestWithFailover(
     
     // 如果需要故障转移且有可用的API密钥
     if (parsedError.shouldFailover && request.apiKey) {
-      console.log(`账号 ${upstreamAccount.id} 出现错误，尝试故障转移...`)
+      console.log(`账号 ${upstreamAccount.id} 出现错误，尝试OAuth token刷新...`)
       
+      // 如果是OAuth账号且是认证错误，先尝试刷新token
+      if (upstreamAccount.type === 'ANTHROPIC_OAUTH' && (parsedError.status === 401 || parsedError.status === 403)) {
+        try {
+          const tokenManager = getOAuthTokenManager(prisma)
+          const refreshResult = await tokenManager.refreshTokenForAccount(upstreamAccount.id)
+          
+          if (refreshResult.success && refreshResult.refreshed) {
+            console.log(`账号 ${upstreamAccount.id} token刷新成功，重新尝试请求`)
+            
+            // 获取刷新后的账号信息
+            const refreshedAccount = await prisma.upstreamAccount.findUnique({
+              where: { id: upstreamAccount.id }
+            })
+            
+            if (refreshedAccount) {
+              const newCredentials = typeof refreshedAccount.credentials === 'object' 
+                ? refreshedAccount.credentials 
+                : JSON.parse(refreshedAccount.credentials as string)
+              
+              // 使用刷新后的凭据重新尝试
+              return await handleNonStreamRequest(requestBody, newCredentials, refreshedAccount, request, requestId, startTime, true)
+            }
+          }
+          
+          console.log(`账号 ${upstreamAccount.id} token刷新失败，尝试故障转移`)
+        } catch (refreshError: any) {
+          console.error(`账号 ${upstreamAccount.id} token刷新出错:`, refreshError)
+        }
+      }
+      
+      // Token刷新失败或不是OAuth账号，尝试故障转移
       const alternativeAccount = await loadBalancer.markAccountFailedAndSelectAlternative(
         upstreamAccount.id,
         request.apiKey.userId,
@@ -454,8 +490,39 @@ async function handleStreamRequestWithFailover(
   } catch (error: any) {
     // 检查是否是认证错误
     if (error.message.includes('认证失败') && request.apiKey) {
-      console.log(`账号 ${upstreamAccount.id} 认证失败，尝试故障转移...`)
+      console.log(`账号 ${upstreamAccount.id} 认证失败，尝试OAuth token刷新...`)
       
+      // 如果是OAuth账号，先尝试刷新token
+      if (upstreamAccount.type === 'ANTHROPIC_OAUTH') {
+        try {
+          const tokenManager = getOAuthTokenManager(prisma)
+          const refreshResult = await tokenManager.refreshTokenForAccount(upstreamAccount.id)
+          
+          if (refreshResult.success && refreshResult.refreshed) {
+            console.log(`账号 ${upstreamAccount.id} token刷新成功，重新尝试请求`)
+            
+            // 获取刷新后的账号信息
+            const refreshedAccount = await prisma.upstreamAccount.findUnique({
+              where: { id: upstreamAccount.id }
+            })
+            
+            if (refreshedAccount) {
+              const newCredentials = typeof refreshedAccount.credentials === 'object' 
+                ? refreshedAccount.credentials 
+                : JSON.parse(refreshedAccount.credentials as string)
+              
+              // 使用刷新后的凭据重新尝试
+              return await handleStreamRequest(requestBody, newCredentials, refreshedAccount, request, requestId, startTime, true)
+            }
+          }
+          
+          console.log(`账号 ${upstreamAccount.id} token刷新失败，尝试故障转移`)
+        } catch (refreshError: any) {
+          console.error(`账号 ${upstreamAccount.id} token刷新出错:`, refreshError)
+        }
+      }
+      
+      // Token刷新失败或不是OAuth账号，尝试故障转移
       const alternativeAccount = await loadBalancer.markAccountFailedAndSelectAlternative(
         upstreamAccount.id,
         request.apiKey.userId,
