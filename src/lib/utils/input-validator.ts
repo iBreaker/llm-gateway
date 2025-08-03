@@ -278,7 +278,7 @@ export class InputValidator {
    * 验证并清理用户输入
    */
   static sanitizeUserInput(input: string): string {
-    return this.sanitizeSql(this.sanitizeHtml(input))
+    return InputValidator.sanitizeSql(InputValidator.sanitizeHtml(input))
   }
 
   /**

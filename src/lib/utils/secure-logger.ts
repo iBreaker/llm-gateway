@@ -84,6 +84,10 @@ export class SecureLogger {
       return data
     }
 
+    if (typeof data === 'bigint') {
+      return data.toString()
+    }
+
     if (typeof data === 'string') {
       return this.sanitizeString(data)
     }

@@ -487,7 +487,7 @@ export class QueryOptimizer {
       const connectionInfo = await prisma.$queryRaw`
         SELECT 
           count(*) as active_connections,
-          setting as max_connections
+          max(setting::int) as max_connections
         FROM pg_stat_activity 
         CROSS JOIN pg_settings 
         WHERE pg_settings.name = 'max_connections'
