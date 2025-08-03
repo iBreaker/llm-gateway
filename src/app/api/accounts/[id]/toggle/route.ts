@@ -1,66 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, AuthenticatedRequest } from '@/lib/auth'
+import { AccountService, ServiceError } from '@/lib/services'
 import { prisma } from '@/lib/prisma'
 
 async function handleToggleAccount(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
     const accountId = BigInt(params.id)
+    const updatedAccount = await AccountService.toggleAccountStatus(accountId, request.user.id)
 
-    // 检查账号是否存在且属于当前用户
-    const account = await prisma.upstreamAccount.findFirst({
-      where: {
-        id: accountId,
-        userId: request.user.id
-      }
-    })
-
-    if (!account) {
-      return NextResponse.json(
-        { message: '上游账号不存在或无权限访问' },
-        { status: 404 }
-      )
-    }
-
-    // 切换账号状态
-    const newStatus = account.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
-    
-    const updatedAccount = await prisma.upstreamAccount.update({
-      where: { id: accountId },
-      data: {
-        status: newStatus,
-        updatedAt: new Date()
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        status: true,
-        priority: true,
-        weight: true,
-        lastHealthCheck: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    })
-
-    const action = newStatus === 'ACTIVE' ? '启用' : '禁用'
-    console.log(`✅ 账号 ${account.name} (ID: ${accountId}) 已${action}`)
+    const action = updatedAccount.status === 'ACTIVE' ? '启用' : '禁用'
+    console.log(`✅ 账号 ${updatedAccount.name} (ID: ${accountId}) 已${action}`)
 
     return NextResponse.json({
       message: `账号已${action}`,
-      account: {
-        ...updatedAccount,
-        id: updatedAccount.id.toString()
-      }
+      account: updatedAccount
     })
 
   } catch (error: any) {
     console.error('切换账号状态失败:', error)
+    
+    if (error instanceof ServiceError) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: error.statusCode }
+      )
+    }
+
     return NextResponse.json(
       { message: '切换账号状态失败' },
       { status: 500 }
     )
-  } finally {
   }
 }
 
@@ -119,7 +88,7 @@ async function handleBatchToggle(request: AuthenticatedRequest) {
     return NextResponse.json({
       message: `成功${actionText}了 ${result.count} 个账号`,
       affectedCount: result.count,
-      accounts: accounts.map(acc => ({
+      accounts: accounts.map((acc: any) => ({
         id: acc.id.toString(),
         name: acc.name
       }))
