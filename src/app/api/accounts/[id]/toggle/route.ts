@@ -61,7 +61,6 @@ async function handleToggleAccount(request: AuthenticatedRequest, { params }: { 
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -133,7 +132,6 @@ async function handleBatchToggle(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

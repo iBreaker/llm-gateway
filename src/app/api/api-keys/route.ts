@@ -50,7 +50,6 @@ async function handleGetApiKeys(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -150,7 +149,6 @@ async function handleCreateApiKey(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

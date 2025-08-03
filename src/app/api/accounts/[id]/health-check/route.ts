@@ -38,7 +38,6 @@ async function handleHealthCheck(request: AuthenticatedRequest, { params }: { pa
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

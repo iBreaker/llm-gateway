@@ -114,7 +114,6 @@ async function handleUpdateApiKey(request: AuthenticatedRequest, { params }: { p
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -153,7 +152,6 @@ async function handleDeleteApiKey(request: AuthenticatedRequest, { params }: { p
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

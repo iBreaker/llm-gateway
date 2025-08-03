@@ -39,7 +39,6 @@ async function handleGetUsers(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -120,7 +119,6 @@ async function handleCreateUser(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

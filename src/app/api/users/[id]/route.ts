@@ -105,7 +105,6 @@ async function handleUpdateUser(request: AuthenticatedRequest, { params }: { par
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -163,7 +162,6 @@ async function handleDeleteUser(request: AuthenticatedRequest, { params }: { par
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

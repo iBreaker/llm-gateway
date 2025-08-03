@@ -97,7 +97,6 @@ async function handleExchangeCode(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 

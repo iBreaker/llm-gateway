@@ -58,7 +58,6 @@ async function handleGetAccounts(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -205,7 +204,6 @@ async function handleCreateAccount(request: AuthenticatedRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -263,7 +261,6 @@ async function performHealthCheck(accountId: bigint, apiKey: string, baseUrl?: s
       }
     })
   } finally {
-    await prisma.$disconnect()
   }
 }
 
