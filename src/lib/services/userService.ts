@@ -4,6 +4,8 @@ import { UserRole } from '@prisma/client';
 import { ServiceError, PaginatedResponse, PaginationParams, SortParams } from './index';
 import { formatUser, formatUsers, formatPaginatedResponse } from '@/lib/utils/response-formatter';
 import { toBigInt, parseRequestId, formatEntityWithId } from '@/lib/utils/id-converter';
+import { QueryOptimizer } from '@/lib/db/queryOptimizer';
+import { secureLog } from '@/lib/utils/secure-logger';
 
 // 用户相关类型定义
 export interface CreateUserData {
@@ -197,22 +199,15 @@ export class UserService {
    */
   static async getUserById(userId: string | number | bigint): Promise<UserPublicInfo | null> {
     try {
-      const id = toBigInt(userId);
-      const user = await prisma.user.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          role: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
+      // 使用优化的查询器，包含缓存
+      const user = await QueryOptimizer.findUser(userId, { useCache: true, cacheTtl: 300 });
 
       return user ? this.formatUserInfo(user) : null;
     } catch (error) {
+      secureLog.error('获取用户信息失败', error as Error, {
+        userId: userId.toString(),
+        operation: 'getUserById'
+      });
       throw new ServiceError('获取用户信息失败', 'GET_USER_FAILED', 500);
     }
   }
