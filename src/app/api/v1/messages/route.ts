@@ -97,8 +97,8 @@ async function handleAnthropicMessages(request: ApiKeyAuthRequest) {
     const isStream = requestBody.stream === true
 
     if (isStream) {
-      // 流式响应处理
-      return handleStreamRequest(requestBody, credentials, upstreamAccount, request, requestId, startTime)
+      // 流式响应处理，带故障转移机制
+      return handleStreamRequestWithFailover(requestBody, credentials, upstreamAccount, request, requestId, startTime)
     } else {
       // 非流式响应处理
       return handleNonStreamRequest(requestBody, credentials, upstreamAccount, request, requestId, startTime)
@@ -301,6 +301,47 @@ function calculateTokenCost(model: string, inputTokens: number, outputTokens: nu
 }
 
 /**
+ * 带故障转移的流式请求处理器
+ */
+async function handleStreamRequestWithFailover(
+  requestBody: any,
+  credentials: any,
+  upstreamAccount: any,
+  request: ApiKeyAuthRequest,
+  requestId: string,
+  startTime: number
+): Promise<Response> {
+  try {
+    // 尝试使用当前账号
+    return await handleStreamRequest(requestBody, credentials, upstreamAccount, request, requestId, startTime, false)
+  } catch (error: any) {
+    // 检查是否是认证错误
+    if (error.message.includes('认证失败') && request.apiKey) {
+      console.log(`账号 ${upstreamAccount.id} 认证失败，尝试故障转移...`)
+      
+      const alternativeAccount = await loadBalancer.markAccountFailedAndSelectAlternative(
+        upstreamAccount.id,
+        request.apiKey.userId,
+        'ALL'
+      )
+      
+      if (alternativeAccount) {
+        console.log(`故障转移到账号 ${alternativeAccount.id}，重新发起请求`)
+        const newCredentials = typeof alternativeAccount.credentials === 'object' 
+          ? alternativeAccount.credentials 
+          : JSON.parse(alternativeAccount.credentials as string)
+        
+        // 使用新账号重新尝试，标记为故障转移尝试
+        return await handleStreamRequest(requestBody, newCredentials, alternativeAccount, request, requestId, startTime, true)
+      }
+    }
+    
+    // 如果没有可用的故障转移账号或不是认证错误，重新抛出原错误
+    throw error
+  }
+}
+
+/**
  * 处理流式请求
  */
 async function handleStreamRequest(
@@ -309,10 +350,12 @@ async function handleStreamRequest(
   upstreamAccount: any,
   request: ApiKeyAuthRequest,
   requestId: string,
-  startTime: number
-) {
+  startTime: number,
+  isFailoverAttempt: boolean = false
+): Promise<Response> {
   let usageRecorded = false
 
+  // 如果是故障转移的尝试，直接处理流式响应
   return createStreamResponse(async (stream: StreamController) => {
     const resources = new StreamResourceManager()
     const textProcessor = new StreamTextProcessor()
@@ -375,6 +418,23 @@ async function handleStreamRequest(
           requestId,
           error: sanitize(errorText)
         })
+
+        // 如果是401认证错误，标记账号失败并抛出错误
+        if (upstreamResponse.status === 401) {
+          if (!isFailoverAttempt && request.apiKey) {
+            console.log(`账号 ${upstreamAccount.id} 认证失败，标记为错误状态`)
+            // 异步标记账号失败，不等待完成
+            loadBalancer.markAccountFailedAndSelectAlternative(
+              upstreamAccount.id,
+              request.apiKey.userId,
+              'ALL'
+            ).catch(error => {
+              console.error('标记账号失败时出错:', error)
+            })
+          }
+          throw new Error(`认证失败: OAuth token expired or invalid`)
+        }
+
         throw new Error(`上游服务错误: ${upstreamResponse.status}`)
       }
 

@@ -204,6 +204,59 @@ export class LoadBalancer {
   }
 
   /**
+   * 标记账号失败并选择备用账号
+   */
+  async markAccountFailedAndSelectAlternative(
+    failedAccountId: bigint,
+    userId: bigint,
+    accountType: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'ALL' = 'ALL'
+  ): Promise<UpstreamAccount | null> {
+    try {
+      // 1. 标记失败的账号为错误状态
+      await prisma.upstreamAccount.update({
+        where: { id: failedAccountId },
+        data: {
+          status: 'ERROR',
+          errorCount: { increment: 1 },
+          healthStatus: {
+            status: 'error',
+            error: 'OAuth token expired or authentication failed',
+            lastCheck: new Date().toISOString(),
+            autoMarkedAsError: true
+          }
+        }
+      })
+
+      console.log(`已标记账号 ${failedAccountId} 为错误状态`)
+
+      // 2. 重新选择可用账号（排除刚失败的账号）
+      const accounts = await this.getAvailableAccounts(userId, accountType, false)
+      const availableAccounts = accounts.filter(acc => acc.id !== failedAccountId)
+      
+      if (availableAccounts.length === 0) {
+        console.log('没有其他可用账号')
+        return null
+      }
+
+      // 3. 从可用账号中选择最优的
+      const healthyAccounts = this.filterHealthyAccounts(availableAccounts, 0.5)
+      if (healthyAccounts.length > 0) {
+        const selectedAccount = this.selectByWeightedRoundRobin(healthyAccounts)
+        console.log(`故障转移到账号 ${selectedAccount?.id}`)
+        return selectedAccount
+      }
+
+      // 4. 如果没有健康账号，返回第一个可用账号
+      console.log(`使用第一个可用账号 ${availableAccounts[0]?.id}`)
+      return availableAccounts[0] || null
+
+    } catch (error) {
+      console.error('故障转移失败:', error)
+      return null
+    }
+  }
+
+  /**
    * 更新账号使用统计
    */
   async updateAccountUsage(
