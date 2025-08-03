@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { withDatabaseRetry } from '@/lib/database/health'
 import bcrypt from 'bcryptjs'
 
 export interface ApiKeyAuthRequest extends NextRequest {
@@ -35,19 +36,21 @@ export async function validateApiKey(request: NextRequest): Promise<{
       return { success: false, error: '未提供API Key' }
     }
 
-    // 查找匹配的API Key
-    const apiKeys = await prisma.apiKey.findMany({
-      where: {
-        isActive: true
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            isActive: true
+    // 查找匹配的API Key (使用重试机制)
+    const apiKeys = await withDatabaseRetry(async () => {
+      return await prisma.apiKey.findMany({
+        where: {
+          isActive: true
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              isActive: true
+            }
           }
         }
-      }
+      })
     })
 
     let matchedApiKey = null
@@ -73,15 +76,17 @@ export async function validateApiKey(request: NextRequest): Promise<{
       return { success: false, error: '用户账户已禁用' }
     }
 
-    // 更新最后使用时间和请求计数
-    await prisma.apiKey.update({
-      where: { id: matchedApiKey.id },
-      data: {
-        lastUsedAt: new Date(),
-        requestCount: {
-          increment: 1
+    // 更新最后使用时间和请求计数 (使用重试机制)
+    await withDatabaseRetry(async () => {
+      return await prisma.apiKey.update({
+        where: { id: matchedApiKey.id },
+        data: {
+          lastUsedAt: new Date(),
+          requestCount: {
+            increment: 1
+          }
         }
-      }
+      })
     })
 
     return {
@@ -207,27 +212,29 @@ export async function recordUsage(
       (requestData.cacheCreationInputTokens || 0) + 
       (requestData.cacheReadInputTokens || 0)
 
-    await prisma.usageRecord.create({
-      data: {
-        apiKeyId,
-        upstreamAccountId,
-        requestId: requestData.requestId,
-        method: requestData.method,
-        endpoint: requestData.endpoint,
-        model: requestData.model,
-        statusCode: requestData.statusCode,
-        responseTime: requestData.responseTime,
-        // 详细 token 信息
-        inputTokens: BigInt(requestData.inputTokens || 0),
-        outputTokens: BigInt(requestData.outputTokens || 0),
-        cacheCreationInputTokens: BigInt(requestData.cacheCreationInputTokens || 0),
-        cacheReadInputTokens: BigInt(requestData.cacheReadInputTokens || 0),
-        tokensUsed: BigInt(totalTokens),
-        cost: requestData.cost || 0,
-        errorMessage: requestData.errorMessage,
-        userAgent: requestData.userAgent,
-        clientIp: requestData.clientIp
-      }
+    await withDatabaseRetry(async () => {
+      return await prisma.usageRecord.create({
+        data: {
+          apiKeyId,
+          upstreamAccountId,
+          requestId: requestData.requestId,
+          method: requestData.method,
+          endpoint: requestData.endpoint,
+          model: requestData.model,
+          statusCode: requestData.statusCode,
+          responseTime: requestData.responseTime,
+          // 详细 token 信息
+          inputTokens: BigInt(requestData.inputTokens || 0),
+          outputTokens: BigInt(requestData.outputTokens || 0),
+          cacheCreationInputTokens: BigInt(requestData.cacheCreationInputTokens || 0),
+          cacheReadInputTokens: BigInt(requestData.cacheReadInputTokens || 0),
+          tokensUsed: BigInt(totalTokens),
+          cost: requestData.cost || 0,
+          errorMessage: requestData.errorMessage,
+          userAgent: requestData.userAgent,
+          clientIp: requestData.clientIp
+        }
+      })
     })
   } catch (error) {
     console.error('记录使用记录失败:', error)
