@@ -13,12 +13,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const { user, isLoading, logout } = useAuth()
   const pathname = usePathname()
 
-  // 如果是登录页面或初始化页面，不显示主布局
-  if (pathname === '/auth/login' || pathname === '/init') {
+  console.log('🎨 MainLayout: 渲染开始', { pathname, isLoading, user: !!user })
+
+  // 如果是登录页面，不显示主布局 (处理带/不带尾部斜杠的情况)
+  if (pathname === '/auth/login' || pathname === '/auth/login/') {
+    console.log('✅ MainLayout: 登录页面，直接渲染children')
     return <>{children}</>
   }
 
   if (isLoading) {
+    console.log('⏳ MainLayout: 正在加载中，显示loading界面')
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900"></div>
@@ -27,8 +31,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   if (!user) {
+    console.log('❌ MainLayout: 没有用户信息，返回null')
     return null
   }
+
+  console.log('✅ MainLayout: 渲染完整布局')
 
   return (
     <div className="min-h-screen bg-zinc-50">

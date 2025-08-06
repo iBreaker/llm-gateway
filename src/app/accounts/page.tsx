@@ -4,63 +4,29 @@ import { useEffect, useState } from 'react'
 import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink, Power, PowerOff } from 'lucide-react'
 
 interface UpstreamAccount {
-  id: string
+  id: number
   name: string
-  type: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'GEMINI_CLI' | 'OPENAI_API'
-  email: string | null
-  status: 'ACTIVE' | 'INACTIVE' | 'ERROR' | 'PENDING'
-  priority: number
-  weight: number
-  lastHealthCheck: string | null
-  healthStatus: {
-    status?: string
-    responseTime?: number
-    error?: string
-    lastCheck?: string
-  }
-  lastUsedAt: string | null
-  requestCount: number
-  successCount: number
-  errorCount: number
+  type: string
+  provider: string
+  status: string
+  is_active: boolean
   createdAt: string
+  lastHealthCheck?: string
+  requestCount: number
+  successRate: number
 }
 
 interface CreateAccountData {
   name: string
-  type: 'ANTHROPIC_API' | 'ANTHROPIC_OAUTH' | 'GEMINI_CLI' | 'OPENAI_API'
-  email?: string // 对于 ANTHROPIC_API 不需要
-  credentials: {
-    api_key?: string
-    base_url?: string
-    session_key?: string
-    [key: string]: any
-  }
-  config?: {
-    timeout?: number
-    retry_count?: number
-    [key: string]: any
-  }
-  priority?: number
-  weight?: number
+  type: string
+  provider: string
+  credentials: any
 }
 
 interface UpdateAccountData {
   name: string
-  email?: string // 对于 ANTHROPIC_API 不需要
-  credentials?: {
-    api_key?: string
-    base_url?: string
-    session_key?: string
-    [key: string]: any
-  }
-  config?: {
-    timeout?: number
-    retry_count?: number
-    [key: string]: any
-  }
-  priority: number
-  weight: number
-  status: 'ACTIVE' | 'INACTIVE' | 'ERROR' | 'PENDING'
+  is_active: boolean
+  credentials?: any
 }
 
 interface OAuthSession {
@@ -87,7 +53,7 @@ export default function AccountsPage() {
   // 获取上游账号列表
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/accounts', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -111,7 +77,7 @@ export default function AccountsPage() {
   const createAccount = async (accountData: CreateAccountData) => {
     setIsCreating(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/accounts', {
         method: 'POST',
         headers: {
@@ -144,7 +110,7 @@ export default function AccountsPage() {
   const updateAccount = async (id: string, accountData: UpdateAccountData) => {
     setIsUpdating(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/accounts/${id}`, {
         method: 'PUT',
         headers: {
@@ -181,7 +147,7 @@ export default function AccountsPage() {
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/accounts/${id}`, {
         method: 'DELETE',
         headers: {
@@ -207,7 +173,7 @@ export default function AccountsPage() {
   // 手动健康检查
   const performHealthCheck = async (id: string) => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/accounts/${id}/health-check`, {
         method: 'POST',
         headers: {
@@ -244,7 +210,7 @@ export default function AccountsPage() {
 
       const newStatus = account.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
       
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/accounts/${id}`, {
         method: 'PUT',
         headers: {
@@ -302,7 +268,7 @@ export default function AccountsPage() {
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       
       if (operation === 'delete') {
         // 批量删除
@@ -578,7 +544,7 @@ export default function AccountsPage() {
                           <div className={`text-sm font-medium ${account.status === 'INACTIVE' ? 'text-zinc-500' : 'text-zinc-900'}`}>
                             {account.name}
                           </div>
-                          <div className="text-xs text-zinc-500">{account.email || '无邮箱'}</div>
+                          <div className="text-xs text-zinc-500">{account.provider} • {account.type}</div>
                           <div className="text-xs text-zinc-400 mt-1">
                             创建于 {new Date(account.createdAt).toLocaleDateString()}
                           </div>
@@ -593,18 +559,25 @@ export default function AccountsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-zinc-900">
-                        <div>优先级: {account.priority}</div>
-                        <div className="text-xs text-zinc-500">权重: {account.weight}</div>
+                        <div>活跃状态</div>
+                        <div className="text-xs text-zinc-500">{account.is_active ? '启用' : '禁用'}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <HealthStatus healthStatus={account.healthStatus} />
+                      <div className="text-sm text-zinc-900">
+                        <div>健康检查</div>
+                        <div className="text-xs text-zinc-500">
+                          {account.lastHealthCheck 
+                            ? `最后检查: ${new Date(account.lastHealthCheck).toLocaleDateString()}`
+                            : '未检查'}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-zinc-900">
                         <div>{account.requestCount.toLocaleString()} 请求</div>
                         <div className="text-xs text-zinc-500">
-                          成功: {account.successCount} / 失败: {account.errorCount}
+                          成功率: {account.successRate.toFixed(1)}%
                         </div>
                         <div className="text-xs text-zinc-400">
                           {account.lastUsedAt 
@@ -810,7 +783,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
   const generateOAuthUrl = async () => {
     setIsGeneratingAuth(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/accounts/oauth/anthropic/generate-auth-url', {
         method: 'POST',
         headers: {
@@ -843,7 +816,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
 
     setIsExchangingCode(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/accounts/oauth/anthropic/exchange-code', {
         method: 'POST',
         headers: {

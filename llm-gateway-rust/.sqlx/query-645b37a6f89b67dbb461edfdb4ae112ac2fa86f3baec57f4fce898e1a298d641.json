@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO usage_records (\n                api_key_id, upstream_account_id, request_id, method, endpoint,\n                model, status_code, response_time, input_tokens, output_tokens,\n                tokens_used, cost, created_at\n            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "645b37a6f89b67dbb461edfdb4ae112ac2fa86f3baec57f4fce898e1a298d641"
+}

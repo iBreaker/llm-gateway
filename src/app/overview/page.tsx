@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 
 interface DashboardStats {
-  totalApiKeys: number
-  activeAccounts: number
-  totalRequests: number
-  errorRate: number
+  total_requests: number
+  success_rate: number
+  avg_response_time: number
+  total_cost: number
+  active_accounts: number
+  period: string
 }
 
 export default function DashboardPage() {
@@ -16,8 +18,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('token')
-        const response = await fetch('/api/stats', {
+        const token = localStorage.getItem('access_token')
+        const response = await fetch('/api/stats/basic', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -56,20 +58,20 @@ export default function DashboardPage() {
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="API Keys"
-          value={stats?.totalApiKeys || 0}
+          title="总请求数"
+          value={stats?.total_requests || 0}
         />
         <StatCard
           title="活跃账号"
-          value={stats?.activeAccounts || 0}
+          value={stats?.active_accounts || 0}
         />
         <StatCard
-          title="总请求数"
-          value={stats?.totalRequests || 0}
+          title="成功率"
+          value={`${(stats?.success_rate || 0).toFixed(1)}%`}
         />
         <StatCard
-          title="错误率"
-          value={`${(stats?.errorRate || 0).toFixed(2)}%`}
+          title="总成本"
+          value={`$${(stats?.total_cost || 0).toFixed(2)}`}
         />
       </div>
 

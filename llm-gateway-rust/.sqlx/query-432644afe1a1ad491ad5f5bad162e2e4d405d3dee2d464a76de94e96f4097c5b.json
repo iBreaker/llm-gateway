@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE upstream_accounts SET request_count = request_count + 1, error_count = error_count + 1, last_used_at = NOW() WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "432644afe1a1ad491ad5f5bad162e2e4d405d3dee2d464a76de94e96f4097c5b"
+}

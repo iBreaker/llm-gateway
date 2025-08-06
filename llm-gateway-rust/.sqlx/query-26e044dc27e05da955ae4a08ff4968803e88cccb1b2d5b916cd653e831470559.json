@@ -1,0 +1,142 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, name, type, email, status, priority, weight,\n               credentials, config, request_count, success_count, error_count,\n               last_used_at, last_health_check, health_status,\n               created_at, updated_at\n        FROM upstream_accounts \n        ORDER BY priority ASC, name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "type",
+        "type_info": {
+          "Custom": {
+            "name": "UpstreamType",
+            "kind": {
+              "Enum": [
+                "ANTHROPIC_OAUTH",
+                "GEMINI_CLI",
+                "ANTHROPIC_API",
+                "OPENAI_API",
+                "AZURE_OPENAI",
+                "GOOGLE_AI"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": {
+          "Custom": {
+            "name": "AccountStatus",
+            "kind": {
+              "Enum": [
+                "ACTIVE",
+                "INACTIVE",
+                "ERROR",
+                "PENDING"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "priority",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "weight",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "credentials",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 8,
+        "name": "config",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 9,
+        "name": "request_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "success_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "error_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "last_used_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 13,
+        "name": "last_health_check",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 14,
+        "name": "health_status",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "26e044dc27e05da955ae4a08ff4968803e88cccb1b2d5b916cd653e831470559"
+}

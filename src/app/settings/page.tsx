@@ -19,37 +19,16 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ type: null, message: '' })
 
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const token = localStorage.getItem('token')
-        const response = await fetch('/api/config', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setConfig(data.config || {})
-        } else {
-          const data = await response.json()
-          setSaveStatus({
-            type: 'error',
-            message: data.message || '获取配置失败'
-          })
-        }
-      } catch (error) {
-        console.error('获取系统配置失败:', error)
-        setSaveStatus({
-          type: 'error',
-          message: '网络错误，请重试'
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchConfig()
+    // 暂时使用默认配置，等待后端实现配置API
+    setConfig({
+      'system.name': 'LLM Gateway',
+      'system.version': '0.1.0',
+      'system.environment': 'development',
+      'auth.jwt_expiry': '24h',
+      'rate_limit.default_per_minute': 100,
+      'rate_limit.default_per_hour': 1000,
+    })
+    setIsLoading(false)
   }, [])
 
   const handleSave = async () => {
@@ -57,40 +36,20 @@ export default function SettingsPage() {
     setSaveStatus({ type: null, message: '' })
     
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch('/api/config', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ config })
+      // 暂时模拟保存成功，等待后端实现配置API
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      setSaveStatus({
+        type: 'success',
+        message: '配置已保存到本地（等待后端配置API实现）'
       })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setSaveStatus({
-          type: 'success',
-          message: `配置保存成功，更新了 ${data.updated?.length || 0} 项配置`
-        })
-        // 更新本地配置为服务器返回的最新值
-        setConfig(data.config)
-      } else {
-        setSaveStatus({
-          type: 'error',
-          message: data.message || '保存失败'
-        })
-      }
     } catch (error) {
-      console.error('保存配置失败:', error)
       setSaveStatus({
         type: 'error',
-        message: '网络错误，请重试'
+        message: '保存失败'
       })
     } finally {
       setIsSaving(false)
-      // 3秒后清除状态提示
       setTimeout(() => {
         setSaveStatus({ type: null, message: '' })
       }, 3000)

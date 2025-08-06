@@ -55,7 +55,7 @@ export default function ApiKeysPage() {
   // 获取API Key列表
   const fetchApiKeys = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/api-keys', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -79,7 +79,7 @@ export default function ApiKeysPage() {
   const createApiKey = async (apiKeyData: CreateApiKeyData) => {
     setIsCreating(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch('/api/api-keys', {
         method: 'POST',
         headers: {
@@ -113,7 +113,7 @@ export default function ApiKeysPage() {
   const updateApiKey = async (id: string, apiKeyData: UpdateApiKeyData) => {
     setIsUpdating(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/api-keys/${id}`, {
         method: 'PUT',
         headers: {
@@ -150,7 +150,7 @@ export default function ApiKeysPage() {
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`/api/api-keys/${id}`, {
         method: 'DELETE',
         headers: {

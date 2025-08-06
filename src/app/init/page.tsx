@@ -16,24 +16,18 @@ export default function InitPageDebug() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    console.log('useEffect 执行一次')
+    // 暂时模拟系统已初始化，等待后端实现初始化API
+    const mockData: InitData = {
+      initialized: true,
+      userCount: 1,
+      needsInit: false
+    }
     
-    fetch('/api/init')
-      .then(res => {
-        console.log('fetch 响应:', res.status)
-        return res.json()
-      })
-      .then(result => {
-        console.log('fetch 数据:', result)
-        setData(result)
-        setLoading(false)
-      })
-      .catch(err => {
-        console.error('fetch 错误:', err)
-        setError(err.message)
-        setLoading(false)
-      })
-  }, []) // 空依赖数组，只执行一次
+    setTimeout(() => {
+      setData(mockData)
+      setLoading(false)
+    }, 1000)
+  }, [])
 
   console.log('组件渲染，当前状态:', { loading, data, error })
 
@@ -73,20 +67,11 @@ export default function InitPageDebug() {
 
     setLoading(true)
     try {
-      const response = await fetch('/api/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: data.initToken })
-      })
+      // 暂时模拟初始化成功，等待后端实现初始化API
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      const result = await response.json()
-      if (response.ok) {
-        // 初始化成功，显示凭据
-        alert(`初始化成功！\n邮箱: ${result.credentials.email}\n密码: ${result.credentials.password}\n\n请复制密码，点击确定后将跳转到登录页面。`)
-        window.location.href = '/auth/login'
-      } else {
-        setError(result.message || '初始化失败')
-      }
+      alert(`模拟初始化成功！\n邮箱: admin@llm-gateway.com\n密码: admin123\n\n请使用这些凭据登录。`)
+      window.location.href = '/auth/login'
     } catch (err) {
       setError('网络错误')
     } finally {
