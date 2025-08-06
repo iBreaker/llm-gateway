@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { Plus, Key, Copy, Eye, EyeOff, Edit, Trash2, AlertCircle, CheckCircle, X } from 'lucide-react'
 
 interface ApiKey {
@@ -484,6 +485,9 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
     expiresAt: ''
   })
 
+  // ESC键退出支持
+  useEscapeKey(onClose)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const submitData = {
@@ -641,6 +645,9 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
     isActive: apiKey.isActive,
     expiresAt: apiKey.expiresAt ? apiKey.expiresAt.split('T')[0] + 'T' + apiKey.expiresAt.split('T')[1]?.slice(0, 5) : ''
   })
+
+  // ESC键退出支持
+  useEscapeKey(onClose)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

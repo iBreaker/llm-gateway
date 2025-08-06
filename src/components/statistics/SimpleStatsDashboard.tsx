@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 interface SimpleStatsData {
   totalRequests: number
@@ -18,11 +18,7 @@ export default function SimpleStatsDashboard() {
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('7d')
 
-  useEffect(() => {
-    fetchData()
-  }, [timeRange])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const token = localStorage.getItem('access_token')
@@ -39,7 +35,11 @@ export default function SimpleStatsDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [timeRange])
+
+  useEffect(() => {
+    fetchData()
+  }, [timeRange, fetchData])
 
   if (loading) {
     return (

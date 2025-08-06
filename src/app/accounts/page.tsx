@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink, Power, PowerOff } from 'lucide-react'
 
 interface UpstreamAccount {
@@ -21,6 +22,12 @@ interface CreateAccountData {
   type: string
   provider: string
   credentials: any
+  config?: {
+    timeout?: number
+    retry_count?: number
+  }
+  priority?: number
+  weight?: number
 }
 
 interface UpdateAccountData {
@@ -205,7 +212,7 @@ export default function AccountsPage() {
     })
     
     try {
-      const account = accounts.find(a => a.id === id)
+      const account = accounts.find(a => a.id === Number(id))
       if (!account) return
 
       const newStatus = account.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
@@ -219,9 +226,6 @@ export default function AccountsPage() {
         },
         body: JSON.stringify({
           name: account.name,
-          email: account.email,
-          priority: account.priority,
-          weight: account.weight,
           status: newStatus
         })
       })
@@ -281,7 +285,7 @@ export default function AccountsPage() {
       } else {
         // 批量更新状态
         for (const id of accountIds) {
-          const account = accounts.find(a => a.id === id)
+          const account = accounts.find(a => a.id === Number(id))
           if (!account) continue
 
           const newStatus = operation === 'enable' ? 'ACTIVE' : 'INACTIVE'
@@ -294,9 +298,6 @@ export default function AccountsPage() {
             },
             body: JSON.stringify({
               name: account.name,
-              email: account.email,
-              priority: account.priority,
-              weight: account.weight,
               status: newStatus
             })
           })
@@ -482,7 +483,7 @@ export default function AccountsPage() {
                       checked={filteredAccounts.length > 0 && selectedAccounts.size === filteredAccounts.length}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedAccounts(new Set(filteredAccounts.map(a => a.id)))
+                          setSelectedAccounts(new Set(filteredAccounts.map(a => String(a.id))))
                         } else {
                           setSelectedAccounts(new Set())
                         }
@@ -528,13 +529,13 @@ export default function AccountsPage() {
                       <div className="flex items-center space-x-3">
                         <input
                           type="checkbox"
-                          checked={selectedAccounts.has(account.id)}
+                          checked={selectedAccounts.has(String(account.id))}
                           onChange={(e) => {
                             const newSelected = new Set(selectedAccounts)
                             if (e.target.checked) {
-                              newSelected.add(account.id)
+                              newSelected.add(String(account.id))
                             } else {
-                              newSelected.delete(account.id)
+                              newSelected.delete(String(account.id))
                             }
                             setSelectedAccounts(newSelected)
                           }}
@@ -580,9 +581,9 @@ export default function AccountsPage() {
                           成功率: {account.successRate.toFixed(1)}%
                         </div>
                         <div className="text-xs text-zinc-400">
-                          {account.lastUsedAt 
-                            ? `最后使用: ${new Date(account.lastUsedAt).toLocaleDateString()}`
-                            : '从未使用'
+                          {account.lastHealthCheck 
+                            ? `最后检查: ${new Date(account.lastHealthCheck).toLocaleDateString()}`
+                            : '从未检查'
                           }
                         </div>
                       </div>
@@ -590,8 +591,8 @@ export default function AccountsPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end space-x-2">
                         <button
-                          onClick={() => toggleAccountStatus(account.id)}
-                          disabled={isTogglingStatus.has(account.id)}
+                          onClick={() => toggleAccountStatus(String(account.id))}
+                          disabled={isTogglingStatus.has(String(account.id))}
                           className={`${
                             account.status === 'ACTIVE' 
                               ? 'text-zinc-400 hover:text-orange-600' 
@@ -599,7 +600,7 @@ export default function AccountsPage() {
                           } disabled:opacity-50`}
                           title={account.status === 'ACTIVE' ? '禁用账号' : '启用账号'}
                         >
-                          {isTogglingStatus.has(account.id) ? (
+                          {isTogglingStatus.has(String(account.id)) ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
                           ) : account.status === 'ACTIVE' ? (
                             <PowerOff className="w-4 h-4" />
@@ -608,7 +609,7 @@ export default function AccountsPage() {
                           )}
                         </button>
                         <button
-                          onClick={() => performHealthCheck(account.id)}
+                          onClick={() => performHealthCheck(String(account.id))}
                           className="text-zinc-400 hover:text-blue-600"
                           title="健康检查"
                         >
@@ -625,7 +626,7 @@ export default function AccountsPage() {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteAccount(account.id)}
+                          onClick={() => deleteAccount(String(account.id))}
                           className="text-zinc-400 hover:text-red-600"
                           title="删除"
                         >
@@ -658,7 +659,7 @@ export default function AccountsPage() {
             setShowEditModal(false)
             setEditingAccount(null)
           }}
-          onSubmit={(accountData) => updateAccount(editingAccount.id, accountData)}
+          onSubmit={(accountData) => updateAccount(String(editingAccount.id), accountData)}
           isLoading={isUpdating}
         />
       )}
@@ -760,6 +761,7 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
   const [formData, setFormData] = useState<CreateAccountData>({
     name: '',
     type: 'ANTHROPIC_API',
+    provider: 'ANTHROPIC',
     credentials: {
       api_key: '',
       base_url: 'https://api.anthropic.com'
@@ -778,6 +780,9 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
   const [isExchangingCode, setIsExchangingCode] = useState(false)
   const [authorizationInput, setAuthorizationInput] = useState('')
   const [showOAuthFlow, setShowOAuthFlow] = useState(false)
+
+  // ESC键退出支持
+  useEscapeKey(onClose)
 
   // 生成 Claude Code OAuth 授权链接
   const generateOAuthUrl = async () => {
@@ -904,7 +909,13 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
               </label>
               <select
                 value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as CreateAccountData['type'] })}
+                onChange={(e) => {
+                  const newType = e.target.value as CreateAccountData['type']
+                  const provider = newType.includes('ANTHROPIC') ? 'ANTHROPIC' : 
+                                  newType.includes('GEMINI') ? 'GEMINI' : 
+                                  newType.includes('OPENAI') ? 'OPENAI' : 'ANTHROPIC'
+                  setFormData({ ...formData, type: newType, provider })
+                }}
                 className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
               >
                 <option value="ANTHROPIC_API">Anthropic API</option>
@@ -1016,21 +1027,6 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
             </div>
           )}
 
-          {formData.type !== 'ANTHROPIC_API' && formData.type !== 'ANTHROPIC_OAUTH' && (
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                邮箱地址
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email || ''}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-                placeholder="account@example.com"
-              />
-            </div>
-          )}
 
           {formData.type === 'ANTHROPIC_API' && (
             <>
@@ -1147,11 +1143,11 @@ interface EditAccountModalProps {
 function EditAccountModal({ account, onClose, onSubmit, isLoading }: EditAccountModalProps) {
   const [formData, setFormData] = useState<UpdateAccountData>({
     name: account.name,
-    email: account.type !== 'ANTHROPIC_API' ? (account.email || '') : undefined,
-    priority: account.priority,
-    weight: account.weight,
-    status: account.status
+    is_active: account.is_active
   })
+
+  // ESC键退出支持
+  useEscapeKey(onClose)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -1185,65 +1181,8 @@ function EditAccountModal({ account, onClose, onSubmit, isLoading }: EditAccount
             />
           </div>
 
-          {account.type !== 'ANTHROPIC_API' && (
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                邮箱地址
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email || ''}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                优先级
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                权重
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="1000"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              状态
-            </label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as UpdateAccountData['status'] })}
-              className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-            >
-              <option value="ACTIVE">活跃</option>
-              <option value="INACTIVE">停用</option>
-              <option value="ERROR">错误</option>
-              <option value="PENDING">待验证</option>
-            </select>
-          </div>
 
           <div className="flex justify-end space-x-3 pt-4">
             <button

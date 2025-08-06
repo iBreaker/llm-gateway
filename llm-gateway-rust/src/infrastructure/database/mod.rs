@@ -1,8 +1,10 @@
 pub mod connection;
+pub mod accounts_repository;
 
 use sqlx::{PgPool, Row};
 use crate::infrastructure::config::{Config, DatabaseConfig};
 use connection::{DatabaseConnection, DatabaseConnectionError, PoolStats};
+pub use accounts_repository::AccountsRepository;
 
 /// 数据库错误类型
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +24,7 @@ pub enum DatabaseError {
 #[derive(Debug, Clone)]
 pub struct Database {
     connection_manager: DatabaseConnection,
+    pub accounts: AccountsRepository,
 }
 
 impl Database {
@@ -32,7 +35,9 @@ impl Database {
             config.database.clone()
         ).await?;
 
-        Ok(Database { connection_manager })
+        let accounts = AccountsRepository::new(connection_manager.pool().clone());
+
+        Ok(Database { connection_manager, accounts })
     }
 
     /// 传统方式创建数据库实例（向后兼容）
@@ -48,8 +53,9 @@ impl Database {
         };
 
         let connection_manager = DatabaseConnection::new(database_url, default_config).await?;
+        let accounts = AccountsRepository::new(connection_manager.pool().clone());
 
-        Ok(Database { connection_manager })
+        Ok(Database { connection_manager, accounts })
     }
 
     /// 获取数据库连接池

@@ -77,10 +77,17 @@ build:
 # 生产版本构建
 release:
 	@echo "🚀 构建生产版本..."
-	@npm run build:static
+	@echo "🦀 构建 Rust 后端..."
 	@cd llm-gateway-rust && cargo build --release
+	@echo "🌐 构建 Next.js 前端..."
+	@cp next.config.prod.js next.config.js.backup
+	@mv next.config.js next.config.dev.js 
+	@mv next.config.prod.js next.config.js
+	@npm run build
+	@mv next.config.js next.config.prod.js
+	@mv next.config.dev.js next.config.js
 	@echo "✅ 生产版本构建完成"
-	@echo "📦 前端静态文件: ./out/"
+	@echo "📦 前端构建文件: ./.next/"
 	@echo "🦀 Rust 二进制: ./llm-gateway-rust/target/release/llm-gateway-rust"
 
 # 运行测试
@@ -150,6 +157,24 @@ install:
 	@npm install
 	@cd llm-gateway-rust && cargo fetch
 	@echo "✅ 依赖安装完成"
+
+# 生产环境启动
+prod: release
+	@echo "🚀 启动生产环境..."
+	@echo "🦀 启动 Rust 后端服务 (端口 9527)..."
+	@cd llm-gateway-rust && ./target/release/llm-gateway-rust > ../rust-prod.log 2>&1 &
+	@sleep 2
+	@echo "🌐 启动 Next.js 生产服务 (端口 3000)..."
+	@npm start > next-prod.log 2>&1 &
+	@sleep 3
+	@echo ""
+	@echo "✅ 生产环境启动完成!"
+	@echo "📱 前端界面: http://localhost:3000"
+	@echo "🔧 后端API: http://localhost:9527"
+	@echo "📋 健康检查: http://localhost:9527/health"
+	@echo ""
+	@echo "📜 查看日志: tail -f rust-prod.log next-prod.log"
+	@echo "🛑 停止服务: make stop"
 
 # 生产部署
 deploy: release

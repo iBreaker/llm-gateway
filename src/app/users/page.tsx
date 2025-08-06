@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { Plus, MoreHorizontal, Search, Edit, Trash2, UserPlus, X } from 'lucide-react'
 
 interface User {
@@ -396,6 +397,9 @@ function CreateUserModal({ onClose, onSubmit, isLoading }: CreateUserModalProps)
     role: 'USER'
   })
 
+  // ESC键退出支持
+  useEscapeKey(onClose)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit(formData)
@@ -510,6 +514,9 @@ function EditUserModal({ user, onClose, onSubmit, isLoading }: EditUserModalProp
     isActive: user.isActive,
     password: ''
   })
+
+  // ESC键退出支持
+  useEscapeKey(onClose)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

@@ -13,6 +13,7 @@ use tracing::{info, instrument};
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::Claims;
+use crate::business::domain::{AccountProvider, AccountCredentials};
 
 /// 上游账号信息
 #[derive(Debug, Serialize)]
@@ -60,40 +61,49 @@ pub struct UpdateAccountRequest {
 }
 
 /// 获取账号列表
-#[instrument(skip(_database))]
+#[instrument(skip(database))]
 pub async fn list_accounts(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<AccountsListResponse>> {
     info!("📋 获取账号列表请求: 用户ID {}", claims.sub);
 
-    // 模拟账号数据 - 实际应该从数据库查询
-    let accounts = vec![
-        AccountInfo {
-            id: 1,
-            name: "Claude API - 主账号".to_string(),
-            account_type: "API".to_string(),
-            provider: "Anthropic".to_string(),
-            status: "active".to_string(),
-            is_active: true,
-            created_at: "2025-08-05 10:00:00".to_string(),
-            last_health_check: Some("2025-08-05 13:25:00".to_string()),
-            request_count: 150,
-            success_rate: 98.5,
-        },
-        AccountInfo {
-            id: 2,
-            name: "Gemini API - 备用账号".to_string(),
-            account_type: "API".to_string(),
-            provider: "Google".to_string(),
-            status: "active".to_string(),
-            is_active: true,
-            created_at: "2025-08-05 10:30:00".to_string(),
-            last_health_check: Some("2025-08-05 13:20:00".to_string()),
-            request_count: 85,
-            success_rate: 97.2,
-        },
-    ];
+    // 从数据库查询账号列表
+    let user_id: i64 = claims.sub.parse()
+        .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
+    
+    info!("🔥 即将调用数据库查询 user_id = {}", user_id);
+    let upstream_accounts = database.accounts.list_by_user_id(user_id).await?;
+    info!("🔥 数据库查询完成，返回 {} 条记录", upstream_accounts.len());
+
+    let accounts: Vec<AccountInfo> = upstream_accounts
+        .into_iter()
+        .map(|account| {
+            let account_type = match account.provider {
+                AccountProvider::ClaudeCode => "CLAUDE_CODE",
+                AccountProvider::GeminiCli => "GEMINI_CLI",
+            };
+
+            let provider = match account.provider {
+                AccountProvider::ClaudeCode => "Anthropic",
+                AccountProvider::GeminiCli => "Google",
+            };
+
+            AccountInfo {
+                id: account.id,
+                name: account.account_name,
+                account_type: account_type.to_string(),
+                provider: provider.to_string(),
+                status: account.health_status.as_str().to_string(),
+                is_active: account.is_active,
+                created_at: account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                last_health_check: account.last_health_check
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+                request_count: 0, // TODO: 从usage_records表计算
+                success_rate: 0.0, // TODO: 从usage_records表计算
+            }
+        })
+        .collect();
 
     let total = accounts.len() as i64;
 
@@ -103,29 +113,74 @@ pub async fn list_accounts(
 }
 
 /// 创建账号
-#[instrument(skip(_database, request))]
+#[instrument(skip(database, request))]
 pub async fn create_account(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<CreateAccountRequest>,
 ) -> AppResult<Json<AccountInfo>> {
-    info!("🔧 创建账号请求: {} (操作者: {})", request.name, claims.username);
+    info!("➕ 创建账号请求: {} (操作者: {})", request.name, claims.username);
 
-    // 验证输入
-    if request.name.is_empty() {
-        return Err(AppError::Validation("账号名称不能为空".to_string()));
-    }
+    // 解析用户ID
+    let user_id: i64 = claims.sub.parse()
+        .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
 
-    // 模拟创建账号
+    // 解析账号提供商
+    let provider = match request.provider.as_str() {
+        "ANTHROPIC" => AccountProvider::ClaudeCode,
+        "GOOGLE" => AccountProvider::GeminiCli,
+        _ => return Err(AppError::Validation(
+            format!("不支持的提供商: {}", request.provider)
+        )),
+    };
+
+    // 解析凭据
+    let credentials = if let Some(creds_obj) = request.credentials.as_object() {
+        AccountCredentials {
+            session_key: creds_obj.get("session_key")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            access_token: creds_obj.get("access_token")
+                .or_else(|| creds_obj.get("api_key"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            refresh_token: creds_obj.get("refresh_token")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            expires_at: None,
+        }
+    } else {
+        return Err(AppError::Validation("凭据格式无效".to_string()));
+    };
+
+    // 创建账号
+    let upstream_account = database.accounts.create(
+        user_id,
+        &provider,
+        &request.name,
+        &credentials,
+    ).await?;
+
+    let account_type = match upstream_account.provider {
+        AccountProvider::ClaudeCode => "CLAUDE_CODE",
+        AccountProvider::GeminiCli => "GEMINI_CLI",
+    };
+
+    let provider_name = match upstream_account.provider {
+        AccountProvider::ClaudeCode => "Anthropic",
+        AccountProvider::GeminiCli => "Google",
+    };
+
     let account = AccountInfo {
-        id: 999, // 模拟新ID
-        name: request.name,
-        account_type: request.account_type,
-        provider: request.provider,
-        status: "active".to_string(),
-        is_active: true,
-        created_at: "2025-08-05 13:26:00".to_string(),
-        last_health_check: None,
+        id: upstream_account.id,
+        name: upstream_account.account_name,
+        account_type: account_type.to_string(),
+        provider: provider_name.to_string(),
+        status: upstream_account.health_status.as_str().to_string(),
+        is_active: upstream_account.is_active,
+        created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+        last_health_check: upstream_account.last_health_check
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
         request_count: 0,
         success_rate: 0.0,
     };
@@ -136,49 +191,110 @@ pub async fn create_account(
 }
 
 /// 更新账号
-#[instrument(skip(_database, request))]
+#[instrument(skip(database, request))]
 pub async fn update_account(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
     Json(request): Json<UpdateAccountRequest>,
 ) -> AppResult<Json<AccountInfo>> {
     info!("🔄 更新账号请求: ID {} (操作者: {})", account_id, claims.username);
 
-    // 模拟更新账号
-    let account = AccountInfo {
-        id: account_id,
-        name: request.name,
-        account_type: "API".to_string(),
-        provider: "Anthropic".to_string(),
-        status: if request.is_active { "active" } else { "inactive" }.to_string(),
-        is_active: request.is_active,
-        created_at: "2025-08-05 10:00:00".to_string(),
-        last_health_check: Some("2025-08-05 13:26:00".to_string()),
-        request_count: 150,
-        success_rate: 98.5,
+    // 解析用户ID
+    let user_id: i64 = claims.sub.parse()
+        .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
+
+    // 解析凭据（如果提供）
+    let credentials = if let Some(creds_value) = &request.credentials {
+        if let Some(creds_obj) = creds_value.as_object() {
+            Some(AccountCredentials {
+                session_key: creds_obj.get("session_key")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                access_token: creds_obj.get("access_token")
+                    .or_else(|| creds_obj.get("api_key"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                refresh_token: creds_obj.get("refresh_token")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                expires_at: None,
+            })
+        } else {
+            return Err(AppError::Validation("凭据格式无效".to_string()));
+        }
+    } else {
+        None
     };
 
-    info!("✅ 账号更新成功: {} (ID: {})", account.name, account.id);
+    // 执行更新
+    let updated_account = database.accounts.update(
+        account_id,
+        user_id,
+        Some(&request.name),
+        Some(request.is_active),
+        credentials.as_ref(),
+    ).await?;
 
-    Ok(Json(account))
+    if let Some(upstream_account) = updated_account {
+        let account_type = match upstream_account.provider {
+            AccountProvider::ClaudeCode => "CLAUDE_CODE",
+            AccountProvider::GeminiCli => "GEMINI_CLI",
+        };
+
+        let provider_name = match upstream_account.provider {
+            AccountProvider::ClaudeCode => "Anthropic",
+            AccountProvider::GeminiCli => "Google",
+        };
+
+        let account = AccountInfo {
+            id: upstream_account.id,
+            name: upstream_account.account_name,
+            account_type: account_type.to_string(),
+            provider: provider_name.to_string(),
+            status: upstream_account.health_status.as_str().to_string(),
+            is_active: upstream_account.is_active,
+            created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            last_health_check: upstream_account.last_health_check
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+            request_count: 0,
+            success_rate: 0.0,
+        };
+
+        info!("✅ 账号更新成功: {} (ID: {})", account.name, account.id);
+        Ok(Json(account))
+    } else {
+        info!("⚠️ 账号不存在或无权限更新: ID {}", account_id);
+        Err(AppError::NotFound("账号不存在或无权限访问".to_string()))
+    }
 }
 
 /// 删除账号
-#[instrument(skip(_database))]
+#[instrument(skip(database))]
 pub async fn delete_account(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
     info!("🗑️ 删除账号请求: ID {} (操作者: {})", account_id, claims.username);
 
-    info!("✅ 账号删除成功: ID {}", account_id);
+    // 解析用户ID
+    let user_id: i64 = claims.sub.parse()
+        .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "账号删除成功"
-    })))
+    // 执行删除
+    let deleted = database.accounts.delete(account_id, user_id).await?;
+
+    if deleted {
+        info!("✅ 账号删除成功: ID {}", account_id);
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "账号删除成功"
+        })))
+    } else {
+        info!("⚠️ 账号不存在或无权限删除: ID {}", account_id);
+        Err(AppError::NotFound("账号不存在或无权限访问".to_string()))
+    }
 }
 
 /// 账号健康检查
