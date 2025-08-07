@@ -2,6 +2,7 @@
 //! 
 //! 负责数据持久化、外部服务调用、配置管理等基础设施相关功能
 
+pub mod cache;
 pub mod config;
 pub mod database;
 pub mod repositories;

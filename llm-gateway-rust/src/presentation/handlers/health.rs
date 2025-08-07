@@ -138,6 +138,52 @@ pub async fn get_system_health(
     };
     checks.insert("upstream_accounts".to_string(), upstream_check);
 
+    // 缓存系统健康检查
+    let cache_check_start = std::time::Instant::now();
+    if let Some(cache_manager) = database.cache_manager() {
+        match cache_manager.get_cache_stats().await {
+            Ok(cache_stats) => {
+                let cache_check = HealthCheck {
+                    status: "healthy".to_string(),
+                    response_time_ms: cache_check_start.elapsed().as_millis() as u64,
+                    details: Some(serde_json::json!({
+                        "memory_enabled": cache_stats.memory_enabled,
+                        "redis_enabled": cache_stats.redis_enabled,
+                        "memory_hit_rate": cache_stats.metrics.memory_hit_rate(),
+                        "redis_hit_rate": cache_stats.metrics.redis_hit_rate(),
+                        "overall_hit_rate": cache_stats.metrics.overall_hit_rate(),
+                        "total_requests": cache_stats.metrics.total_requests,
+                        "memory_hits": cache_stats.metrics.memory_hits,
+                        "redis_hits": cache_stats.metrics.redis_hits,
+                        "memory_stats": cache_stats.memory_stats,
+                        "redis_stats": cache_stats.redis_stats
+                    })),
+                    error: None,
+                };
+                checks.insert("cache".to_string(), cache_check);
+            }
+            Err(e) => {
+                let cache_check = HealthCheck {
+                    status: "unhealthy".to_string(),
+                    response_time_ms: cache_check_start.elapsed().as_millis() as u64,
+                    details: None,
+                    error: Some(format!("缓存统计获取失败: {}", e)),
+                };
+                checks.insert("cache".to_string(), cache_check);
+            }
+        }
+    } else {
+        let cache_check = HealthCheck {
+            status: "disabled".to_string(),
+            response_time_ms: 0,
+            details: Some(serde_json::json!({
+                "message": "缓存系统未启用"
+            })),
+            error: None,
+        };
+        checks.insert("cache".to_string(), cache_check);
+    }
+
     // 确定总体健康状态
     let overall_status = determine_overall_status(&checks);
 
@@ -422,4 +468,81 @@ async fn perform_simple_health_check() -> Result<u64, Box<dyn std::error::Error 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     
     Ok(start_time.elapsed().as_millis() as u64)
+}
+
+/// 获取缓存系统详细监控信息
+#[instrument(skip(database))]
+pub async fn get_cache_metrics(
+    State(database): State<Database>,
+) -> AppResult<Json<serde_json::Value>> {
+    info!("📊 获取缓存监控指标");
+
+    let cache_manager = database.cache_manager()
+        .ok_or_else(|| AppError::NotFound("缓存系统未启用".to_string()))?;
+
+    let cache_stats = cache_manager.get_cache_stats().await
+        .map_err(|e| AppError::Internal(format!("获取缓存统计失败: {}", e)))?;
+
+    let response = serde_json::json!({
+        "status": "ok",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "cache_config": {
+            "memory_enabled": cache_stats.memory_enabled,
+            "redis_enabled": cache_stats.redis_enabled
+        },
+        "performance_metrics": {
+            "overall_hit_rate": cache_stats.metrics.overall_hit_rate(),
+            "memory_hit_rate": cache_stats.metrics.memory_hit_rate(),
+            "redis_hit_rate": cache_stats.metrics.redis_hit_rate(),
+            "total_requests": cache_stats.metrics.total_requests,
+            "cache_efficiency": {
+                "memory_hits": cache_stats.metrics.memory_hits,
+                "memory_misses": cache_stats.metrics.memory_misses,
+                "memory_evictions": cache_stats.metrics.memory_evictions,
+                "redis_hits": cache_stats.metrics.redis_hits,
+                "redis_misses": cache_stats.metrics.redis_misses,
+                "redis_errors": cache_stats.metrics.redis_errors
+            }
+        },
+        "memory_cache_details": cache_stats.memory_stats,
+        "redis_cache_details": cache_stats.redis_stats,
+        "recommendations": generate_cache_recommendations(&cache_stats.metrics)
+    });
+
+    Ok(Json(response))
+}
+
+/// 生成缓存性能建议
+fn generate_cache_recommendations(metrics: &crate::infrastructure::cache::CacheMetrics) -> Vec<String> {
+    let mut recommendations = Vec::new();
+
+    let overall_hit_rate = metrics.overall_hit_rate();
+    let memory_hit_rate = metrics.memory_hit_rate();
+    let redis_hit_rate = metrics.redis_hit_rate();
+
+    if overall_hit_rate < 0.5 {
+        recommendations.push("整体缓存命中率较低(<50%)，建议检查缓存策略和TTL设置".to_string());
+    }
+
+    if memory_hit_rate > 0.0 && memory_hit_rate < 0.3 {
+        recommendations.push("内存缓存命中率较低，考虑增加内存缓存大小或调整TTL".to_string());
+    }
+
+    if redis_hit_rate > 0.0 && redis_hit_rate < 0.4 {
+        recommendations.push("Redis缓存命中率较低，考虑优化Redis配置或缓存键设计".to_string());
+    }
+
+    if metrics.redis_errors > metrics.redis_hits + metrics.redis_misses {
+        recommendations.push("Redis错误率过高，请检查Redis连接和配置".to_string());
+    }
+
+    if metrics.memory_evictions > metrics.memory_hits * 10 / 100 {
+        recommendations.push("内存缓存驱逐频繁，建议增加缓存容量".to_string());
+    }
+
+    if recommendations.is_empty() {
+        recommendations.push("缓存系统运行良好，无需特别优化".to_string());
+    }
+
+    recommendations
 }

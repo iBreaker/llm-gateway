@@ -1,8 +1,10 @@
 pub mod connection;
 pub mod accounts_repository;
 
+use std::time::Duration;
 use sqlx::{PgPool, Row};
 use crate::infrastructure::config::{Config, DatabaseConfig};
+use crate::infrastructure::cache::{CacheConfig as CacheManagerConfig, CacheManager, SimpleCache};
 use connection::{DatabaseConnection, DatabaseConnectionError, PoolStats};
 pub use accounts_repository::AccountsRepository;
 
@@ -25,6 +27,7 @@ pub enum DatabaseError {
 pub struct Database {
     connection_manager: DatabaseConnection,
     pub accounts: AccountsRepository,
+    pub cache_manager: Option<CacheManager>,
 }
 
 impl Database {
@@ -35,9 +38,23 @@ impl Database {
             config.database.clone()
         ).await?;
 
-        let accounts = AccountsRepository::new(connection_manager.pool().clone());
+        // 初始化缓存管理器
+        let cache_manager = Self::create_cache_manager(&config.cache).await.ok();
+        
+        // 创建SimpleCache用于repository
+        let simple_cache = if config.cache.enable_memory_cache {
+            Some(SimpleCache::new(config.cache.memory_cache_size))
+        } else {
+            None
+        };
 
-        Ok(Database { connection_manager, accounts })
+        let accounts = if let Some(ref cache) = simple_cache {
+            AccountsRepository::with_cache(connection_manager.pool().clone(), cache.clone())
+        } else {
+            AccountsRepository::new(connection_manager.pool().clone())
+        };
+
+        Ok(Database { connection_manager, accounts, cache_manager })
     }
 
     /// 传统方式创建数据库实例（向后兼容）
@@ -55,7 +72,7 @@ impl Database {
         let connection_manager = DatabaseConnection::new(database_url, default_config).await?;
         let accounts = AccountsRepository::new(connection_manager.pool().clone());
 
-        Ok(Database { connection_manager, accounts })
+        Ok(Database { connection_manager, accounts, cache_manager: None })
     }
 
     /// 获取数据库连接池
@@ -118,6 +135,57 @@ impl Database {
                 .and_then(|s| s.parse().ok()),
             server_port: result.try_get::<i32, _>("server_port").ok(),
         })
+    }
+
+    /// 创建缓存管理器的私有方法
+    async fn create_cache_manager(cache_config: &crate::infrastructure::config::CacheConfig) -> Result<CacheManager, DatabaseError> {
+        // 将配置结构转换为缓存模块的CacheConfig
+        let cache_manager_config = CacheManagerConfig {
+            memory_cache_size: cache_config.memory_cache_size,
+            memory_default_ttl: Duration::from_secs(cache_config.default_ttl_seconds),
+            redis_url: cache_config.redis_url.clone(),
+            redis_default_ttl: Duration::from_secs(cache_config.default_ttl_seconds * 2), // Redis TTL更长
+            redis_key_prefix: cache_config.redis_prefix.clone(),
+            enable_memory_cache: cache_config.enable_memory_cache,
+            enable_redis_cache: cache_config.enable_redis_cache,
+            cache_miss_fallback: true,
+        };
+
+        CacheManager::new(cache_manager_config)
+            .await
+            .map_err(|e| DatabaseError::Configuration(format!("缓存管理器初始化失败: {}", e)))
+    }
+
+    /// 获取缓存管理器
+    pub fn cache_manager(&self) -> Option<&CacheManager> {
+        self.cache_manager.as_ref()
+    }
+
+    /// 失效用户相关的所有缓存
+    pub async fn invalidate_user_cache(&self, user_id: i64) -> Result<(), DatabaseError> {
+        if let Some(ref cache_manager) = self.cache_manager {
+            cache_manager.invalidate_user_cache(user_id).await
+                .map_err(|e| DatabaseError::Configuration(format!("缓存失效失败: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    /// 失效账号相关的所有缓存
+    pub async fn invalidate_account_cache(&self, account_id: i64) -> Result<(), DatabaseError> {
+        if let Some(ref cache_manager) = self.cache_manager {
+            cache_manager.invalidate_account_cache(account_id).await
+                .map_err(|e| DatabaseError::Configuration(format!("缓存失效失败: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    /// 清空所有缓存
+    pub async fn clear_all_caches(&self) -> Result<(), DatabaseError> {
+        if let Some(ref cache_manager) = self.cache_manager {
+            cache_manager.clear_all_caches().await
+                .map_err(|e| DatabaseError::Configuration(format!("清空缓存失败: {}", e)))?;
+        }
+        Ok(())
     }
 }
 

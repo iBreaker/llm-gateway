@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { apiClient } from '../../utils/api'
 import { Plus, Server, AlertCircle, CheckCircle, X, Eye, EyeOff, Edit, Trash2, Play, Pause, RefreshCw, Link, Copy, ExternalLink, Power, PowerOff } from 'lucide-react'
 
 interface UpstreamAccount {
   id: number
   name: string
-  type: string
+  accountType: string
   provider: string
   status: string
-  is_active: boolean
+  isActive: boolean
   createdAt: string
   lastHealthCheck?: string
   requestCount: number
@@ -60,19 +61,8 @@ export default function AccountsPage() {
   // 获取上游账号列表
   const fetchAccounts = async () => {
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/accounts', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setAccounts(data.accounts || [])
-      } else {
-        console.error('获取上游账号失败')
-      }
+      const data = await apiClient.get<{accounts: UpstreamAccount[], total: number}>('/api/accounts')
+      setAccounts(data.accounts || [])
     } catch (error) {
       console.error('获取上游账号失败:', error)
     } finally {
@@ -84,27 +74,11 @@ export default function AccountsPage() {
   const createAccount = async (accountData: CreateAccountData) => {
     setIsCreating(true)
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/accounts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(accountData)
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        await fetchAccounts()
-        setShowCreateModal(false)
-        setMessage({ type: 'success', text: '上游账号创建成功' })
-        setTimeout(() => setMessage(null), 3000)
-      } else {
-        setMessage({ type: 'error', text: data.message || '上游账号创建失败' })
-        setTimeout(() => setMessage(null), 3000)
-      }
+      const data = await apiClient.post<UpstreamAccount>('/api/accounts', accountData)
+      await fetchAccounts()
+      setShowCreateModal(false)
+      setMessage({ type: 'success', text: '上游账号创建成功' })
+      setTimeout(() => setMessage(null), 3000)
     } catch (error) {
       setMessage({ type: 'error', text: '网络错误' })
       setTimeout(() => setMessage(null), 3000)
@@ -317,7 +291,7 @@ export default function AccountsPage() {
   // 过滤账号
   const filteredAccounts = selectedType === 'all' 
     ? accounts 
-    : accounts.filter(account => account.type === selectedType)
+    : accounts.filter(account => account.accountType === selectedType)
 
   useEffect(() => {
     fetchAccounts()
@@ -465,7 +439,7 @@ export default function AccountsPage() {
             <span className="ml-2 text-sm font-medium text-zinc-600">Anthropic账号</span>
           </div>
           <p className="text-2xl font-bold text-zinc-900 mt-1">
-            {accounts.filter(a => a.type === 'ANTHROPIC_API').length}
+            {accounts.filter(a => a.accountType === 'anthropic_api' || a.accountType === 'ANTHROPIC_API').length}
           </p>
         </div>
       </div>
@@ -545,7 +519,7 @@ export default function AccountsPage() {
                           <div className={`text-sm font-medium ${account.status === 'INACTIVE' ? 'text-zinc-500' : 'text-zinc-900'}`}>
                             {account.name}
                           </div>
-                          <div className="text-xs text-zinc-500">{account.provider} • {account.type}</div>
+                          <div className="text-xs text-zinc-500">{account.provider} • {account.accountType}</div>
                           <div className="text-xs text-zinc-400 mt-1">
                             创建于 {new Date(account.createdAt).toLocaleDateString()}
                           </div>
@@ -553,7 +527,7 @@ export default function AccountsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <TypeBadge type={account.type} />
+                      <TypeBadge type={account.accountType} />
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={account.status} />
@@ -561,7 +535,7 @@ export default function AccountsPage() {
                     <td className="px-4 py-3">
                       <div className="text-sm text-zinc-900">
                         <div>活跃状态</div>
-                        <div className="text-xs text-zinc-500">{account.is_active ? '启用' : '禁用'}</div>
+                        <div className="text-xs text-zinc-500">{account.isActive ? '启用' : '禁用'}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -696,6 +670,8 @@ interface TypeBadgeProps {
 
 function TypeBadge({ type }: TypeBadgeProps) {
   const typeConfig = {
+    anthropic_api: { color: 'bg-purple-100 text-purple-700', text: 'Anthropic API' },
+    anthropic_oauth: { color: 'bg-blue-100 text-blue-700', text: 'Anthropic OAuth' },
     ANTHROPIC_API: { color: 'bg-purple-100 text-purple-700', text: 'Anthropic API' },
     ANTHROPIC_OAUTH: { color: 'bg-blue-100 text-blue-700', text: 'Anthropic OAuth' },
     GEMINI_CLI: { color: 'bg-green-100 text-green-700', text: 'Gemini CLI' },
@@ -1139,7 +1115,7 @@ interface EditAccountModalProps {
 function EditAccountModal({ account, onClose, onSubmit, isLoading }: EditAccountModalProps) {
   const [formData, setFormData] = useState<UpdateAccountData>({
     name: account.name,
-    is_active: account.is_active
+    is_active: account.isActive
   })
 
   // ESC键退出支持

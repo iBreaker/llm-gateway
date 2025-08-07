@@ -38,6 +38,10 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 num-traits = "0.2"
 
+# 缓存
+redis = { version = "0.23", features = ["aio", "tokio-comp"] }
+async-trait = "0.1"
+
 # 错误处理和工具
 anyhow = "1.0"
 thiserror = "1.0"
@@ -50,4 +54,12 @@ md5 = "0.7"
 
 # 环境变量
 dotenv = "0.15"
+
+[[bin]]
+name = "test_redis_connection"
+path = "test_redis_connection.rs"
+
+[[bin]]
+name = "test_redis_integration"
+path = "test_redis_integration.rs"
 

@@ -83,7 +83,8 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
     // 公开路由
     let public_routes = Router::new()
         .route("/health", get(handlers::health::health_check))
-        .route("/api/health/system", get(handlers::health::get_system_health));
+        .route("/api/health/system", get(handlers::health::get_system_health))
+        .route("/api/health/cache", get(handlers::health::get_cache_metrics));
 
     // 检查是否存在构建的前端文件
     let frontend_dist_path = std::env::var("FRONTEND_DIST_PATH")

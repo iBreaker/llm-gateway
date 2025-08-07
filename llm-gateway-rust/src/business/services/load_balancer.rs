@@ -565,6 +565,7 @@ mod tests {
                 access_token: None,
                 refresh_token: None,
                 expires_at: None,
+                base_url: None,
             },
             is_active: true,
             health_status: health,

@@ -11,6 +11,9 @@ pub mod business;        // 业务逻辑层（领域模型、服务接口、智�
 pub mod presentation;    // 表示层（HTTP处理、路由、中间件）
 pub mod auth;           // 认证和授权模块
 
+#[cfg(test)]
+pub mod integration_test_cache; // 缓存集成测试
+
 // 重新导出核心类型
 pub use infrastructure::{Config, Database};
 pub use shared::{AppError, AppResult};

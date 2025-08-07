@@ -308,7 +308,7 @@ impl IntelligentProxy {
             info!("🔍 [上游响应] 头部 '{}': '{}'", name, value.to_str().unwrap_or("<invalid_utf8>"));
         }
         
-        let mut headers: std::collections::HashMap<String, String> = response_headers
+        let headers: std::collections::HashMap<String, String> = response_headers
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
@@ -525,7 +525,7 @@ mod tests {
         let proxy = IntelligentProxy::new();
         
         let routing_decision = RoutingDecision {
-            selected_account: create_test_account(1, AccountProvider::ClaudeCode),
+            selected_account: create_test_account(1, AccountProvider::AnthropicApi),
             strategy_used: LoadBalancingStrategy::Adaptive,
             confidence_score: 0.8,
             reasoning: "Test".to_string(),
@@ -551,6 +551,7 @@ mod tests {
                 access_token: Some("test_token".to_string()),
                 refresh_token: None,
                 expires_at: None,
+                base_url: None,
             },
             is_active: true,
             health_status: HealthStatus::Healthy,

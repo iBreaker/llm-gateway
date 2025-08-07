@@ -8,6 +8,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub anthropic: AnthropicConfig,
     pub auth: AuthConfig,
+    pub cache: CacheConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,16 @@ pub struct DatabaseConfig {
 pub struct AuthConfig {
     pub jwt_secret: String,
     pub token_expiry_hours: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheConfig {
+    pub redis_url: Option<String>,
+    pub redis_prefix: String,
+    pub memory_cache_size: usize,
+    pub enable_memory_cache: bool,
+    pub enable_redis_cache: bool,
+    pub default_ttl_seconds: u64,
 }
 
 impl Config {
@@ -104,6 +115,30 @@ impl Config {
                     .unwrap_or_else(|_| "24".to_string())
                     .parse()
                     .unwrap_or(24),
+            },
+            
+            cache: CacheConfig {
+                redis_url: env::var("REDIS_URL")
+                    .ok()
+                    .or_else(|| Some("redis://localhost:16379".to_string())),
+                redis_prefix: env::var("CACHE_PREFIX")
+                    .unwrap_or_else(|_| "llm-gateway:".to_string()),
+                memory_cache_size: env::var("MEMORY_CACHE_SIZE")
+                    .unwrap_or_else(|_| "1000".to_string())
+                    .parse()
+                    .unwrap_or(1000),
+                enable_memory_cache: env::var("ENABLE_MEMORY_CACHE")
+                    .unwrap_or_else(|_| "true".to_string())
+                    .parse()
+                    .unwrap_or(true),
+                enable_redis_cache: env::var("ENABLE_REDIS_CACHE")
+                    .unwrap_or_else(|_| "true".to_string())
+                    .parse()
+                    .unwrap_or(true),
+                default_ttl_seconds: env::var("CACHE_DEFAULT_TTL")
+                    .unwrap_or_else(|_| "300".to_string())
+                    .parse()
+                    .unwrap_or(300),
             },
         };
 

@@ -20,18 +20,13 @@ use crate::business::domain::{AccountProvider, AccountCredentials};
 pub struct AccountInfo {
     pub id: i64,
     pub name: String,
-    #[serde(rename = "type")]
     pub account_type: String,
     pub provider: String,
     pub status: String,
     pub is_active: bool,
-    #[serde(rename = "createdAt")]
     pub created_at: String,
-    #[serde(rename = "lastHealthCheck")]
     pub last_health_check: Option<String>,
-    #[serde(rename = "requestCount")]
     pub request_count: i64,
-    #[serde(rename = "successRate")]
     pub success_rate: f64,
 }
 
@@ -76,32 +71,38 @@ pub async fn list_accounts(
     let upstream_accounts = database.accounts.list_by_user_id(user_id).await?;
     info!("🔥 数据库查询完成，返回 {} 条记录", upstream_accounts.len());
 
-    let accounts: Vec<AccountInfo> = upstream_accounts
-        .into_iter()
-        .map(|account| {
-            // 使用新的方法获取显示类型和提供商名称
-            let account_type = match account.provider {
-                AccountProvider::AnthropicApi => "ANTHROPIC_API",
-                AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
-            };
+    // 异步收集账号信息和统计数据
+    let mut accounts = Vec::new();
+    for account in upstream_accounts {
+        // 获取账号的使用统计
+        let (request_count, success_rate) = database.accounts.get_account_statistics(account.id).await
+            .unwrap_or_else(|e| {
+                info!("获取账号 {} 统计失败: {}, 使用默认值", account.id, e);
+                (0, 0.0)
+            });
 
-            let provider = account.provider.provider_name();
+        // 使用新的方法获取显示类型和提供商名称
+        let account_type = match account.provider {
+            AccountProvider::AnthropicApi => "anthropic_api",
+            AccountProvider::AnthropicOauth => "anthropic_oauth",
+        };
 
-            AccountInfo {
-                id: account.id,
-                name: account.account_name,
-                account_type: account_type.to_string(),
-                provider: provider.to_string(),
-                status: account.health_status.as_str().to_string(),
-                is_active: account.is_active,
-                created_at: account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-                last_health_check: account.last_health_check
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-                request_count: 0, // TODO: 从usage_records表计算
-                success_rate: 0.0, // TODO: 从usage_records表计算
-            }
-        })
-        .collect();
+        let provider = account.provider.provider_name();
+
+        accounts.push(AccountInfo {
+            id: account.id,
+            name: account.account_name,
+            account_type: account_type.to_string(),
+            provider: provider.to_string(),
+            status: account.health_status.as_str().to_string(),
+            is_active: account.is_active,
+            created_at: account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            last_health_check: account.last_health_check
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+            request_count,
+            success_rate,
+        });
+    }
 
     let total = accounts.len() as i64;
 
@@ -125,8 +126,8 @@ pub async fn create_account(
 
     // 解析账号提供商（基于前端发送的type字段）
     let provider = match request.account_type.as_str() {
-        "ANTHROPIC_API" => AccountProvider::AnthropicApi,
-        "ANTHROPIC_OAUTH" => AccountProvider::AnthropicOauth,
+        "anthropic_api" | "ANTHROPIC_API" => AccountProvider::AnthropicApi,
+        "anthropic_oauth" | "ANTHROPIC_OAUTH" => AccountProvider::AnthropicOauth,
         _ => return Err(AppError::Validation(
             format!("不支持的账号类型: {}", request.account_type)
         )),
@@ -162,9 +163,16 @@ pub async fn create_account(
         &credentials,
     ).await?;
 
+    // 获取新创建账号的统计数据
+    let (request_count, success_rate) = database.accounts.get_account_statistics(upstream_account.id).await
+        .unwrap_or_else(|e| {
+            info!("获取新建账号 {} 统计失败: {}, 使用默认值", upstream_account.id, e);
+            (0, 0.0)
+        });
+
     let account_type = match upstream_account.provider {
-        AccountProvider::AnthropicApi => "ANTHROPIC_API",
-        AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
+        AccountProvider::AnthropicApi => "anthropic_api",
+        AccountProvider::AnthropicOauth => "anthropic_oauth",
     };
 
     let provider_name = upstream_account.provider.provider_name();
@@ -179,8 +187,8 @@ pub async fn create_account(
         created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
         last_health_check: upstream_account.last_health_check
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-        request_count: 0,
-        success_rate: 0.0,
+        request_count,
+        success_rate,
     };
 
     info!("✅ 账号创建成功: {} (ID: {})", account.name, account.id);
@@ -238,9 +246,16 @@ pub async fn update_account(
     ).await?;
 
     if let Some(upstream_account) = updated_account {
+        // 获取更新后账号的统计数据
+        let (request_count, success_rate) = database.accounts.get_account_statistics(upstream_account.id).await
+            .unwrap_or_else(|e| {
+                info!("获取更新账号 {} 统计失败: {}, 使用默认值", upstream_account.id, e);
+                (0, 0.0)
+            });
+
         let account_type = match upstream_account.provider {
-            AccountProvider::AnthropicApi => "ANTHROPIC_API",
-            AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
+            AccountProvider::AnthropicApi => "anthropic_api",
+            AccountProvider::AnthropicOauth => "anthropic_oauth",
         };
 
         let provider_name = upstream_account.provider.provider_name();
@@ -255,8 +270,8 @@ pub async fn update_account(
             created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
             last_health_check: upstream_account.last_health_check
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-            request_count: 0,
-            success_rate: 0.0,
+            request_count,
+            success_rate,
         };
 
         info!("✅ 账号更新成功: {} (ID: {})", account.name, account.id);

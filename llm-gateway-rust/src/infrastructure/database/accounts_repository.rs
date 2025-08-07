@@ -3,23 +3,35 @@
 //! 实现上游账号的CRUD操作
 
 use sqlx::PgPool;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 use chrono::Utc;
 use serde_json;
 
 use crate::business::domain::{UpstreamAccount, AccountProvider, AccountCredentials, HealthStatus};
 use crate::shared::{AppError, AppResult};
 use crate::shared::types::{UserId, UpstreamAccountId};
+use crate::infrastructure::cache::{SimpleCache, AccountStats};
 
 /// 上游账号数据库服务
 #[derive(Debug, Clone)]
 pub struct AccountsRepository {
     pool: PgPool,
+    simple_cache: Option<SimpleCache>,
 }
 
 impl AccountsRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self { 
+            pool,
+            simple_cache: None,
+        }
+    }
+
+    pub fn with_cache(pool: PgPool, simple_cache: SimpleCache) -> Self {
+        Self {
+            pool,
+            simple_cache: Some(simple_cache),
+        }
     }
 
     /// 获取用户的所有上游账号
@@ -317,6 +329,13 @@ impl AccountsRepository {
 
         info!("上游账号更新成功: ID {}", account_id);
         
+        // 更新完成后，失效相关缓存
+        if let Some(ref cache) = self.simple_cache {
+            if cache.remove_account_stats(account_id).await {
+                debug!("清除账号 {} 的缓存统计，因为账号信息已更新", account_id);
+            }
+        }
+        
         // 返回更新后的记录
         self.get_by_id(account_id, user_id).await
     }
@@ -341,6 +360,13 @@ impl AccountsRepository {
         let deleted = result.rows_affected() > 0;
         if deleted {
             info!("上游账号删除成功: ID {}", account_id);
+            
+            // 删除完成后，失效相关缓存
+            if let Some(ref cache) = self.simple_cache {
+                if cache.remove_account_stats(account_id).await {
+                    debug!("清除账号 {} 的缓存统计，因为账号已删除", account_id);
+                }
+            }
         } else {
             info!("上游账号不存在或无权限删除: ID {}", account_id);
         }
@@ -407,7 +433,80 @@ impl AccountsRepository {
             })?;
         }
 
+        // 更新完成后，失效缓存中的账号统计
+        if let Some(ref cache) = self.simple_cache {
+            if cache.remove_account_stats(account_id).await {
+                debug!("清除账号 {} 的缓存统计，因为健康状态已更新", account_id);
+            }
+        }
+
         info!("账号 {} 健康状态更新完成", account_id);
         Ok(())
+    }
+
+    /// 获取账号的使用统计（带缓存）
+    #[instrument(skip(self))]
+    pub async fn get_account_statistics(&self, account_id: UpstreamAccountId) -> AppResult<(i64, f64)> {
+        info!("查询账号 {} 的使用统计", account_id);
+
+        // 尝试从缓存获取
+        if let Some(ref cache) = self.simple_cache {
+            if let Some(cached_stats) = cache.get_account_stats(account_id).await {
+                info!("账号 {} 统计缓存命中", account_id);
+                return Ok((cached_stats.request_count, cached_stats.success_rate));
+            }
+        }
+
+        // 缓存未命中，从数据库查询
+        let stats = sqlx::query!(
+            r#"
+            SELECT 
+                COUNT(*) as total_requests,
+                COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as success_requests,
+                COALESCE(AVG(CASE WHEN response_status >= 200 AND response_status < 300 THEN latency_ms END), 0) as avg_response_time
+            FROM usage_records 
+            WHERE upstream_account_id = $1
+            "#,
+            account_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("查询使用统计失败: {}", e);
+            AppError::Database(e)
+        })?;
+
+        let total_requests = stats.total_requests.unwrap_or(0);
+        let success_requests = stats.success_requests.unwrap_or(0);
+        let avg_response_time = stats.avg_response_time
+            .map(|bd| bd.to_string().parse::<f64>().unwrap_or(0.0))
+            .unwrap_or(0.0);
+        
+        let success_rate = if total_requests > 0 {
+            (success_requests as f64 / total_requests as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // 缓存查询结果
+        if let Some(ref cache) = self.simple_cache {
+            let account_stats = AccountStats {
+                account_id,
+                request_count: total_requests,
+                success_rate,
+                avg_response_time,
+                last_used_at: if total_requests > 0 {
+                    Some(chrono::Utc::now())
+                } else {
+                    None
+                },
+            };
+            
+            cache.set_account_stats(account_id, account_stats, std::time::Duration::from_secs(300)).await;
+            debug!("账号 {} 统计已缓存", account_id);
+        }
+
+        info!("账号 {} 统计结果: 总请求 {}, 成功率 {:.2}%", account_id, total_requests, success_rate);
+        Ok((total_requests, success_rate))
     }
 }
