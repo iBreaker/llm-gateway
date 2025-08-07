@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { apiClient } from '../../utils/api'
 
 interface RustStatsData {
   total_requests: number
@@ -44,21 +45,21 @@ export default function HybridStatsDashboard() {
 
     // 获取 Rust 后端统计
     try {
-      const token = localStorage.getItem('access_token')
-      const rustResponse = await fetch('/api/stats/basic', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      })
-      if (rustResponse.ok) {
-        const rustData = await rustResponse.json()
-        // 转换为旧格式以保持兼容性
-        newStats.rust = {
-          total_requests: rustData.total_requests,
-          successful_requests: rustData.total_requests * (rustData.success_rate / 100),
-          failed_requests: rustData.total_requests * (1 - rustData.success_rate / 100),
-          total_tokens: 0, // 基础统计中没有token信息
-          total_cost: rustData.total_cost,
-          average_response_time: rustData.avg_response_time
-        }
+      const rustData = await apiClient.get<{
+        totalRequests: number,
+        successRate: number,
+        totalCost: number,
+        avgResponseTime: number
+      }>('/api/stats/basic')
+      
+      // 转换为旧格式以保持兼容性
+      newStats.rust = {
+        total_requests: rustData.totalRequests,
+        successful_requests: rustData.totalRequests * (rustData.successRate / 100),
+        failed_requests: rustData.totalRequests * (1 - rustData.successRate / 100),
+        total_tokens: 0, // 基础统计中没有token信息
+        total_cost: rustData.totalCost,
+        average_response_time: rustData.avgResponseTime
       }
     } catch (error) {
       console.warn('Rust stats unavailable:', error)

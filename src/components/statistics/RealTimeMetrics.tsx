@@ -38,16 +38,16 @@ export function RealTimeMetrics({ data }: RealTimeMetricsProps) {
 
         const stats = await apiClient.get<{
           totalRequests?: number,
-          averageLatencyMs?: number,
+          avgResponseTime?: number,
           errorRate?: number,
           activeAccounts?: number
         }>('/api/stats/basic')
         
         setRealtimeData({
           currentRequests: stats.totalRequests || 0,
-          avgResponseTime: Math.round(stats.averageLatencyMs || 0),
+          avgResponseTime: Math.round(stats.avgResponseTime || 0),
           activeConnections: stats.activeAccounts || 0,
-          errorRate: (stats.errorRate || 0) * 100, // 转换为百分比
+          errorRate: stats.errorRate || 0,
           throughput: Math.round((stats.totalRequests || 0) * 1.2) // 估算每小时吞吐量
         })
         setIsConnected(true)

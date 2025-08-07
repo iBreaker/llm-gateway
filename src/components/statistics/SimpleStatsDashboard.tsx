@@ -1,16 +1,28 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { apiClient } from '../../utils/api'
 
+// 使用与后端一致的数据结构
 interface SimpleStatsData {
-  totalRequests: number
-  successfulRequests: number
-  failedRequests: number
-  totalTokens: number
-  totalCost: number
-  averageResponseTime: number
-  modelStats: { model: string; requests: number; tokens: number; cost: number }[]
-  accountStats: { id: string; name: string; type: string; requests: number }[]
+  overview: {
+    totalRequests: number
+    successRate: number
+    avgResponseTime: number
+    totalCost: number
+    activeAccounts: number
+    period: string
+  }
+  usage: {
+    requestsByProvider: Record<string, number>
+    requestsByModel: Record<string, number>
+    tokensConsumed: number
+    dailyUsage: {
+      date: string
+      requests: number
+      tokens: number
+    }[]
+  }
 }
 
 export default function SimpleStatsDashboard() {
@@ -21,15 +33,8 @@ export default function SimpleStatsDashboard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`/api/stats/detailed?range=${timeRange}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
-      }
+      const result = await apiClient.get<SimpleStatsData>(`/api/stats/detailed?range=${timeRange}`)
+      setData(result)
     } catch (error) {
       console.error('获取统计数据失败:', error)
     } finally {
@@ -58,7 +63,7 @@ export default function SimpleStatsDashboard() {
     )
   }
 
-  const successRate = data?.totalRequests ? ((data.successfulRequests / data.totalRequests) * 100) : 0
+  const successRate = data?.overview?.successRate || 0
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -87,7 +92,7 @@ export default function SimpleStatsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">总请求数</p>
-                <p className="text-2xl font-bold text-gray-900">{data?.totalRequests?.toLocaleString() || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{data?.overview?.totalRequests?.toLocaleString() || 0}</p>
               </div>
               <div className="text-blue-600">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,7 +120,7 @@ export default function SimpleStatsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Token 总量</p>
-                <p className="text-2xl font-bold text-gray-900">{formatNumber(data?.totalTokens || 0)}</p>
+                <p className="text-2xl font-bold text-gray-900">{formatNumber(data?.usage?.tokensConsumed || 0)}</p>
               </div>
               <div className="text-purple-600">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +134,7 @@ export default function SimpleStatsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">总成本</p>
-                <p className="text-2xl font-bold text-gray-900">${(data?.totalCost || 0).toFixed(4)}</p>
+                <p className="text-2xl font-bold text-gray-900">${(data?.overview?.totalCost || 0).toFixed(4)}</p>
               </div>
               <div className="text-green-600">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,17 +146,17 @@ export default function SimpleStatsDashboard() {
         </div>
 
         {/* 模型使用分布 */}
-        {data?.modelStats && data.modelStats.length > 0 && (
+        {data?.usage?.requestsByModel && Object.keys(data.usage.requestsByModel).length > 0 && (
           <div className="bg-white rounded-lg border p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">模型使用分布</h3>
             <div className="space-y-3">
-              {data.modelStats.slice(0, 5).map((model, index) => {
-                const percentage = data.totalRequests > 0 ? (model.requests / data.totalRequests * 100) : 0
+              {Object.entries(data.usage.requestsByModel).slice(0, 5).map(([model, requests], index) => {
+                const percentage = data.overview.totalRequests > 0 ? (requests / data.overview.totalRequests * 100) : 0
                 return (
                   <div key={index} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3 flex-1">
                       <div className="text-sm font-medium text-gray-900 min-w-0 flex-1">
-                        {model.model}
+                        {model}
                       </div>
                       <div className="flex-1 max-w-xs">
                         <div className="w-full bg-gray-200 rounded-full h-2">
@@ -164,7 +169,7 @@ export default function SimpleStatsDashboard() {
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-sm font-semibold text-gray-900">
-                        {(model.requests || 0).toLocaleString()}
+                        {(requests || 0).toLocaleString()}
                       </div>
                       <div className="text-xs text-gray-500">
                         {percentage.toFixed(1)}%
@@ -178,18 +183,18 @@ export default function SimpleStatsDashboard() {
         )}
 
         {/* 账号使用情况 */}
-        {data?.accountStats && data.accountStats.length > 0 && (
+        {data?.usage?.requestsByProvider && Object.keys(data.usage.requestsByProvider).length > 0 && (
           <div className="bg-white rounded-lg border p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">账号使用情况</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.accountStats.slice(0, 6).map((account, index) => (
+              {Object.entries(data.usage.requestsByProvider).slice(0, 6).map(([providerName, requests], index) => (
                 <div key={index} className="p-4 border border-gray-200 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium text-gray-900 text-sm">{account.name}</div>
-                    <div className="text-xs text-gray-500">{account.type}</div>
+                    <div className="font-medium text-gray-900 text-sm">{providerName}</div>
+                    <div className="text-xs text-gray-500">{providerName}</div>
                   </div>
                   <div className="text-2xl font-bold text-blue-600">
-                    {(account.requests || 0).toLocaleString()}
+                    {(requests || 0).toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500">请求数</div>
                 </div>
