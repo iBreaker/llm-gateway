@@ -74,7 +74,7 @@ impl Default for UserPreferences {
     fn default() -> Self {
         Self {
             user_id: 0,
-            preferred_providers: vec![AccountProvider::ClaudeCode, AccountProvider::GeminiCli],
+            preferred_providers: vec![AccountProvider::AnthropicApi, AccountProvider::AnthropicOauth],
             max_acceptable_latency_ms: 10000, // 10秒
             cost_sensitivity: 0.5,
             quality_preference: 0.8,
@@ -155,9 +155,9 @@ impl SmartRouter {
         // 初始化提供商能力
         let mut provider_capabilities = HashMap::new();
         provider_capabilities.insert(
-            AccountProvider::ClaudeCode,
+            AccountProvider::AnthropicApi,
             ProviderCapabilities {
-                provider: AccountProvider::ClaudeCode,
+                provider: AccountProvider::AnthropicApi,
                 supported_models: vec![
                     "claude-3-sonnet".to_string(),
                     "claude-3-haiku".to_string(),
@@ -176,9 +176,9 @@ impl SmartRouter {
             }
         );
         provider_capabilities.insert(
-            AccountProvider::GeminiCli,
+            AccountProvider::AnthropicOauth,
             ProviderCapabilities {
-                provider: AccountProvider::GeminiCli,
+                provider: AccountProvider::AnthropicOauth,
                 supported_models: vec![
                     "gemini-pro".to_string(),
                     "gemini-pro-vision".to_string(),
@@ -543,13 +543,13 @@ mod tests {
         // 设置用户偏好
         let mut prefs = UserPreferences::default();
         prefs.user_id = 1;
-        prefs.preferred_providers = vec![AccountProvider::ClaudeCode];
+        prefs.preferred_providers = vec![AccountProvider::AnthropicApi];
         prefs.smart_routing_enabled = true;
         router.set_user_preferences(prefs).await;
 
         let accounts = vec![
-            create_test_account(1, AccountProvider::ClaudeCode),
-            create_test_account(2, AccountProvider::GeminiCli),
+            create_test_account(1, AccountProvider::AnthropicApi),
+            create_test_account(2, AccountProvider::AnthropicOauth),
         ];
 
         let features = RequestFeatures {
@@ -564,7 +564,7 @@ mod tests {
         let decision = router.route_request(&user, &accounts, &features).await.unwrap();
         
         // 应该选择Claude账号（用户偏好）
-        assert_eq!(decision.selected_account.provider, AccountProvider::ClaudeCode);
+        assert_eq!(decision.selected_account.provider, AccountProvider::AnthropicApi);
         assert!(decision.confidence_score > 0.5);
     }
 
@@ -572,7 +572,7 @@ mod tests {
     async fn test_priority_based_strategy_selection() {
         let router = SmartRouter::new();
         let user = create_test_user(1);
-        let accounts = vec![create_test_account(1, AccountProvider::ClaudeCode)];
+        let accounts = vec![create_test_account(1, AccountProvider::AnthropicApi)];
 
         // 测试关键优先级
         let critical_features = RequestFeatures {

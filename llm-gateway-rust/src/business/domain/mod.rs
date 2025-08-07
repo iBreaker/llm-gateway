@@ -88,17 +88,41 @@ pub struct UpstreamAccount {
 
 /// 账号提供商
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum AccountProvider {
-    ClaudeCode,
-    GeminiCli,
+    AnthropicApi,     // 对应 ANTHROPIC_API
+    AnthropicOauth,   // 对应 ANTHROPIC_OAUTH  
 }
 
 impl AccountProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
-            AccountProvider::ClaudeCode => "claude_code",
-            AccountProvider::GeminiCli => "gemini_cli",
+            AccountProvider::AnthropicApi => "anthropic_api",
+            AccountProvider::AnthropicOauth => "anthropic_oauth",
+        }
+    }
+
+    /// 从字符串解析AccountProvider
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "anthropic_api" => Some(AccountProvider::AnthropicApi),
+            "anthropic_oauth" => Some(AccountProvider::AnthropicOauth),
+            _ => None,
+        }
+    }
+
+    /// 获取显示名称
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            AccountProvider::AnthropicApi => "Anthropic API",
+            AccountProvider::AnthropicOauth => "Anthropic OAuth",
+        }
+    }
+
+    /// 获取提供商名称
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => "Anthropic",
         }
     }
 }

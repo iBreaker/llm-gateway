@@ -439,8 +439,7 @@ impl IntelligentLoadBalancer {
 
                 // 提供商多样性评分（避免所有请求都打到同一个提供商）
                 let provider_diversity_score = match account.provider {
-                    AccountProvider::ClaudeCode => 1.0,
-                    AccountProvider::GeminiCli => 1.1, // 稍微倾向于多样性
+                    AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => 1.0,
                 };
 
                 // 综合评分：健康(25%) + 成功率(25%) + 响应时间(20%) + 负载(15%) + 多样性(15%)
@@ -472,18 +471,7 @@ impl IntelligentLoadBalancer {
 
     /// 地理位置优先选择
     async fn geographic_select(&self, accounts: &[UpstreamAccount]) -> AppResult<UpstreamAccount> {
-        // 简化实现：优先选择Claude Code账号（假设地理位置更近）
-        let claude_accounts: Vec<UpstreamAccount> = accounts
-            .iter()
-            .filter(|acc| acc.provider == AccountProvider::ClaudeCode)
-            .cloned()
-            .collect();
-
-        if !claude_accounts.is_empty() {
-            return self.health_based_select(&claude_accounts).await;
-        }
-
-        // 如果没有Claude账号，回退到健康优先选择
+        // 简化实现：直接使用健康优先选择
         self.health_based_select(accounts).await
     }
 
@@ -589,8 +577,8 @@ mod tests {
     async fn test_round_robin_selection() {
         let balancer = IntelligentLoadBalancer::new(LoadBalancingStrategy::RoundRobin);
         let accounts = vec![
-            create_test_account(1, AccountProvider::ClaudeCode, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::GeminiCli, HealthStatus::Healthy),
+            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
+            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Healthy),
         ];
 
         let first = balancer.select_account(&accounts).await.unwrap();
@@ -606,8 +594,8 @@ mod tests {
     async fn test_health_based_selection() {
         let balancer = IntelligentLoadBalancer::new(LoadBalancingStrategy::HealthBased);
         let accounts = vec![
-            create_test_account(1, AccountProvider::ClaudeCode, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::GeminiCli, HealthStatus::Degraded),
+            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
+            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Degraded),
         ];
 
         let selected = balancer.select_account(&accounts).await.unwrap();
@@ -625,8 +613,8 @@ mod tests {
         }
 
         let accounts = vec![
-            create_test_account(1, AccountProvider::ClaudeCode, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::GeminiCli, HealthStatus::Healthy),
+            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
+            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Healthy),
         ];
 
         let selected = balancer.select_account(&accounts).await.unwrap();

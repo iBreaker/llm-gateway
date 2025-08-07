@@ -79,15 +79,13 @@ pub async fn list_accounts(
     let accounts: Vec<AccountInfo> = upstream_accounts
         .into_iter()
         .map(|account| {
+            // 使用新的方法获取显示类型和提供商名称
             let account_type = match account.provider {
-                AccountProvider::ClaudeCode => "CLAUDE_CODE",
-                AccountProvider::GeminiCli => "GEMINI_CLI",
+                AccountProvider::AnthropicApi => "ANTHROPIC_API",
+                AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
             };
 
-            let provider = match account.provider {
-                AccountProvider::ClaudeCode => "Anthropic",
-                AccountProvider::GeminiCli => "Google",
-            };
+            let provider = account.provider.provider_name();
 
             AccountInfo {
                 id: account.id,
@@ -125,12 +123,12 @@ pub async fn create_account(
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
 
-    // 解析账号提供商
-    let provider = match request.provider.as_str() {
-        "ANTHROPIC" => AccountProvider::ClaudeCode,
-        "GOOGLE" => AccountProvider::GeminiCli,
+    // 解析账号提供商（基于前端发送的type字段）
+    let provider = match request.account_type.as_str() {
+        "ANTHROPIC_API" => AccountProvider::AnthropicApi,
+        "ANTHROPIC_OAUTH" => AccountProvider::AnthropicOauth,
         _ => return Err(AppError::Validation(
-            format!("不支持的提供商: {}", request.provider)
+            format!("不支持的账号类型: {}", request.account_type)
         )),
     };
 
@@ -162,14 +160,11 @@ pub async fn create_account(
     ).await?;
 
     let account_type = match upstream_account.provider {
-        AccountProvider::ClaudeCode => "CLAUDE_CODE",
-        AccountProvider::GeminiCli => "GEMINI_CLI",
+        AccountProvider::AnthropicApi => "ANTHROPIC_API",
+        AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
     };
 
-    let provider_name = match upstream_account.provider {
-        AccountProvider::ClaudeCode => "Anthropic",
-        AccountProvider::GeminiCli => "Google",
-    };
+    let provider_name = upstream_account.provider.provider_name();
 
     let account = AccountInfo {
         id: upstream_account.id,
@@ -238,14 +233,11 @@ pub async fn update_account(
 
     if let Some(upstream_account) = updated_account {
         let account_type = match upstream_account.provider {
-            AccountProvider::ClaudeCode => "CLAUDE_CODE",
-            AccountProvider::GeminiCli => "GEMINI_CLI",
+            AccountProvider::AnthropicApi => "ANTHROPIC_API",
+            AccountProvider::AnthropicOauth => "ANTHROPIC_OAUTH",
         };
 
-        let provider_name = match upstream_account.provider {
-            AccountProvider::ClaudeCode => "Anthropic",
-            AccountProvider::GeminiCli => "Google",
-        };
+        let provider_name = upstream_account.provider.provider_name();
 
         let account = AccountInfo {
             id: upstream_account.id,

@@ -911,17 +911,13 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
                 value={formData.type}
                 onChange={(e) => {
                   const newType = e.target.value as CreateAccountData['type']
-                  const provider = newType.includes('ANTHROPIC') ? 'ANTHROPIC' : 
-                                  newType.includes('GEMINI') ? 'GEMINI' : 
-                                  newType.includes('OPENAI') ? 'OPENAI' : 'ANTHROPIC'
+                  const provider = 'ANTHROPIC'
                   setFormData({ ...formData, type: newType, provider })
                 }}
                 className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
               >
                 <option value="ANTHROPIC_API">Anthropic API</option>
                 <option value="ANTHROPIC_OAUTH">Anthropic OAuth</option>
-                <option value="GEMINI_CLI">Gemini CLI</option>
-                <option value="OPENAI_API">OpenAI API</option>
               </select>
             </div>
           </div>

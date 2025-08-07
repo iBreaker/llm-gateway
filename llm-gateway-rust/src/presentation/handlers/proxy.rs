@@ -178,7 +178,8 @@ pub async fn list_models(
     // 根据可用账号添加支持的模型
     for account in accounts {
         match account.provider {
-            crate::business::domain::AccountProvider::ClaudeCode => {
+            crate::business::domain::AccountProvider::AnthropicApi |
+            crate::business::domain::AccountProvider::AnthropicOauth => {
                 models.extend(vec![
                     ModelInfo {
                         id: "claude-3-sonnet-20240229".to_string(),
@@ -197,16 +198,6 @@ pub async fn list_models(
                         capabilities: vec!["text".to_string(), "fast".to_string()],
                     },
                 ]);
-            }
-            crate::business::domain::AccountProvider::GeminiCli => {
-                models.push(ModelInfo {
-                    id: "gemini-pro".to_string(),
-                    name: "Gemini Pro".to_string(),
-                    provider: "google".to_string(),
-                    max_tokens: 32000,
-                    cost_per_1k_tokens: 0.002,
-                    capabilities: vec!["text".to_string(), "multimodal".to_string()],
-                });
             }
         }
     }
@@ -276,10 +267,9 @@ async fn get_available_upstream_accounts(
 
     let mut result = Vec::new();
     for row in accounts {
-        let provider = match row.provider.as_str() {
-            "claude_code" => crate::business::domain::AccountProvider::ClaudeCode,
-            "gemini_cli" => crate::business::domain::AccountProvider::GeminiCli,
-            _ => continue,
+        let provider = match crate::business::domain::AccountProvider::from_str(&row.provider) {
+            Some(p) => p,
+            None => continue,
         };
 
         let health_status = match row.health_status.as_deref() {
@@ -375,8 +365,8 @@ fn convert_service_response_to_api(
     }];
 
     let provider_name = match service_response.routing_decision.selected_account.provider {
-        crate::business::domain::AccountProvider::ClaudeCode => "anthropic",
-        crate::business::domain::AccountProvider::GeminiCli => "google",
+        crate::business::domain::AccountProvider::AnthropicApi |
+        crate::business::domain::AccountProvider::AnthropicOauth => "anthropic",
     };
 
     let response = ProxyMessageResponse {

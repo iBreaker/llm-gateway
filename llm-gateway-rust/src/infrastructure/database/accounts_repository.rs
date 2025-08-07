@@ -60,11 +60,8 @@ impl AccountsRepository {
         let accounts: Vec<UpstreamAccount> = rows.into_iter()
             .map(|row| {
                 info!("🔍 处理记录: id={}, name={}", row.id, row.name);
-                let provider = match row.provider.as_str() {
-                    "claude_code" => AccountProvider::ClaudeCode,
-                    "gemini_cli" => AccountProvider::GeminiCli,
-                    _ => AccountProvider::ClaudeCode, // 默认值
-                };
+                let provider = AccountProvider::from_str(&row.provider)
+                    .unwrap_or(AccountProvider::AnthropicApi); // 默认值
 
                 let credentials: AccountCredentials = serde_json::from_value(row.credentials)
                     .unwrap_or_else(|_| AccountCredentials {
@@ -139,11 +136,8 @@ impl AccountsRepository {
         })?;
 
         let account = if let Some(row) = row {
-            let provider = match row.provider.as_str() {
-                "claude_code" => AccountProvider::ClaudeCode,
-                "gemini_cli" => AccountProvider::GeminiCli,
-                _ => AccountProvider::ClaudeCode,
-            };
+            let provider = AccountProvider::from_str(&row.provider)
+                .unwrap_or(AccountProvider::AnthropicApi);
 
             let credentials: AccountCredentials = serde_json::from_value(row.credentials)
                 .unwrap_or_else(|_| AccountCredentials {
@@ -235,11 +229,8 @@ impl AccountsRepository {
             AppError::Database(e)
         })?;
 
-        let provider = match row.provider.as_str() {
-            "claude_code" => AccountProvider::ClaudeCode,
-            "gemini_cli" => AccountProvider::GeminiCli,
-            _ => AccountProvider::ClaudeCode,
-        };
+        let provider = AccountProvider::from_str(&row.provider)
+            .unwrap_or(AccountProvider::AnthropicApi);
 
         let credentials: AccountCredentials = serde_json::from_value(row.credentials)
             .unwrap_or_else(|_| AccountCredentials {

@@ -229,28 +229,19 @@ impl IntelligentProxy {
     /// 构建上游URL
     fn build_upstream_url(&self, path: &str, account: &UpstreamAccount) -> AppResult<String> {
         let base_url = match account.provider {
-            crate::business::domain::AccountProvider::ClaudeCode => {
+            crate::business::domain::AccountProvider::AnthropicApi | 
+            crate::business::domain::AccountProvider::AnthropicOauth => {
                 "https://api.anthropic.com"
-            }
-            crate::business::domain::AccountProvider::GeminiCli => {
-                "https://generativelanguage.googleapis.com"
             }
         };
 
         // 路径转换逻辑
         let converted_path = match account.provider {
-            crate::business::domain::AccountProvider::ClaudeCode => {
+            crate::business::domain::AccountProvider::AnthropicApi |
+            crate::business::domain::AccountProvider::AnthropicOauth => {
                 // Claude API路径转换
                 if path.starts_with("/v1/messages") {
                     "/v1/messages"
-                } else {
-                    path
-                }
-            }
-            crate::business::domain::AccountProvider::GeminiCli => {
-                // Gemini API路径转换
-                if path.starts_with("/v1/messages") {
-                    "/v1beta/models/gemini-pro:generateContent"
                 } else {
                     path
                 }
@@ -267,19 +258,13 @@ impl IntelligentProxy {
         account: &UpstreamAccount,
     ) -> AppResult<reqwest::RequestBuilder> {
         match account.provider {
-            crate::business::domain::AccountProvider::ClaudeCode => {
+            crate::business::domain::AccountProvider::AnthropicApi |
+            crate::business::domain::AccountProvider::AnthropicOauth => {
                 if let Some(session_key) = &account.credentials.session_key {
                     req_builder = req_builder.header("x-api-key", session_key);
                     req_builder = req_builder.header("anthropic-version", "2023-06-01");
                 } else {
-                    return Err(AppError::Business("Claude账号缺少session_key".to_string()));
-                }
-            }
-            crate::business::domain::AccountProvider::GeminiCli => {
-                if let Some(access_token) = &account.credentials.access_token {
-                    req_builder = req_builder.header("Authorization", format!("Bearer {}", access_token));
-                } else {
-                    return Err(AppError::Business("Gemini账号缺少access_token".to_string()));
+                    return Err(AppError::Business("Anthropic账号缺少认证信息".to_string()));
                 }
             }
         }
@@ -298,8 +283,8 @@ impl IntelligentProxy {
 
         // 成本计算（基于提供商定价）
         let cost_per_1k_tokens = match account.provider {
-            crate::business::domain::AccountProvider::ClaudeCode => 0.003, // $0.003 per 1K tokens
-            crate::business::domain::AccountProvider::GeminiCli => 0.002,  // $0.002 per 1K tokens
+            crate::business::domain::AccountProvider::AnthropicApi |
+            crate::business::domain::AccountProvider::AnthropicOauth => 0.003, // $0.003 per 1K tokens
         };
 
         let cost_usd = (estimated_tokens as f64 / 1000.0) * cost_per_1k_tokens;
