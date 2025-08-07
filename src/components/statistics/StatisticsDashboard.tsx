@@ -17,74 +17,60 @@ interface StatisticsDashboardProps {
 }
 
 export interface DashboardData {
-  // 基本指标
-  totalRequests: number
-  successfulRequests: number
-  failedRequests: number
-  totalTokens: number
-  totalCost: number
-  averageResponseTime: number
-  
-  // Token详细统计
-  inputTokens: number
-  outputTokens: number
-  cacheCreationTokens: number
-  cacheReadTokens: number
-  
-  // 时间序列数据
-  timeSeriesData: {
-    timestamp: string
-    requests: number
-    tokens: number
-    cost: number
-    responseTime: number
-    errorRate: number
-  }[]
-  
-  // 模型分布
-  modelStats: {
-    model: string
-    requests: number
-    tokens: number
-    cost: number
-    avgResponseTime: number
-    successRate: number
-  }[]
-  
-  // 账号性能
-  accountStats: {
-    id: string
-    name: string
-    type: string
-    requests: number
-    healthScore: number
-    avgResponseTime: number
-    successRate: number
-    lastUsed: string
-  }[]
-  
-  // 成本分析
-  costBreakdown: {
-    category: string
-    amount: number
-    percentage: number
-  }[]
-  
-  // 异常和洞察
-  insights: {
-    type: 'warning' | 'info' | 'success' | 'error'
-    title: string
-    description: string
-    value?: string
-    trend?: 'up' | 'down' | 'stable'
-  }[]
-  
-  // 预测数据
-  predictions: {
-    nextDayCost: number
-    nextWeekCost: number
-    budgetUsage: number
-    budgetRemaining: number
+  overview: {
+    total_requests: number
+    success_rate: number
+    avg_response_time: number
+    total_cost: number
+    active_accounts: number
+    period: string
+  }
+  usage: {
+    requests_by_provider: Record<string, number>
+    requests_by_model: Record<string, number>
+    tokens_consumed: number
+    daily_usage: {
+      date: string
+      requests: number
+      tokens: number
+    }[]
+  }
+  performance: {
+    avg_response_time: number
+    p95_response_time: number
+    p99_response_time: number
+    error_rate: number
+    response_time_trend: {
+      timestamp: string
+      avg_time: number
+    }[]
+  }
+  costs: {
+    total_cost: number
+    cost_by_provider: Record<string, number>
+    cost_by_model: Record<string, number>
+    daily_costs: {
+      date: string
+      cost: number
+    }[]
+  }
+  charts: {
+    request_volume: {
+      timestamp: string
+      value: number
+    }[]
+    response_times: {
+      timestamp: string
+      value: number
+    }[]
+    error_rates: {
+      timestamp: string
+      value: number
+    }[]
+    costs: {
+      timestamp: string
+      value: number
+    }[]
   }
 }
 
@@ -263,8 +249,8 @@ export default function StatisticsDashboard({ userId }: StatisticsDashboardProps
             <FilterPanel 
               filters={filters}
               onChange={setFilters}
-              availableModels={data?.modelStats?.map(m => m.model) || []}
-              availableAccounts={data?.accountStats?.map(a => ({ id: a.id, name: a.name })) || []}
+              availableModels={data?.usage?.requests_by_model ? Object.keys(data.usage.requests_by_model) : []}
+              availableAccounts={data?.usage?.requests_by_provider ? Object.keys(data.usage.requests_by_provider).map(name => ({ id: name, name })) : []}
             />
           </div>
         </div>
@@ -278,62 +264,66 @@ export default function StatisticsDashboard({ userId }: StatisticsDashboardProps
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <StatCard
             title="总请求数"
-            value={data?.totalRequests || 0}
-            change={calculateChange(data?.timeSeriesData, 'requests')}
-            trend={getTrend(data?.timeSeriesData, 'requests')}
+            value={data?.overview?.total_requests || 0}
+            change={calculateChange(data?.charts?.request_volume, 'value')}
+            trend={getTrend(data?.charts?.request_volume, 'value')}
             icon="📊"
           />
           <StatCard
             title="Token用量"
-            value={formatNumber(data?.totalTokens || 0)}
-            subtitle={`平均 ${Math.round((data?.totalTokens || 0) / Math.max(data?.totalRequests || 1, 1))} /请求`}
-            change={calculateChange(data?.timeSeriesData, 'tokens')}
-            trend={getTrend(data?.timeSeriesData, 'tokens')}
+            value={formatNumber(data?.usage?.tokens_consumed || 0)}
+            subtitle={`平均 ${Math.round((data?.usage?.tokens_consumed || 0) / Math.max(data?.overview?.total_requests || 1, 1))} /请求`}
+            change={calculateChange(data?.usage?.daily_usage?.map(d => ({timestamp: d.date, value: d.tokens})), 'value')}
+            trend={getTrend(data?.usage?.daily_usage?.map(d => ({timestamp: d.date, value: d.tokens})), 'value')}
             icon="🎯"
           />
           <StatCard
             title="成功率"
-            value={`${data?.totalRequests ? (data.successfulRequests / data.totalRequests * 100).toFixed(1) : 0}%`}
-            change={calculateSuccessRateChange(data?.timeSeriesData)}
-            trend={getSuccessRateTrend(data?.timeSeriesData)}
+            value={`${(data?.overview?.success_rate || 0).toFixed(1)}%`}
+            change={0} // TODO: 需要计算成功率变化
+            trend={'stable'}
             icon="✅"
           />
           <StatCard
             title="平均响应时间"
-            value={`${Math.round(data?.averageResponseTime || 0)}ms`}
-            change={calculateChange(data?.timeSeriesData, 'responseTime')}
-            trend={getTrend(data?.timeSeriesData, 'responseTime', true)} // 响应时间越低越好
+            value={`${Math.round(data?.overview?.avg_response_time || 0)}ms`}
+            change={calculateChange(data?.charts?.response_times, 'value')}
+            trend={getTrend(data?.charts?.response_times, 'value', true)} // 响应时间越低越好
             icon="⚡"
           />
           <StatCard
             title="总成本"
-            value={`$${(data?.totalCost || 0).toFixed(4)}`}
-            subtitle={`预计月成本 $${((data?.totalCost || 0) * 30 / Math.max(getDaysDiff(filters.dateRange), 1)).toFixed(2)}`}
-            change={calculateChange(data?.timeSeriesData, 'cost')}
-            trend={getTrend(data?.timeSeriesData, 'cost')}
+            value={`$${(data?.overview?.total_cost || 0).toFixed(4)}`}
+            subtitle={`预计月成本 $${((data?.overview?.total_cost || 0) * 30 / Math.max(getDaysDiff(filters.dateRange), 1)).toFixed(2)}`}
+            change={calculateChange(data?.charts?.costs, 'value')}
+            trend={getTrend(data?.charts?.costs, 'value')}
             icon="💰"
           />
         </div>
-
-        {/* 智能洞察面板 */}
-        {data?.insights && data.insights.length > 0 && (
-          <InsightPanel insights={data.insights} />
-        )}
 
         {/* 主要图表区域 */}
         <div className="space-y-6 mb-6">
           {/* 使用趋势图表 - 全宽 */}
           <UsageTrendChart 
-            data={data?.timeSeriesData || []}
+            data={convertToTimeSeriesData(data)}
             granularity={filters.granularity}
             title="使用趋势分析"
           />
           
           {/* 成本分析图表 - 全宽 */}
           <CostAnalysisChart 
-            data={data?.costBreakdown || []}
-            totalCost={data?.totalCost || 0}
-            predictions={data?.predictions}
+            data={data?.costs?.cost_by_provider ? Object.entries(data.costs.cost_by_provider).map(([category, amount]) => ({
+              category,
+              amount,
+              percentage: (amount / (data?.costs?.total_cost || 1)) * 100
+            })) : []}
+            totalCost={data?.costs?.total_cost || 0}
+            predictions={{
+              nextDayCost: (data?.costs?.total_cost || 0) / Math.max(getDaysDiff(filters.dateRange), 1),
+              nextWeekCost: (data?.costs?.total_cost || 0) / Math.max(getDaysDiff(filters.dateRange), 1) * 7,
+              budgetUsage: 0,
+              budgetRemaining: 0
+            }}
             title="成本分析与预测"
           />
         </div>
@@ -342,11 +332,27 @@ export default function StatisticsDashboard({ userId }: StatisticsDashboardProps
         {viewMode === 'detailed' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <ModelDistributionChart 
-              data={data?.modelStats || []}
+              data={data?.usage?.requests_by_model ? Object.entries(data.usage.requests_by_model).map(([model, requests]) => ({
+                model,
+                requests,
+                tokens: 0, // TODO: 需要添加按模型的token统计
+                cost: 0, // TODO: 需要添加按模型的成本统计
+                avgResponseTime: 0,
+                successRate: 0
+              })) : []}
               title="模型使用分布"
             />
             <div className="lg:col-span-2">
-              <AccountPerformanceTable accounts={data?.accountStats || []} />
+              <AccountPerformanceTable accounts={data?.usage?.requests_by_provider ? Object.entries(data.usage.requests_by_provider).map(([name, requests]) => ({
+                id: name,
+                name,
+                type: name,
+                requests,
+                healthScore: 100,
+                avgResponseTime: data?.performance?.avg_response_time || 0,
+                successRate: data?.overview?.success_rate || 0,
+                lastUsed: new Date().toISOString()
+              })) : []} />
             </div>
           </div>
         )}
@@ -357,30 +363,18 @@ export default function StatisticsDashboard({ userId }: StatisticsDashboardProps
             <h2 className="text-xl font-semibold text-gray-900">Token使用分析</h2>
           </div>
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
               <TokenStatCard
-                title="输入Token"
-                value={data?.inputTokens || 0}
-                total={data?.totalTokens || 0}
+                title="总Token消耗"
+                value={data?.usage?.tokens_consumed || 0}
+                total={data?.usage?.tokens_consumed || 0}
                 color="blue"
               />
               <TokenStatCard
-                title="输出Token"
-                value={data?.outputTokens || 0}
-                total={data?.totalTokens || 0}
+                title="平均每请求Token"
+                value={Math.round((data?.usage?.tokens_consumed || 0) / Math.max(data?.overview?.total_requests || 1, 1))}
+                total={data?.usage?.tokens_consumed || 0}
                 color="green"
-              />
-              <TokenStatCard
-                title="缓存创建"
-                value={data?.cacheCreationTokens || 0}
-                total={data?.totalTokens || 0}
-                color="orange"
-              />
-              <TokenStatCard
-                title="缓存读取"
-                value={data?.cacheReadTokens || 0}
-                total={data?.totalTokens || 0}
-                color="purple"
               />
             </div>
           </div>
@@ -443,6 +437,29 @@ function getDaysDiff(dateRange: { start: string; end: string }): number {
   const start = new Date(dateRange.start)
   const end = new Date(dateRange.end)
   return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
+}
+
+// 转换新API数据格式为图表组件期望的格式
+function convertToTimeSeriesData(data: DashboardData | null): {
+  timestamp: string
+  requests: number
+  tokens: number
+  cost: number
+  responseTime: number
+  errorRate: number
+}[] {
+  if (!data?.usage?.daily_usage || data.usage.daily_usage.length === 0) {
+    return []
+  }
+
+  return data.usage.daily_usage.map((dailyItem, index) => ({
+    timestamp: `${dailyItem.date}T00:00:00Z`,
+    requests: dailyItem.requests,
+    tokens: dailyItem.tokens,
+    cost: data.costs?.daily_costs?.[index]?.cost || 0,
+    responseTime: data.performance?.response_time_trend?.[index]?.avg_time || 0,
+    errorRate: data.performance?.error_rate / 100 || 0
+  }))
 }
 
 // Token统计卡片子组件

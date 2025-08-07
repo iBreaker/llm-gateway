@@ -12,6 +12,8 @@ use crate::business::services::{
     SmartRouter, RequestFeatures, RoutingDecision, LoadBalancingStrategy
 };
 use crate::shared::{AppError, AppResult};
+use futures_util::{Stream, StreamExt};
+use bytes::Bytes;
 
 /// 代理请求
 #[derive(Debug, Clone)]
@@ -25,12 +27,13 @@ pub struct ProxyRequest {
     pub request_id: String,
 }
 
+use std::pin::Pin;
+
 /// 代理响应
-#[derive(Debug, Clone)]
 pub struct ProxyResponse {
     pub status: u16,
     pub headers: std::collections::HashMap<String, String>,
-    pub body: Vec<u8>,
+    pub body: Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>>,
     pub latency_ms: u64,
     pub tokens_used: u32,
     pub cost_usd: f64,
@@ -322,132 +325,32 @@ impl IntelligentProxy {
         }
 
         // 对于SSE响应，保持流式特性
-        let body = if is_sse {
-            info!("🔍 [SSE响应] 保持流式响应，不缓存整个响应体");
-            // 对于SSE，我们需要特殊处理来保持流式特性
-            // 暂时还是读取整个响应，但标记需要流式处理
-            response.bytes().await
-                .map_err(|e| {
-                    error!("❌ [上游响应] 读取响应体失败: {}", e);
-                    AppError::ExternalService(format!("读取响应体失败: {}", e))
-                })?
-                .to_vec()
-        } else {
-            // 非流式响应，正常读取
-            response.bytes().await
-                .map_err(|e| {
-                    error!("❌ [上游响应] 读取响应体失败: {}", e);
-                    AppError::ExternalService(format!("读取响应体失败: {}", e))
-                })?
-                .to_vec()
-        };
-            
-        info!("🔍 [上游响应] ✅ 响应体读取完成，大小: {} bytes", body.len());
-            
-        // ✅ 修复：移除content-encoding相关头部，因为reqwest已经自动解压了
-        let removed_headers = ["content-encoding", "Content-Encoding", "content-length", "Content-Length"];
-        for header in &removed_headers {
-            if headers.remove(&header.to_string()).is_some() {
-                info!("🔍 [上游响应] 移除头部: {}", header);
-            }
-        }
-        
-        // 检查是否是流式响应
-        if is_sse {
-            info!("🔍 [SSE上游响应] 开始分析SSE响应体内容");
-            
-            if body.is_empty() {
-                error!("❌ [SSE上游响应] 上游返回了空的SSE响应体！");
-            } else if let Ok(body_str) = std::str::from_utf8(&body) {
-                let lines: Vec<&str> = body_str.lines().collect();
-                info!("🔍 [SSE上游响应] SSE响应行数: {}", lines.len());
-                
-                let mut event_count = 0;
-                let mut data_count = 0;
-                let mut error_count = 0;
-                
-                for (i, line) in lines.iter().enumerate() {
-                    if line.starts_with("event:") {
-                        event_count += 1;
-                        if event_count <= 3 {
-                            info!("🔍 [SSE上游响应] Event[{}]: {}", event_count, line);
-                        }
-                        
-                        // 检查是否有error事件
-                        if line.contains("error") {
-                            error_count += 1;
-                            error!("❌ [SSE上游响应] 发现错误事件: {}", line);
-                        }
-                    } else if line.starts_with("data:") {
-                        data_count += 1;
-                        if data_count <= 3 {
-                            let preview = if line.len() > 200 {
-                                format!("{}...", &line[..200])
-                            } else {
-                                line.to_string()
-                            };
-                            info!("🔍 [SSE上游响应] Data[{}]: {}", data_count, preview);
-                        }
-                    } else if !line.trim().is_empty() && i < 10 {
-                        info!("🔍 [SSE上游响应] Other[{}]: {}", i, line);
-                    }
-                }
-                
-                info!("🔍 [SSE上游响应] 统计 - 事件: {}, 数据块: {}, 错误: {}", event_count, data_count, error_count);
-                
-                // 检查结束标记
-                if let Some(last_lines) = lines.get(lines.len().saturating_sub(5)..) {
-                    info!("🔍 [SSE上游响应] 最后几行:");
-                    for (i, line) in last_lines.iter().enumerate() {
-                        info!("🔍 [SSE上游响应] 末尾[{}]: '{}'", i, line);
-                    }
-                }
-                
-                // 检查是否正确结束
-                let has_done_event = body_str.contains("event: done") || body_str.contains("event:done");
-                let has_message_stop = body_str.contains("message_stop") || body_str.contains("content_block_stop");
-                
-                info!("🔍 [SSE上游响应] 完整性检查 - done事件: {}, stop消息: {}", has_done_event, has_message_stop);
-                
-                // 显示更多内容用于调试
-                if body_str.len() <= 3000 {
-                    info!("🔍 [SSE上游响应] 完整SSE内容:\n{}", body_str);
-                } else {
-                    info!("🔍 [SSE上游响应] SSE内容前1000字符:\n{}", &body_str[..1000]);
-                    info!("🔍 [SSE上游响应] SSE内容后1000字符:\n{}", &body_str[body_str.len()-1000..]);
-                }
-            } else {
-                error!("❌ [SSE上游响应] SSE响应包含非UTF-8数据，前500字节: {:?}", 
-                       &body[..body.len().min(500)]);
-            }
-        } else {
-            info!("🔍 [普通上游响应] 非SSE响应");
-            if body.len() <= 2000 {
-                if let Ok(body_str) = std::str::from_utf8(&body) {
-                    info!("🔍 [普通上游响应] 响应内容: {}", body_str);
-                }
-            } else {
-                info!("🔍 [普通上游响应] 响应体过大({} bytes)，不打印内容", body.len());
-            }
-        }
+        let body_stream = response.bytes_stream()
+            .map(|result| {
+                result.map_err(|e| {
+                    error!("❌ [上游响应] 读取流式响应体失败: {}", e);
+                    AppError::ExternalService(format!("读取流式响应体失败: {}", e))
+                })
+            });
 
-        // 估算使用的tokens和成本
-        let (tokens_used, cost_usd) = self.estimate_usage(&body, account).await;
+        info!("🔍 [上游响应] ✅ 流式响应体准备就绪");
+
+        let (tokens_used, cost_usd) = self.estimate_usage(&Vec::new(), account).await; // 在流式传输中，无法预先计算
 
         Ok(ProxyResponse {
             status,
             headers,
-            body,
-            latency_ms: 0, // Will be set by caller
-            tokens_used,
-            cost_usd,
+            body: Box::pin(body_stream),
+            latency_ms: 0, // 将由调用者设置
+            tokens_used, // 在流式传输中，这只是一个估算值
+            cost_usd,    // 在流式传输中，这只是一个估算值
             upstream_account_id: account.id,
-            routing_decision: RoutingDecision {
+            routing_decision: RoutingDecision { // 将由调用者设置
                 selected_account: account.clone(),
-                strategy_used: LoadBalancingStrategy::Adaptive, // Placeholder
+                strategy_used: LoadBalancingStrategy::Adaptive, // 占位符
                 confidence_score: 0.0,
                 reasoning: String::new(),
-            }, // Will be set by caller
+            },
         })
     }
 

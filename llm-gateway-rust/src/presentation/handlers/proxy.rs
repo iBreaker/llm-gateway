@@ -10,6 +10,7 @@ use axum::{
     response::Response,
     Json, Extension,
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, error, instrument};
@@ -103,6 +104,7 @@ pub struct ModelInfo {
 }
 
 /// 代理消息请求（主要入口）
+#[axum::debug_handler]
 #[instrument(skip(database, headers, body))]
 pub async fn proxy_messages(
     State(database): State<Database>,
@@ -200,147 +202,47 @@ pub async fn proxy_messages(
                 info!("🔍 [{}] [下游响应构建] 头部 '{}': '{}'", request_id, key, value);
             }
             
-            info!("🔍 [{}] [下游响应构建] 响应体大小: {} bytes", request_id, service_response.body.len());
-            
-            // 如果是SSE响应，详细分析内容
-            if is_sse {
-                info!("🔍 [{}] [SSE响应分析] 开始分析SSE响应内容", request_id);
-                
-                if service_response.body.is_empty() {
-                    error!("❌ [{}] [SSE响应分析] SSE响应体为空！这可能是问题根源", request_id);
-                } else if let Ok(body_str) = std::str::from_utf8(&service_response.body) {
-                    // 分析SSE响应的结构
-                    let lines: Vec<&str> = body_str.lines().collect();
-                    info!("🔍 [SSE响应分析] SSE响应行数: {}", lines.len());
-                    
-                    let mut event_count = 0;
-                    let mut data_chunks = 0;
-                    
-                    for (i, line) in lines.iter().enumerate() {
-                        if line.starts_with("event:") {
-                            event_count += 1;
-                            if i < 10 || event_count <= 5 {
-                                info!("🔍 [SSE响应分析] Event[{}]: {}", event_count, line);
-                            }
-                        } else if line.starts_with("data:") {
-                            data_chunks += 1;
-                            if i < 10 || data_chunks <= 5 {
-                                info!("🔍 [SSE响应分析] Data[{}]: {}", data_chunks, line.chars().take(100).collect::<String>());
-                            }
-                        } else if !line.is_empty() {
-                            if i < 10 {
-                                info!("🔍 [SSE响应分析] Other[{}]: {}", i, line);
-                            }
-                        }
-                    }
-                    
-                    info!("🔍 [SSE响应分析] 总计事件: {}, 数据块: {}", event_count, data_chunks);
-                    
-                    // 检查是否以正确的结束标记结尾
-                    if let Some(last_line) = lines.last() {
-                        info!("🔍 [SSE响应分析] 最后一行: '{}'", last_line);
-                    }
-                    
-                    // 打印完整内容（如果不太大）
-                    if body_str.len() <= 2000 {
-                        info!("🔍 [SSE响应分析] 完整SSE内容:\n{}", body_str);
-                    } else {
-                        info!("🔍 [SSE响应分析] SSE内容过大({} bytes)，显示前1000字符:\n{}", 
-                              body_str.len(), body_str.chars().take(1000).collect::<String>());
-                    }
-                } else {
-                    error!("❌ [SSE响应分析] SSE响应包含非UTF-8数据，前200字节: {:?}", 
-                           &service_response.body[..service_response.body.len().min(200)]);
-                }
-            } else {
-                info!("🔍 [普通响应] 非SSE响应，Content-Type: {:?}", 
-                      service_response.headers.get("content-type"));
-                if service_response.body.len() <= 1000 {
-                    if let Ok(body_str) = std::str::from_utf8(&service_response.body) {
-                        info!("🔍 [普通响应] 响应内容: {}", body_str);
-                    }
-                }
-            }
+            // 移除对缓冲响应体的日志记录
+            // info!("🔍 [{}] [下游响应构建] 响应体大小: {} bytes", request_id, service_response.body.len());
             
             // 直接返回上游响应，不做解析和转换
             let response = {
                 let mut response_builder = Response::builder()
                     .status(StatusCode::from_u16(service_response.status).unwrap_or(StatusCode::OK));
-                    
-                info!("🔍 [下游响应构建] 开始构建最终响应，状态码: {}", service_response.status);
-                
+
                 // 添加响应头
-                let mut header_count = 0;
                 for (key, value) in &service_response.headers {
-                    match response_builder.headers_mut() {
-                        Some(headers) => {
-                            if let (Ok(header_name), Ok(header_value)) = (
-                                key.parse::<axum::http::HeaderName>(),
-                                value.parse::<axum::http::HeaderValue>()
-                            ) {
-                                headers.insert(header_name, header_value);
-                                header_count += 1;
-                                info!("🔍 [下游响应构建] ✓ 成功添加头部: '{}' = '{}'", key, value);
-                            } else {
-                                error!("❌ [下游响应构建] 无法解析头部: '{}' = '{}'", key, value);
-                            }
-                        }
-                        None => {
-                            response_builder = response_builder.header(key, value);
-                            header_count += 1;
-                            info!("🔍 [下游响应构建] ✓ 备用方式添加头部: '{}' = '{}'", key, value);
-                        }
+                    if let (Ok(header_name), Ok(header_value)) = (
+                        key.parse::<axum::http::HeaderName>(),
+                        value.parse::<axum::http::HeaderValue>()
+                    ) {
+                        response_builder = response_builder.header(header_name, header_value);
                     }
                 }
-                
-                info!("🔍 [下游响应构建] 成功添加 {} 个响应头部", header_count);
-                
+
                 if is_sse {
-                    info!("🔍 [下游响应构建] SSE响应，创建真正的流式响应");
-                    // 核心修复：将SSE数据转换为流式chunks
-                    use futures_util::stream::{self};
-                    
-                    // 将整个响应体按事件边界分块
-                    let body_str = std::str::from_utf8(&service_response.body)
-                        .map_err(|e| AppError::Internal(format!("SSE响应不是有效UTF-8: {}", e)))?;
-                    
-                    let mut chunks = Vec::new();
-                    let mut current_event = String::new();
-                    
-                    for line in body_str.lines() {
-                        current_event.push_str(line);
-                        current_event.push_str("\n");
-                        
-                        // 在空行处分割事件
-                        if line.is_empty() && !current_event.trim().is_empty() {
-                            chunks.push(current_event.clone().into_bytes());
-                            current_event.clear();
-                        }
-                    }
-                    
-                    // 添加最后一个事件
-                    if !current_event.trim().is_empty() {
-                        chunks.push(current_event.into_bytes());
-                    }
-                    
-                    // 创建一个流来逐个发送chunks
-                    let stream = stream::iter(chunks.into_iter().map(|chunk| Ok::<_, std::convert::Infallible>(chunk)));
-                    
                     response_builder
                         .header("cache-control", "no-cache")
                         .header("connection", "keep-alive")
-                        .body(Body::from_stream(stream))
+                        .body(Body::from_stream(service_response.body))
                         .map_err(|e| AppError::Internal(format!("构建流式响应失败: {}", e)))?
                 } else {
-                    // 否则，返回普通响应
+                    // 对于非SSE，我们需要收集流
+                    let body_bytes: Vec<u8> = service_response.body.collect::<Vec<_>>().await
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .flatten()
+                        .collect();
+                    
                     response_builder
-                        .body(Body::from(service_response.body.clone()))
+                        .body(Body::from(body_bytes))
                         .map_err(|e| AppError::Internal(format!("构建响应失败: {}", e)))?
                 }
             };
                 
             info!("🔍 [下游响应构建] ✅ 最终响应构建完成，准备返回给客户端");
-            info!("🔍 [下游响应构建] 最终响应体大小: {} bytes", service_response.body.len());
+            // 移除对缓冲响应体的日志记录
+            // info!("🔍 [下游响应构建] 最终响应体大小: {} bytes", service_response.body.len());
             Ok(response)
         }
         Err(e) => {

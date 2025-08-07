@@ -100,121 +100,306 @@ pub struct ChartPoint {
 }
 
 /// 获取详细统计数据
-#[instrument(skip(_database))]
+#[instrument(skip(database))]
 pub async fn get_detailed_stats(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
     Query(params): Query<StatsQuery>,
 ) -> AppResult<Json<DetailedStats>> {
     let range = params.range.unwrap_or_else(|| "7d".to_string());
     info!("📊 获取详细统计数据请求: 用户ID {}, 时间范围: {}", claims.sub, range);
 
-    // 模拟统计数据
-    let mut requests_by_provider = HashMap::new();
-    requests_by_provider.insert("Anthropic".to_string(), 1250);
-    requests_by_provider.insert("Google".to_string(), 850);
-    requests_by_provider.insert("OpenAI".to_string(), 620);
+    // 解析时间范围
+    let days = match range.as_str() {
+        "1d" => 1,
+        "7d" => 7,
+        "30d" => 30,
+        "90d" => 90,
+        _ => 7,
+    };
 
-    let mut requests_by_model = HashMap::new();
-    requests_by_model.insert("claude-3-sonnet".to_string(), 980);
-    requests_by_model.insert("gemini-pro".to_string(), 750);
-    requests_by_model.insert("gpt-4".to_string(), 520);
-    requests_by_model.insert("claude-3-haiku".to_string(), 470);
+    let user_id: i64 = claims.sub.parse().map_err(|_| crate::shared::AppError::Authentication(crate::infrastructure::AuthError::InvalidToken))?;
 
-    let mut cost_by_provider = HashMap::new();
-    cost_by_provider.insert("Anthropic".to_string(), 125.50);
-    cost_by_provider.insert("Google".to_string(), 68.30);
-    cost_by_provider.insert("OpenAI".to_string(), 89.20);
+    // 获取用户的API Keys
+    let api_keys = sqlx::query!(
+        "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true",
+        user_id
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
 
-    let mut cost_by_model = HashMap::new();
-    cost_by_model.insert("claude-3-sonnet".to_string(), 98.40);
-    cost_by_model.insert("gemini-pro".to_string(), 45.60);
-    cost_by_model.insert("gpt-4".to_string(), 89.20);
-    cost_by_model.insert("claude-3-haiku".to_string(), 27.10);
+    let api_key_ids: Vec<i64> = api_keys.iter().map(|key| key.id).collect();
 
-    let daily_usage = vec![
-        DailyUsage { date: "2025-08-01".to_string(), requests: 320, tokens: 45000 },
-        DailyUsage { date: "2025-08-02".to_string(), requests: 410, tokens: 58000 },
-        DailyUsage { date: "2025-08-03".to_string(), requests: 380, tokens: 52000 },
-        DailyUsage { date: "2025-08-04".to_string(), requests: 450, tokens: 61000 },
-        DailyUsage { date: "2025-08-05".to_string(), requests: 520, tokens: 68000 },
-    ];
+    if api_key_ids.is_empty() {
+        info!("用户 {} 没有API Keys，返回空统计数据", user_id);
+        return Ok(Json(create_empty_stats(range)));
+    }
 
-    let daily_costs = vec![
-        DailyCost { date: "2025-08-01".to_string(), cost: 45.20 },
-        DailyCost { date: "2025-08-02".to_string(), cost: 58.90 },
-        DailyCost { date: "2025-08-03".to_string(), cost: 52.40 },
-        DailyCost { date: "2025-08-04".to_string(), cost: 61.80 },
-        DailyCost { date: "2025-08-05".to_string(), cost: 64.70 },
-    ];
+    // 基础统计查询
+    let overview_result = sqlx::query!(
+        r#"
+        SELECT 
+            COUNT(*) as total_requests,
+            COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as successful_requests,
+            COALESCE(AVG(latency_ms), 0) as avg_response_time,
+            COALESCE(SUM(cost_usd), 0) as total_cost,
+            COALESCE(SUM(tokens_used), 0) as total_tokens
+        FROM usage_records 
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
 
-    let response_time_trend = vec![
-        ResponseTimePoint { timestamp: "2025-08-01T00:00:00Z".to_string(), avg_time: 234.5 },
-        ResponseTimePoint { timestamp: "2025-08-02T00:00:00Z".to_string(), avg_time: 218.3 },
-        ResponseTimePoint { timestamp: "2025-08-03T00:00:00Z".to_string(), avg_time: 245.7 },
-        ResponseTimePoint { timestamp: "2025-08-04T00:00:00Z".to_string(), avg_time: 201.2 },
-        ResponseTimePoint { timestamp: "2025-08-05T00:00:00Z".to_string(), avg_time: 189.4 },
-    ];
+    let total_requests = overview_result.total_requests.unwrap_or(0);
+    let successful_requests = overview_result.successful_requests.unwrap_or(0);
+    let success_rate = if total_requests > 0 {
+        (successful_requests as f64 / total_requests as f64) * 100.0
+    } else {
+        0.0
+    };
 
-    let request_volume = vec![
-        ChartPoint { timestamp: "2025-08-01T00:00:00Z".to_string(), value: 320.0 },
-        ChartPoint { timestamp: "2025-08-02T00:00:00Z".to_string(), value: 410.0 },
-        ChartPoint { timestamp: "2025-08-03T00:00:00Z".to_string(), value: 380.0 },
-        ChartPoint { timestamp: "2025-08-04T00:00:00Z".to_string(), value: 450.0 },
-        ChartPoint { timestamp: "2025-08-05T00:00:00Z".to_string(), value: 520.0 },
-    ];
+    // 按上游账号统计请求数
+    let requests_by_provider = sqlx::query!(
+        r#"
+        SELECT 
+            ua.provider,
+            COUNT(*) as request_count
+        FROM usage_records ur
+        JOIN upstream_accounts ua ON ur.upstream_account_id = ua.id
+        WHERE ur.api_key_id = ANY($1::bigint[])
+        AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
+        GROUP BY ua.provider
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
 
-    let response_times = vec![
-        ChartPoint { timestamp: "2025-08-01T00:00:00Z".to_string(), value: 234.5 },
-        ChartPoint { timestamp: "2025-08-02T00:00:00Z".to_string(), value: 218.3 },
-        ChartPoint { timestamp: "2025-08-03T00:00:00Z".to_string(), value: 245.7 },
-        ChartPoint { timestamp: "2025-08-04T00:00:00Z".to_string(), value: 201.2 },
-        ChartPoint { timestamp: "2025-08-05T00:00:00Z".to_string(), value: 189.4 },
-    ];
+    let mut provider_stats = HashMap::new();
+    for record in requests_by_provider {
+        let provider_name = match record.provider.as_str() {
+            "anthropic_api" | "anthropic_oauth" => "Anthropic",
+            "claude_code" => "Claude Code",
+            "gemini_cli" => "Gemini CLI",
+            _ => &record.provider,
+        };
+        provider_stats.insert(provider_name.to_string(), record.request_count.unwrap_or(0));
+    }
 
-    let error_rates = vec![
-        ChartPoint { timestamp: "2025-08-01T00:00:00Z".to_string(), value: 1.2 },
-        ChartPoint { timestamp: "2025-08-02T00:00:00Z".to_string(), value: 0.8 },
-        ChartPoint { timestamp: "2025-08-03T00:00:00Z".to_string(), value: 1.5 },
-        ChartPoint { timestamp: "2025-08-04T00:00:00Z".to_string(), value: 0.6 },
-        ChartPoint { timestamp: "2025-08-05T00:00:00Z".to_string(), value: 0.9 },
-    ];
+    // 按上游账号统计成本
+    let cost_by_provider = sqlx::query!(
+        r#"
+        SELECT 
+            ua.provider,
+            COALESCE(SUM(ur.cost_usd), 0) as total_cost
+        FROM usage_records ur
+        JOIN upstream_accounts ua ON ur.upstream_account_id = ua.id
+        WHERE ur.api_key_id = ANY($1::bigint[])
+        AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
+        GROUP BY ua.provider
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
 
-    let costs = vec![
-        ChartPoint { timestamp: "2025-08-01T00:00:00Z".to_string(), value: 45.20 },
-        ChartPoint { timestamp: "2025-08-02T00:00:00Z".to_string(), value: 58.90 },
-        ChartPoint { timestamp: "2025-08-03T00:00:00Z".to_string(), value: 52.40 },
-        ChartPoint { timestamp: "2025-08-04T00:00:00Z".to_string(), value: 61.80 },
-        ChartPoint { timestamp: "2025-08-05T00:00:00Z".to_string(), value: 64.70 },
-    ];
+    let mut provider_costs = HashMap::new();
+    for record in cost_by_provider {
+        let provider_name = match record.provider.as_str() {
+            "anthropic_api" | "anthropic_oauth" => "Anthropic",
+            "claude_code" => "Claude Code", 
+            "gemini_cli" => "Gemini CLI",
+            _ => &record.provider,
+        };
+        provider_costs.insert(provider_name.to_string(), record.total_cost.unwrap_or(0.0));
+    }
+
+    // 每日使用情况
+    let daily_usage = sqlx::query!(
+        r#"
+        SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as requests,
+            COALESCE(SUM(tokens_used), 0) as tokens
+        FROM usage_records
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+        GROUP BY DATE(created_at)
+        ORDER BY date
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    let daily_usage_vec: Vec<DailyUsage> = daily_usage
+        .into_iter()
+        .map(|record| DailyUsage {
+            date: record.date.map(|d| d.to_string()).unwrap_or_default(),
+            requests: record.requests.unwrap_or(0),
+            tokens: record.tokens.unwrap_or(0),
+        })
+        .collect();
+
+    // 每日成本
+    let daily_costs = sqlx::query!(
+        r#"
+        SELECT 
+            DATE(created_at) as date,
+            COALESCE(SUM(cost_usd), 0) as cost
+        FROM usage_records
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+        GROUP BY DATE(created_at)
+        ORDER BY date
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    let daily_costs_vec: Vec<DailyCost> = daily_costs
+        .into_iter()
+        .map(|record| DailyCost {
+            date: record.date.map(|d| d.to_string()).unwrap_or_default(),
+            cost: record.cost.unwrap_or(0.0),
+        })
+        .collect();
+
+    // 响应时间趋势
+    let response_time_trend = sqlx::query!(
+        r#"
+        SELECT 
+            DATE(created_at) as date,
+            COALESCE(AVG(latency_ms), 0) as avg_time
+        FROM usage_records
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+        GROUP BY DATE(created_at)
+        ORDER BY date
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    let response_time_trend_vec: Vec<ResponseTimePoint> = response_time_trend
+        .into_iter()
+        .map(|record| ResponseTimePoint {
+            timestamp: record.date.map(|d| format!("{}T00:00:00Z", d)).unwrap_or_default(),
+            avg_time: bigdecimal_to_f64(record.avg_time),
+        })
+        .collect();
+
+    // 获取活跃账号数量
+    let active_accounts = sqlx::query!(
+        "SELECT COUNT(*) as count FROM upstream_accounts WHERE user_id = $1 AND is_active = true",
+        user_id
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    // 计算P95, P99响应时间
+    let percentiles = sqlx::query!(
+        r#"
+        SELECT 
+            COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95,
+            COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) as p99
+        FROM usage_records
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+        "#,
+        &api_key_ids,
+        days as i32
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    // 构建图表数据
+    let request_volume: Vec<ChartPoint> = daily_usage_vec
+        .iter()
+        .map(|item| ChartPoint {
+            timestamp: format!("{}T00:00:00Z", item.date),
+            value: item.requests as f64,
+        })
+        .collect();
+
+    let response_times: Vec<ChartPoint> = response_time_trend_vec
+        .iter()
+        .map(|item| ChartPoint {
+            timestamp: item.timestamp.clone(),
+            value: item.avg_time,
+        })
+        .collect();
+
+    let costs: Vec<ChartPoint> = daily_costs_vec
+        .iter()
+        .map(|item| ChartPoint {
+            timestamp: format!("{}T00:00:00Z", item.date),
+            value: item.cost,
+        })
+        .collect();
+
+    // 计算错误率
+    let error_rate = if total_requests > 0 {
+        100.0 - success_rate
+    } else {
+        0.0
+    };
+
+    let error_rates: Vec<ChartPoint> = daily_usage_vec
+        .iter()
+        .map(|item| ChartPoint {
+            timestamp: format!("{}T00:00:00Z", item.date),
+            value: error_rate, // 简化版本，实际应该按天计算错误率
+        })
+        .collect();
 
     let stats = DetailedStats {
         overview: StatsOverview {
-            total_requests: 2720,
-            success_rate: 98.7,
-            avg_response_time: 217.8,
-            total_cost: 283.00,
-            active_accounts: 5,
+            total_requests,
+            success_rate,
+            avg_response_time: bigdecimal_to_f64(overview_result.avg_response_time.clone()),
+            total_cost: overview_result.total_cost.unwrap_or(0.0),
+            active_accounts: active_accounts.count.unwrap_or(0) as i32,
             period: range.clone(),
         },
         usage: UsageStats {
-            requests_by_provider,
-            requests_by_model,
-            tokens_consumed: 284000,
-            daily_usage,
+            requests_by_provider: provider_stats,
+            requests_by_model: HashMap::new(), // TODO: 需要添加模型字段到usage_records表
+            tokens_consumed: overview_result.total_tokens.unwrap_or(0),
+            daily_usage: daily_usage_vec,
         },
         performance: PerformanceStats {
-            avg_response_time: 217.8,
-            p95_response_time: 456.2,
-            p99_response_time: 789.1,
-            error_rate: 1.3,
-            response_time_trend,
+            avg_response_time: bigdecimal_to_f64(overview_result.avg_response_time.clone()),
+            p95_response_time: percentiles.p95.unwrap_or(0.0),
+            p99_response_time: percentiles.p99.unwrap_or(0.0),
+            error_rate,
+            response_time_trend: response_time_trend_vec,
         },
         costs: CostStats {
-            total_cost: 283.00,
-            cost_by_provider,
-            cost_by_model,
-            daily_costs,
+            total_cost: overview_result.total_cost.unwrap_or(0.0),
+            cost_by_provider: provider_costs,
+            cost_by_model: HashMap::new(), // TODO: 需要添加模型字段到usage_records表
+            daily_costs: daily_costs_vec,
         },
         charts: ChartData {
             request_volume,
@@ -224,29 +409,135 @@ pub async fn get_detailed_stats(
         },
     };
 
-    info!("✅ 获取详细统计数据成功: {} 时间范围", range);
+    info!("✅ 获取详细统计数据成功: {} 时间范围，总请求数: {}", range, total_requests);
 
     Ok(Json(stats))
 }
 
+/// 将BigDecimal转换为f64
+fn bigdecimal_to_f64(value: Option<sqlx::types::BigDecimal>) -> f64 {
+    value
+        .map(|v| v.to_string().parse().unwrap_or(0.0))
+        .unwrap_or(0.0)
+}
+
+/// 创建空的统计数据（用于没有数据时）
+fn create_empty_stats(range: String) -> DetailedStats {
+    DetailedStats {
+        overview: StatsOverview {
+            total_requests: 0,
+            success_rate: 0.0,
+            avg_response_time: 0.0,
+            total_cost: 0.0,
+            active_accounts: 0,
+            period: range.clone(),
+        },
+        usage: UsageStats {
+            requests_by_provider: HashMap::new(),
+            requests_by_model: HashMap::new(),
+            tokens_consumed: 0,
+            daily_usage: Vec::new(),
+        },
+        performance: PerformanceStats {
+            avg_response_time: 0.0,
+            p95_response_time: 0.0,
+            p99_response_time: 0.0,
+            error_rate: 0.0,
+            response_time_trend: Vec::new(),
+        },
+        costs: CostStats {
+            total_cost: 0.0,
+            cost_by_provider: HashMap::new(),
+            cost_by_model: HashMap::new(),
+            daily_costs: Vec::new(),
+        },
+        charts: ChartData {
+            request_volume: Vec::new(),
+            response_times: Vec::new(),
+            error_rates: Vec::new(),
+            costs: Vec::new(),
+        },
+    }
+}
+
 /// 获取基础统计数据
-#[instrument(skip(_database))]
+#[instrument(skip(database))]
 pub async fn get_basic_stats(
-    State(_database): State<Database>,
+    State(database): State<Database>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<StatsOverview>> {
     info!("📈 获取基础统计数据请求: 用户ID {}", claims.sub);
 
+    let user_id: i64 = claims.sub.parse().map_err(|_| crate::shared::AppError::Authentication(crate::infrastructure::AuthError::InvalidToken))?;
+
+    // 获取用户的API Keys
+    let api_keys = sqlx::query!(
+        "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true",
+        user_id
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    let api_key_ids: Vec<i64> = api_keys.iter().map(|key| key.id).collect();
+
+    if api_key_ids.is_empty() {
+        info!("用户 {} 没有API Keys，返回空统计数据", user_id);
+        return Ok(Json(StatsOverview {
+            total_requests: 0,
+            success_rate: 0.0,
+            avg_response_time: 0.0,
+            total_cost: 0.0,
+            active_accounts: 0,
+            period: "7d".to_string(),
+        }));
+    }
+
+    // 基础统计查询（过去7天）
+    let overview_result = sqlx::query!(
+        r#"
+        SELECT 
+            COUNT(*) as total_requests,
+            COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as successful_requests,
+            COALESCE(AVG(latency_ms), 0) as avg_response_time,
+            COALESCE(SUM(cost_usd), 0) as total_cost
+        FROM usage_records 
+        WHERE api_key_id = ANY($1::bigint[])
+        AND created_at >= NOW() - INTERVAL '7 days'
+        "#,
+        &api_key_ids
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    let total_requests = overview_result.total_requests.unwrap_or(0);
+    let successful_requests = overview_result.successful_requests.unwrap_or(0);
+    let success_rate = if total_requests > 0 {
+        (successful_requests as f64 / total_requests as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // 获取活跃账号数量
+    let active_accounts = sqlx::query!(
+        "SELECT COUNT(*) as count FROM upstream_accounts WHERE user_id = $1 AND is_active = true",
+        user_id
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
     let stats = StatsOverview {
-        total_requests: 2720,
-        success_rate: 98.7,
-        avg_response_time: 217.8,
-        total_cost: 283.00,
-        active_accounts: 5,
+        total_requests,
+        success_rate,
+        avg_response_time: bigdecimal_to_f64(overview_result.avg_response_time),
+        total_cost: overview_result.total_cost.unwrap_or(0.0),
+        active_accounts: active_accounts.count.unwrap_or(0) as i32,
         period: "7d".to_string(),
     };
 
-    info!("✅ 获取基础统计数据成功");
+    info!("✅ 获取基础统计数据成功: 总请求数 {}", total_requests);
 
     Ok(Json(stats))
 }
