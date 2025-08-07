@@ -107,6 +107,7 @@ impl AccountProvider {
         match s {
             "anthropic_api" => Some(AccountProvider::AnthropicApi),
             "anthropic_oauth" => Some(AccountProvider::AnthropicOauth),
+            "claude_code" => Some(AccountProvider::AnthropicApi), // 向后兼容
             _ => None,
         }
     }
@@ -134,6 +135,7 @@ pub struct AccountCredentials {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub base_url: Option<String>,
 }
 
 impl AccountCredentials {

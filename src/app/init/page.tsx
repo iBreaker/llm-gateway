@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { apiClient } from '../../utils/api'
 
 interface InitData {
   initialized: boolean
@@ -16,18 +17,34 @@ export default function InitPageDebug() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    // 暂时模拟系统已初始化，等待后端实现初始化API
-    const mockData: InitData = {
-      initialized: true,
-      userCount: 1,
-      needsInit: false
-    }
-    
-    setTimeout(() => {
-      setData(mockData)
-      setLoading(false)
-    }, 1000)
+    checkInitStatus()
   }, [])
+
+  const checkInitStatus = async () => {
+    try {
+      // 尝试获取系统健康状态，如果有用户则认为已初始化
+      const healthData = await apiClient.get<{users?: any[]}>('/api/health/system')
+      
+      // 检查用户数量决定是否需要初始化
+      const userCount = healthData.users?.length || 0
+      
+      setData({
+        initialized: userCount > 0,
+        userCount,
+        needsInit: userCount === 0
+      })
+    } catch (error) {
+      // 如果API调用失败，假设需要初始化
+      console.error('检查初始化状态失败:', error)
+      setData({
+        initialized: false,
+        userCount: 0,
+        needsInit: true
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   console.log('组件渲染，当前状态:', { loading, data, error })
 
@@ -60,20 +77,23 @@ export default function InitPageDebug() {
   }
 
   const handleInit = async () => {
-    if (!data?.initToken) {
-      setError('缺少初始化令牌')
-      return
-    }
-
     setLoading(true)
+    setError('')
+    
     try {
-      // 暂时模拟初始化成功，等待后端实现初始化API
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 创建管理员用户
+      await apiClient.post('/api/users', {
+        username: 'admin',
+        email: 'admin@llm-gateway.com',
+        password: 'admin123',
+        isActive: true
+      })
       
-      alert(`模拟初始化成功！\n邮箱: admin@llm-gateway.com\n密码: admin123\n\n请使用这些凭据登录。`)
+      alert(`初始化成功！\n管理员账号已创建:\n邮箱: admin@llm-gateway.com\n密码: admin123\n\n请使用这些凭据登录。`)
       window.location.href = '/auth/login'
     } catch (err) {
-      setError('网络错误')
+      console.error('初始化失败:', err)
+      setError(err instanceof Error ? err.message : '初始化失败，请重试')
     } finally {
       setLoading(false)
     }

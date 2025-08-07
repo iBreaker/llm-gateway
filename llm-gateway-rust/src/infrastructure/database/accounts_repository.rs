@@ -69,6 +69,7 @@ impl AccountsRepository {
                         access_token: None,
                         refresh_token: None,
                         expires_at: None,
+                        base_url: None,
                     });
 
                 let health_status = if row.error_count.unwrap_or(0) > 5 {
@@ -145,6 +146,7 @@ impl AccountsRepository {
                     access_token: None,
                     refresh_token: None,
                     expires_at: None,
+                    base_url: None,
                 });
 
             let health_status = if row.error_count.unwrap_or(0) > 5 {
@@ -238,6 +240,7 @@ impl AccountsRepository {
                 access_token: None,
                 refresh_token: None,
                 expires_at: None,
+                base_url: None,
             });
 
         let account = UpstreamAccount {

@@ -146,6 +146,9 @@ pub async fn create_account(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             expires_at: None,
+            base_url: creds_obj.get("base_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }
     } else {
         return Err(AppError::Validation("凭据格式无效".to_string()));
@@ -214,6 +217,9 @@ pub async fn update_account(
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
                 expires_at: None,
+                base_url: creds_obj.get("base_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
             })
         } else {
             return Err(AppError::Validation("凭据格式无效".to_string()));

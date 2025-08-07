@@ -10,7 +10,6 @@ use axum::{
     response::Response,
     Json, Extension,
 };
-use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, error, instrument};
@@ -263,35 +262,8 @@ pub async fn proxy_messages(
                 }
             }
             
-            // 检查是否需要SSE到JSON转换
-            let client_expects_streaming = is_streaming_request || headers.get("accept").map_or(false, |v| v.to_str().unwrap_or("").contains("text/event-stream"));
-            
-            let response = if is_sse && !client_expects_streaming {
-                // 关键修复：非流式客户端收到SSE响应时，转换为JSON
-                info!("🔧 [SSE转换] 检测到非流式客户端收到SSE响应，开始转换为JSON");
-                
-                let json_response = convert_sse_to_json(&service_response.body, &request_id)?;
-                let mut response_builder = Response::builder()
-                    .status(StatusCode::from_u16(service_response.status).unwrap_or(StatusCode::OK));
-                
-                // 添加JSON响应头，跳过SSE相关头部
-                for (key, value) in &service_response.headers {
-                    if key.to_lowercase() != "content-type" && key.to_lowercase() != "transfer-encoding" {
-                        if let (Ok(header_name), Ok(header_value)) = (
-                            key.parse::<axum::http::HeaderName>(),
-                            value.parse::<axum::http::HeaderValue>()
-                        ) {
-                            response_builder = response_builder.header(header_name, header_value);
-                        }
-                    }
-                }
-                
-                response_builder
-                    .header("content-type", "application/json")
-                    .body(Body::from(json_response))
-                    .map_err(|e| AppError::Internal(format!("构建JSON响应失败: {}", e)))?
-            } else {
-                // 直接返回上游响应，不做解析和转换
+            // 直接返回上游响应，不做解析和转换
+            let response = {
                 let mut response_builder = Response::builder()
                     .status(StatusCode::from_u16(service_response.status).unwrap_or(StatusCode::OK));
                     
@@ -325,24 +297,39 @@ pub async fn proxy_messages(
                 
                 if is_sse {
                     info!("🔍 [下游响应构建] SSE响应，创建真正的流式响应");
-                    // 关键修复：将SSE响应体转换为字节流，而不是一次性响应体
-                    use futures_util::stream::{self, StreamExt};
-                    use std::io::Cursor;
+                    // 核心修复：将SSE数据转换为流式chunks
+                    use futures_util::stream::{self};
                     
-                    let body_data = service_response.body.clone();
-                    let mut cursor = Cursor::new(body_data);
-                    let mut buffer = Vec::new();
+                    // 将整个响应体按事件边界分块
+                    let body_str = std::str::from_utf8(&service_response.body)
+                        .map_err(|e| AppError::Internal(format!("SSE响应不是有效UTF-8: {}", e)))?;
                     
-                    // 按行分块发送SSE数据，保持连接活跃
-                    if let Ok(body_str) = std::str::from_utf8(&cursor.get_ref()) {
-                        for line in body_str.lines() {
-                            buffer.push(format!("{}\n", line).into_bytes());
+                    let mut chunks = Vec::new();
+                    let mut current_event = String::new();
+                    
+                    for line in body_str.lines() {
+                        current_event.push_str(line);
+                        current_event.push_str("\n");
+                        
+                        // 在空行处分割事件
+                        if line.is_empty() && !current_event.trim().is_empty() {
+                            chunks.push(current_event.clone().into_bytes());
+                            current_event.clear();
                         }
                     }
                     
-                    let chunks_stream = stream::iter(buffer.into_iter().map(Ok::<Vec<u8>, std::io::Error>));
+                    // 添加最后一个事件
+                    if !current_event.trim().is_empty() {
+                        chunks.push(current_event.into_bytes());
+                    }
+                    
+                    // 创建一个流来逐个发送chunks
+                    let stream = stream::iter(chunks.into_iter().map(|chunk| Ok::<_, std::convert::Infallible>(chunk)));
+                    
                     response_builder
-                        .body(Body::from_stream(chunks_stream))
+                        .header("cache-control", "no-cache")
+                        .header("connection", "keep-alive")
+                        .body(Body::from_stream(stream))
                         .map_err(|e| AppError::Internal(format!("构建流式响应失败: {}", e)))?
                 } else {
                     // 否则，返回普通响应
@@ -610,59 +597,6 @@ async fn record_failure_stats(
     Ok(())
 }
 
-/// 将SSE响应转换为单个JSON响应
-fn convert_sse_to_json(sse_body: &[u8], request_id: &str) -> AppResult<Vec<u8>> {
-    info!("🔧 [{}] [SSE转换] 开始解析SSE内容", request_id);
-    
-    let body_str = std::str::from_utf8(sse_body)
-        .map_err(|e| AppError::Internal(format!("SSE内容不是有效UTF-8: {}", e)))?;
-    
-    let mut content_parts = Vec::new();
-    
-    for line in body_str.lines() {
-        if let Some(data_content) = line.strip_prefix("data: ") {
-            if data_content.trim() != "[DONE]" && !data_content.trim().is_empty() {
-                if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(data_content) {
-                    // 提取文本内容
-                    if let Some(delta) = data_json.get("delta") {
-                        if let Some(text) = delta.get("text") {
-                            if let Some(text_str) = text.as_str() {
-                                content_parts.push(text_str.to_string());
-                            }
-                        }
-                    }
-                    // 检查是否是最终的usage信息
-                    if let Some(_usage) = data_json.get("usage") {
-                        info!("🔧 [{}] [SSE转换] 找到使用统计信息", request_id);
-                    }
-                }
-            }
-        }
-    }
-    
-    let combined_text = content_parts.join("");
-    info!("🔧 [{}] [SSE转换] 提取的文本长度: {}", request_id, combined_text.len());
-    
-    // 构建标准Claude API响应格式
-    let json_response = serde_json::json!({
-        "id": format!("msg_{}", chrono::Utc::now().timestamp()),
-        "type": "message",
-        "role": "assistant", 
-        "content": [{
-            "type": "text",
-            "text": combined_text
-        }],
-        "model": "claude-3-sonnet-20240229",
-        "usage": {
-            "input_tokens": 0,
-            "output_tokens": combined_text.len() / 4,
-            "total_tokens": combined_text.len() / 4
-        }
-    });
-    
-    serde_json::to_vec(&json_response)
-        .map_err(|e| AppError::Internal(format!("序列化JSON响应失败: {}", e)))
-}
 
 /// 记录使用统计（简化版本）
 async fn record_usage_stats_simple(

@@ -1335,6 +1335,7 @@ dependencies = [
  "config",
  "dotenv",
  "futures",
+ "futures-util",
  "jsonwebtoken",
  "md5",
  "num-traits",

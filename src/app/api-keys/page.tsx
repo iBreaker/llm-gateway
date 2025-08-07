@@ -3,42 +3,29 @@
 import { useEffect, useState } from 'react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { Plus, Key, Copy, Eye, EyeOff, Edit, Trash2, AlertCircle, CheckCircle, X } from 'lucide-react'
+import { apiClient } from '../../utils/api'
 
 interface ApiKey {
-  id: string
+  id: number
   name: string
-  keyHash: string
+  keyPreview: string   // TypeScript使用camelCase
   permissions: string[]
-  rateLimits: {
-    per_minute?: number
-    per_hour?: number
-  }
-  isActive: boolean
+  isActive: boolean    // TypeScript使用camelCase  
   expiresAt: string | null
   lastUsedAt: string | null
-  requestCount: number
   createdAt: string
 }
 
 interface CreateApiKeyData {
   name: string
   permissions: string[]
-  rateLimits: {
-    per_minute: number
-    per_hour: number
-  }
-  expiresAt?: string
+  expiresInDays?: number  // TypeScript使用camelCase
 }
 
 interface UpdateApiKeyData {
-  name: string
-  permissions: string[]
-  rateLimits: {
-    per_minute: number
-    per_hour: number
-  }
-  isActive: boolean
-  expiresAt?: string
+  name?: string
+  permissions?: string[]
+  isActive?: boolean
 }
 
 export default function ApiKeysPage() {
@@ -50,27 +37,18 @@ export default function ApiKeysPage() {
   const [isCreating, setIsCreating] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set())
+  const [visibleKeys, setVisibleKeys] = useState<Set<number>>(new Set())
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
   // 获取API Key列表
   const fetchApiKeys = async () => {
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/api-keys', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setApiKeys(data.apiKeys || [])
-      } else {
-        console.error('获取API Key失败')
-      }
+      const data = await apiClient.get<{apiKeys: ApiKey[]}>('/api/api-keys?page=1&size=20')
+      setApiKeys(data.apiKeys || [])
     } catch (error) {
       console.error('获取API Key失败:', error)
+      setMessage({ type: 'error', text: '获取API Key失败' })
+      setTimeout(() => setMessage(null), 3000)
     } finally {
       setIsLoading(false)
     }
@@ -80,30 +58,14 @@ export default function ApiKeysPage() {
   const createApiKey = async (apiKeyData: CreateApiKeyData) => {
     setIsCreating(true)
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/api-keys', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(apiKeyData)
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setNewApiKey(data.plainKey) // 保存明文密钥用于显示
-        await fetchApiKeys()
-        setShowCreateModal(false)
-        setMessage({ type: 'success', text: 'API Key创建成功' })
-        setTimeout(() => setMessage(null), 3000)
-      } else {
-        setMessage({ type: 'error', text: data.message || 'API Key创建失败' })
-        setTimeout(() => setMessage(null), 3000)
-      }
+      const data = await apiClient.post<{apiKey: string}>('/api/api-keys', apiKeyData)
+      setNewApiKey(data.apiKey)
+      await fetchApiKeys()
+      setShowCreateModal(false)
+      setMessage({ type: 'success', text: 'API Key创建成功' })
+      setTimeout(() => setMessage(null), 3000)
     } catch (error) {
-      setMessage({ type: 'error', text: '网络错误' })
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'API Key创建失败' })
       setTimeout(() => setMessage(null), 3000)
     } finally {
       setIsCreating(false)
@@ -111,33 +73,17 @@ export default function ApiKeysPage() {
   }
 
   // 更新API Key
-  const updateApiKey = async (id: string, apiKeyData: UpdateApiKeyData) => {
+  const updateApiKey = async (id: number, apiKeyData: UpdateApiKeyData) => {
     setIsUpdating(true)
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`/api/api-keys/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(apiKeyData)
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        await fetchApiKeys()
-        setShowEditModal(false)
-        setEditingApiKey(null)
-        setMessage({ type: 'success', text: 'API Key更新成功' })
-        setTimeout(() => setMessage(null), 3000)
-      } else {
-        setMessage({ type: 'error', text: data.message || 'API Key更新失败' })
-        setTimeout(() => setMessage(null), 3000)
-      }
+      await apiClient.put(`/api/api-keys/${id}`, apiKeyData)
+      await fetchApiKeys()
+      setShowEditModal(false)
+      setEditingApiKey(null)
+      setMessage({ type: 'success', text: 'API Key更新成功' })
+      setTimeout(() => setMessage(null), 3000)
     } catch (error) {
-      setMessage({ type: 'error', text: '网络错误' })
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'API Key更新失败' })
       setTimeout(() => setMessage(null), 3000)
     } finally {
       setIsUpdating(false)
@@ -145,37 +91,24 @@ export default function ApiKeysPage() {
   }
 
   // 删除API Key
-  const deleteApiKey = async (id: string) => {
+  const deleteApiKey = async (id: number) => {
     if (!confirm('确定要删除这个API Key吗？此操作不可恢复。')) {
       return
     }
 
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`/api/api-keys/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        await fetchApiKeys()
-        setMessage({ type: 'success', text: 'API Key删除成功' })
-        setTimeout(() => setMessage(null), 3000)
-      } else {
-        const data = await response.json()
-        setMessage({ type: 'error', text: data.message || 'API Key删除失败' })
-        setTimeout(() => setMessage(null), 3000)
-      }
+      await apiClient.delete(`/api/api-keys/${id}`)
+      await fetchApiKeys()
+      setMessage({ type: 'success', text: 'API Key删除成功' })
+      setTimeout(() => setMessage(null), 3000)
     } catch (error) {
-      setMessage({ type: 'error', text: '网络错误' })
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'API Key删除失败' })
       setTimeout(() => setMessage(null), 3000)
     }
   }
 
   // 切换密钥可见性
-  const toggleKeyVisibility = (id: string) => {
+  const toggleKeyVisibility = (id: number) => {
     const newVisible = new Set(visibleKeys)
     if (newVisible.has(id)) {
       newVisible.delete(id)
@@ -327,7 +260,7 @@ export default function ApiKeysPage() {
                       <div className="flex items-center space-x-2">
                         <div className="font-mono text-sm">
                           {visibleKeys.has(apiKey.id) ? (
-                            <span className="break-all">{apiKey.keyHash}</span>
+                            <span className="break-all">{apiKey.keyPreview}</span>
                           ) : (
                             <span>sk-****...****</span>
                           )}
@@ -344,7 +277,7 @@ export default function ApiKeysPage() {
                         </button>
                         {visibleKeys.has(apiKey.id) && (
                           <button
-                            onClick={() => copyKey(apiKey.keyHash)}
+                            onClick={() => copyKey(apiKey.keyPreview)}
                             className="text-zinc-400 hover:text-zinc-600"
                           >
                             <Copy className="w-4 h-4" />
@@ -365,19 +298,16 @@ export default function ApiKeysPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-900">
-                        <div>{apiKey.rateLimits.per_minute || 0}/分钟</div>
-                        <div className="text-xs text-zinc-500">
-                          {apiKey.rateLimits.per_hour || 0}/小时
-                        </div>
+                      <div className="text-sm text-zinc-500">
+                        -
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge isActive={apiKey.isActive} expiresAt={apiKey.expiresAt} />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-zinc-900">
-                        {apiKey.requestCount.toLocaleString()}
+                      <div className="text-sm text-zinc-500">
+                        -
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -478,11 +408,7 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
   const [formData, setFormData] = useState<CreateApiKeyData>({
     name: '',
     permissions: ['anthropic.messages'],
-    rateLimits: {
-      per_minute: 100,
-      per_hour: 1000
-    },
-    expiresAt: ''
+    expiresInDays: undefined
   })
 
   // ESC键退出支持
@@ -490,11 +416,7 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const submitData = {
-      ...formData,
-      expiresAt: formData.expiresAt || undefined
-    }
-    onSubmit(submitData)
+    onSubmit(formData)
   }
 
   const availablePermissions = [
@@ -505,9 +427,10 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
   ]
 
   const togglePermission = (permission: string) => {
-    const newPermissions = formData.permissions.includes(permission)
-      ? formData.permissions.filter(p => p !== permission)
-      : [...formData.permissions, permission]
+    const currentPermissions = formData.permissions || []
+    const newPermissions = currentPermissions.includes(permission)
+      ? currentPermissions.filter(p => p !== permission)
+      : [...currentPermissions, permission]
     setFormData({ ...formData, permissions: newPermissions })
   }
 
@@ -548,7 +471,7 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
                 <label key={permission} className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={formData.permissions.includes(permission)}
+                    checked={formData.permissions?.includes(permission) || false}
                     onChange={() => togglePermission(permission)}
                     className="mr-2"
                   />
@@ -558,49 +481,20 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                每分钟限制
-              </label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={formData.rateLimits.per_minute}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  rateLimits: { ...formData.rateLimits, per_minute: parseInt(e.target.value) }
-                })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                每小时限制
-              </label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={formData.rateLimits.per_hour}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  rateLimits: { ...formData.rateLimits, per_hour: parseInt(e.target.value) }
-                })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-          </div>
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              过期时间 (可选)
+              过期天数 (可选)
             </label>
             <input
-              type="datetime-local"
-              value={formData.expiresAt}
-              onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+              type="number"
+              min="1"
+              placeholder="例如：30 (30天后过期)"
+              value={formData.expiresInDays || ''}
+              onChange={(e) => setFormData({ 
+                ...formData, 
+                expiresInDays: e.target.value ? parseInt(e.target.value) : undefined 
+              })}
               className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
             />
           </div>
@@ -615,7 +509,7 @@ function CreateApiKeyModal({ onClose, onSubmit, isLoading }: CreateApiKeyModalPr
             </button>
             <button
               type="submit"
-              disabled={isLoading || formData.permissions.length === 0}
+              disabled={isLoading || !formData.permissions || formData.permissions.length === 0}
               className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-sm hover:bg-zinc-800 disabled:opacity-50"
             >
               {isLoading ? '创建中...' : '创建API Key'}
@@ -635,15 +529,10 @@ interface EditApiKeyModalProps {
 }
 
 function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyModalProps) {
-  const [formData, setFormData] = useState<UpdateApiKeyData & { expiresAt?: string }>({
+  const [formData, setFormData] = useState<UpdateApiKeyData>({
     name: apiKey.name,
     permissions: apiKey.permissions,
-    rateLimits: {
-      per_minute: apiKey.rateLimits.per_minute || 100,
-      per_hour: apiKey.rateLimits.per_hour || 1000
-    },
-    isActive: apiKey.isActive,
-    expiresAt: apiKey.expiresAt ? apiKey.expiresAt.split('T')[0] + 'T' + apiKey.expiresAt.split('T')[1]?.slice(0, 5) : ''
+    isActive: apiKey.isActive
   })
 
   // ESC键退出支持
@@ -651,14 +540,7 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const submitData = {
-      name: formData.name,
-      permissions: formData.permissions,
-      rateLimits: formData.rateLimits,
-      isActive: formData.isActive,
-      expiresAt: formData.expiresAt || undefined
-    }
-    onSubmit(submitData)
+    onSubmit(formData)
   }
 
   const availablePermissions = [
@@ -669,9 +551,10 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
   ]
 
   const togglePermission = (permission: string) => {
-    const newPermissions = formData.permissions.includes(permission)
-      ? formData.permissions.filter(p => p !== permission)
-      : [...formData.permissions, permission]
+    const currentPermissions = formData.permissions || []
+    const newPermissions = currentPermissions.includes(permission)
+      ? currentPermissions.filter(p => p !== permission)
+      : [...currentPermissions, permission]
     setFormData({ ...formData, permissions: newPermissions })
   }
 
@@ -711,7 +594,7 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
                 <label key={permission} className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={formData.permissions.includes(permission)}
+                    checked={formData.permissions?.includes(permission) || false}
                     onChange={() => togglePermission(permission)}
                     className="mr-2"
                   />
@@ -721,52 +604,6 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                每分钟限制
-              </label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={formData.rateLimits.per_minute || 0}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  rateLimits: { ...formData.rateLimits, per_minute: parseInt(e.target.value) }
-                })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                每小时限制
-              </label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={formData.rateLimits.per_hour || 0}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  rateLimits: { ...formData.rateLimits, per_hour: parseInt(e.target.value) }
-                })}
-                className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              过期时间 (可选)
-            </label>
-            <input
-              type="datetime-local"
-              value={formData.expiresAt}
-              onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
-              className="w-full px-3 py-2 border border-zinc-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-            />
-          </div>
 
           <div>
             <label className="flex items-center">
@@ -790,7 +627,7 @@ function EditApiKeyModal({ apiKey, onClose, onSubmit, isLoading }: EditApiKeyMod
             </button>
             <button
               type="submit"
-              disabled={isLoading || formData.permissions.length === 0}
+              disabled={isLoading || !formData.permissions || formData.permissions.length === 0}
               className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-sm hover:bg-zinc-800 disabled:opacity-50"
             >
               {isLoading ? '更新中...' : '更新API Key'}

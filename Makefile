@@ -30,14 +30,16 @@ dev:
 	@-pkill -f "next dev" 2>/dev/null || true
 	@-lsof -ti:9527 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:7439 | xargs kill -9 2>/dev/null || true
+	@mkdir -p log
 	@echo "🚀 启动 LLM Gateway 开发环境..."
 	@echo "📦 构建 Rust 后端..."
 	@cd llm-gateway-rust && cargo build
 	@echo "🦀 启动 Rust 后端服务 (端口 9527)..."
-	@cd llm-gateway-rust && ./target/debug/llm-gateway-rust > ../rust-backend.log 2>&1 &
+	@mkdir -p logs && rm -f logs/*.log
+	@cd llm-gateway-rust && ./target/debug/llm-gateway-rust >> ../logs/rust-backend.log 2>&1 &
 	@sleep 2
 	@echo "🌐 启动 Next.js 前端服务 (端口 7439)..."
-	@npm run dev > next-frontend.log 2>&1 &
+	@npm run dev >> logs/next-frontend.log 2>&1 &
 	@sleep 3
 	@echo ""
 	@echo "✅ 开发环境启动完成!"
@@ -118,7 +120,7 @@ clean:
 	@echo "🧹 清理构建文件..."
 	@rm -rf .next out node_modules/.cache
 	@cd llm-gateway-rust && cargo clean
-	@rm -f *.log
+	@rm -rf logs
 	@echo "✅ 清理完成"
 
 # 查看日志
@@ -126,10 +128,10 @@ logs:
 	@echo "📜 LLM Gateway 服务日志:"
 	@echo ""
 	@echo "=== Rust 后端日志 ==="
-	@tail -f rust-backend.log 2>/dev/null || echo "后端日志文件不存在" &
+	@tail -f logs/rust-backend.log 2>/dev/null || echo "后端日志文件不存在" &
 	@echo ""
 	@echo "=== Next.js 前端日志 ==="
-	@tail -f next-frontend.log 2>/dev/null || echo "前端日志文件不存在"
+	@tail -f logs/next-frontend.log 2>/dev/null || echo "前端日志文件不存在"
 
 # 数据库操作
 db-reset:
@@ -160,12 +162,13 @@ install:
 
 # 生产环境启动
 prod: release
+	@mkdir -p logs
 	@echo "🚀 启动生产环境..."
 	@echo "🦀 启动 Rust 后端服务 (端口 9527)..."
-	@cd llm-gateway-rust && ./target/release/llm-gateway-rust > ../rust-prod.log 2>&1 &
+	@cd llm-gateway-rust && ./target/release/llm-gateway-rust >> ../logs/rust-prod.log 2>&1 &
 	@sleep 2
 	@echo "🌐 启动 Next.js 生产服务 (端口 3000)..."
-	@npm start > next-prod.log 2>&1 &
+	@npm start >> logs/next-prod.log 2>&1 &
 	@sleep 3
 	@echo ""
 	@echo "✅ 生产环境启动完成!"
@@ -173,7 +176,7 @@ prod: release
 	@echo "🔧 后端API: http://localhost:9527"
 	@echo "📋 健康检查: http://localhost:9527/health"
 	@echo ""
-	@echo "📜 查看日志: tail -f rust-prod.log next-prod.log"
+	@echo "📜 查看日志: tail -f logs/rust-prod.log logs/next-prod.log"
 	@echo "🛑 停止服务: make stop"
 
 # 生产部署

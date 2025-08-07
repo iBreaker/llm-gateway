@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { apiClient } from '../../utils/api'
 
 interface ExportButtonProps {
   data: any
@@ -23,12 +24,12 @@ export function ExportButton({ data, filters }: ExportButtonProps) {
     setShowOptions(false)
 
     try {
-      // 模拟导出过程
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // 获取最新的详细统计数据用于导出
+      const detailedData = await apiClient.get('/api/stats/detailed')
       
       switch (format) {
         case 'csv':
-          exportToCSV()
+          exportToCSV(detailedData)
           break
         case 'xlsx':
           exportToExcel()
@@ -37,7 +38,7 @@ export function ExportButton({ data, filters }: ExportButtonProps) {
           exportToPDF()
           break
         case 'json':
-          exportToJSON()
+          exportToJSON(detailedData)
           break
       }
     } catch (error) {
@@ -48,23 +49,41 @@ export function ExportButton({ data, filters }: ExportButtonProps) {
     }
   }
 
-  const exportToCSV = () => {
-    if (!data) return
+  const exportToCSV = (exportData: any = data) => {
+    if (!exportData) return
 
-    const csvContent = [
-      // CSV 头部
-      ['时间', '请求数', 'Token用量', '成本', '响应时间', '错误率'].join(','),
-      // CSV 数据
-      ...data.timeSeriesData.map((item: any) => [
-        item.timestamp,
-        item.requests,
-        item.tokens,
-        item.cost,
-        item.responseTime,
-        item.errorRate
+    const csvRows = []
+    
+    // CSV 头部
+    csvRows.push(['时间', '请求总数', '成功请求', '失败请求', '平均响应时间(ms)', '总成本(USD)', '错误率'].join(','))
+    
+    // 如果有时序数据
+    if (exportData.timeSeriesData && Array.isArray(exportData.timeSeriesData)) {
+      exportData.timeSeriesData.forEach((item: any) => {
+        csvRows.push([
+          item.timestamp || item.date || new Date().toISOString(),
+          item.totalRequests || item.requests || 0,
+          item.successfulRequests || 0,
+          item.failedRequests || 0,
+          item.averageLatencyMs || item.responseTime || 0,
+          item.totalCostUsd || item.cost || 0,
+          ((item.errorRate || 0) * 100).toFixed(2) + '%'
+        ].join(','))
+      })
+    } else {
+      // 如果没有时序数据，使用总体统计
+      csvRows.push([
+        new Date().toISOString(),
+        exportData.totalRequests || 0,
+        exportData.successfulRequests || 0,
+        exportData.failedRequests || 0,
+        exportData.averageLatencyMs || 0,
+        exportData.totalCostUsd || 0,
+        ((exportData.errorRate || 0) * 100).toFixed(2) + '%'
       ].join(','))
-    ].join('\n')
+    }
 
+    const csvContent = csvRows.join('\n')
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
@@ -82,10 +101,10 @@ export function ExportButton({ data, filters }: ExportButtonProps) {
     alert('PDF 导出功能开发中...')
   }
 
-  const exportToJSON = () => {
-    if (!data) return
+  const exportToJSON = (exportData: any = data) => {
+    if (!exportData) return
 
-    const jsonContent = JSON.stringify(data, null, 2)
+    const jsonContent = JSON.stringify(exportData, null, 2)
     const blob = new Blob([jsonContent], { type: 'application/json' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)

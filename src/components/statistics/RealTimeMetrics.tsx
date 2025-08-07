@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { StatCard } from './StatCard'
+import { apiClient } from '../../utils/api'
 
 interface RealTimeMetricsProps {
   data: any
@@ -18,17 +19,57 @@ export function RealTimeMetrics({ data }: RealTimeMetricsProps) {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
-    // 模拟实时数据更新
-    const interval = setInterval(() => {
-      setRealtimeData({
-        currentRequests: Math.floor(Math.random() * 100) + 50,
-        avgResponseTime: Math.floor(Math.random() * 500) + 200,
-        activeConnections: Math.floor(Math.random() * 20) + 5,
-        errorRate: Math.random() * 5,
-        throughput: Math.floor(Math.random() * 1000) + 500
-      })
-      setIsConnected(true)
-    }, 2000)
+    // 获取实时统计数据
+    const fetchRealTimeData = async () => {
+      try {
+        const token = localStorage.getItem('access_token')
+        if (!token) {
+          // 未登录时使用模拟数据
+          setRealtimeData({
+            currentRequests: Math.floor(Math.random() * 100) + 50,
+            avgResponseTime: Math.floor(Math.random() * 500) + 200,
+            activeConnections: Math.floor(Math.random() * 20) + 5,
+            errorRate: Math.random() * 5,
+            throughput: Math.floor(Math.random() * 1000) + 500
+          })
+          setIsConnected(false)
+          return
+        }
+
+        const stats = await apiClient.get<{
+          totalRequests?: number,
+          averageLatencyMs?: number,
+          errorRate?: number,
+          activeAccounts?: number
+        }>('/api/stats/basic')
+        
+        setRealtimeData({
+          currentRequests: stats.totalRequests || 0,
+          avgResponseTime: Math.round(stats.averageLatencyMs || 0),
+          activeConnections: stats.activeAccounts || 0,
+          errorRate: (stats.errorRate || 0) * 100, // 转换为百分比
+          throughput: Math.round((stats.totalRequests || 0) * 1.2) // 估算每小时吞吐量
+        })
+        setIsConnected(true)
+      } catch (error) {
+        console.error('获取实时数据失败:', error)
+        // 失败时使用模拟数据
+        setRealtimeData({
+          currentRequests: Math.floor(Math.random() * 100) + 50,
+          avgResponseTime: Math.floor(Math.random() * 500) + 200,
+          activeConnections: Math.floor(Math.random() * 20) + 5,
+          errorRate: Math.random() * 5,
+          throughput: Math.floor(Math.random() * 1000) + 500
+        })
+        setIsConnected(false)
+      }
+    }
+
+    // 立即执行一次
+    fetchRealTimeData()
+    
+    // 定期更新
+    const interval = setInterval(fetchRealTimeData, 5000) // 每5秒更新
 
     return () => clearInterval(interval)
   }, [])

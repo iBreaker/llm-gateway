@@ -73,8 +73,8 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
 
     // 需要API Key认证的路由
     let api_key_routes = Router::new()
-        .route("/v1/messages", post(handlers::proxy::proxy_messages))
-        .route("/v1/models", get(handlers::proxy::list_models))
+        .route("/messages", post(handlers::proxy::proxy_messages))
+        .route("/models", get(handlers::proxy::list_models))
         .route_layer(middleware::from_fn_with_state(
             database.clone(),
             api_key_middleware,
@@ -97,7 +97,8 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
             .merge(public_routes)
             .merge(auth_routes)
             .merge(protected_routes)
-            .nest("/v1", api_key_routes)
+            .nest("/v1", api_key_routes.clone())
+            .nest("/api/v1", api_key_routes) // 同时支持 /api/v1 前缀
             .fallback_service(ServeDir::new(&frontend_dist_path).append_index_html_on_directories(true))
             .with_state(database)
     } else {
@@ -108,7 +109,8 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
             .merge(public_routes)
             .merge(auth_routes)
             .merge(protected_routes)
-            .merge(api_key_routes)
+            .nest("/v1", api_key_routes.clone())
+            .nest("/api/v1", api_key_routes) // 同时支持 /api/v1 前缀
             .with_state(database)
     };
     

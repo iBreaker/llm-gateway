@@ -16,15 +16,10 @@ pub fn generate_api_key() -> String {
     format!("llm_gateway_{}", generate_random_string(32))
 }
 
-/// 计算SHA256哈希 (简化版本，使用标准库)
+/// 计算SHA256哈希 (简化版本，使用MD5)
 pub fn sha256_hash(input: &str) -> String {
-    // 简化实现，实际生产环境可以使用sha2 crate
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    
-    let mut hasher = DefaultHasher::new();
-    input.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    // 为了与中间件保持一致，使用MD5
+    format!("{:x}", md5::compute(input))
 }
 
 /// 验证邮箱格式

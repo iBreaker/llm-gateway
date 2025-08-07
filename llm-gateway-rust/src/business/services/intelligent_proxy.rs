@@ -22,6 +22,7 @@ pub struct ProxyRequest {
     pub headers: std::collections::HashMap<String, String>,
     pub body: Option<Vec<u8>>,
     pub features: RequestFeatures,
+    pub request_id: String,
 }
 
 /// 代理响应
@@ -61,8 +62,13 @@ pub struct IntelligentProxy {
 impl IntelligentProxy {
     /// 创建新的智能代理服务
     pub fn new() -> Self {
+        // 为SSE长连接优化的HTTP客户端配置
         let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(300))  // 5分钟超时，适合长时间的流式响应
+            .connect_timeout(Duration::from_secs(10))  // 连接超时10秒
+            .pool_idle_timeout(Duration::from_secs(90))  // 连接池空闲超时
+            .tcp_keepalive(Duration::from_secs(60))  // TCP保活，防止长连接被中断
+            // reqwest 默认启用gzip解压
             .build()
             .expect("Failed to create HTTP client");
 
@@ -83,8 +89,8 @@ impl IntelligentProxy {
         let start_time = Instant::now();
 
         info!(
-            "🚀 智能代理请求：用户 {} -> {} {}",
-            request.user.id, request.method, request.path
+            "🚀 [{}] 智能代理请求：用户 {} -> {} {}",
+            request.request_id, request.user.id, request.method, request.path
         );
 
         // 第一步：智能路由决策
@@ -158,9 +164,27 @@ impl IntelligentProxy {
         account: &UpstreamAccount,
     ) -> AppResult<ProxyResponse> {
         // 构建上游URL
-        let upstream_url = self.build_upstream_url(&request.path, account)?;
+        let upstream_url = self.build_upstream_url(request, account)?;
         
-        debug!("🌐 上游请求URL: {}", upstream_url);
+        info!("🔍 [{}] [上游请求构建] 目标URL: {}", request.request_id, upstream_url);
+        info!("🔍 [{}] [上游请求构建] 方法: {}", request.request_id, request.method);
+        info!("🔍 [{}] [上游请求构建] 客户端头部数量: {}", request.request_id, request.headers.len());
+        
+        // 详细记录客户端请求头部
+        for (key, value) in &request.headers {
+            info!("🔍 [{}] [上游请求构建] 客户端头部 '{}': '{}'", request.request_id, key, value);
+        }
+        
+        if let Some(body) = &request.body {
+            info!("🔍 [{}] [上游请求构建] 请求体大小: {} bytes", request.request_id, body.len());
+            if body.len() <= 1000 {
+                if let Ok(body_str) = std::str::from_utf8(body) {
+                    info!("🔍 [{}] [上游请求构建] 请求体内容: {}", request.request_id, body_str);
+                }
+            }
+        } else {
+            info!("🔍 [{}] [上游请求构建] 无请求体", request.request_id);
+        }
 
         // 构建HTTP请求
         let mut req_builder = match request.method.as_str() {
@@ -173,38 +197,239 @@ impl IntelligentProxy {
         };
 
         // 添加认证头
+        info!("🔍 [上游请求构建] 开始添加认证头部");
         req_builder = self.add_auth_headers(req_builder, account)?;
 
-        // 添加原始请求头（过滤掉一些不应该转发的头）
+        // 透明转发原始请求头（过滤不应该转发的头部）
+        info!("🔍 [上游请求构建] 开始转发客户端头部");
+        let mut forwarded_count = 0;
+        let mut skipped_count = 0;
+        
         for (key, value) in &request.headers {
             let key_lower = key.to_lowercase();
-            if !["authorization", "host", "content-length", "connection"].contains(&key_lower.as_str()) {
+            // 过滤不应该转发的头部：authorization（需要替换）、host（会自动设置）、connection（连接相关）
+            // ✅ 确保转发重要的流式相关头部如x-stainless-helper-method
+            if key_lower != "authorization" && key_lower != "host" && key_lower != "connection" {
                 req_builder = req_builder.header(key, value);
+                forwarded_count += 1;
+                if key_lower == "x-stainless-helper-method" {
+                    info!("🔍 [上游请求构建] ✅ 转发流式头部: {} = {}", key, value);
+                } else if key_lower.contains("stream") || key_lower.contains("sse") || key_lower.contains("event") {
+                    info!("🔍 [上游请求构建] ✅ 转发流式相关头部: {} = {}", key, value);
+                } else {
+                    info!("🔍 [上游请求构建] ✓ 转发头部: {} = {}", key, value);
+                }
+            } else {
+                skipped_count += 1;
+                info!("🔍 [上游请求构建] ⏭ 跳过头部: {} = {}", key, value);
             }
         }
+        
+        info!("🔍 [上游请求构建] 头部转发统计 - 转发: {}, 跳过: {}", forwarded_count, skipped_count);
 
         // 添加请求体
         if let Some(body) = &request.body {
+            info!("🔍 [上游请求构建] 添加请求体，大小: {} bytes", body.len());
             req_builder = req_builder.body(body.clone());
+        } else {
+            info!("🔍 [上游请求构建] 无请求体需要添加");
         }
 
-        // 发送请求
-        let response = req_builder
+        // 构建最终的请求，先不发送，用于调试
+        let final_request = req_builder.build()
+            .map_err(|e| AppError::ExternalService(format!("构建请求失败: {}", e)))?;
+
+        // 打印详细的上游请求信息
+        debug!("🔍 即将发送上游请求详情:");
+        debug!("  URL: {}", final_request.url());
+        debug!("  Method: {}", final_request.method());
+        debug!("  Headers: {:#?}", final_request.headers());
+        if let Some(body) = final_request.body() {
+            if let Some(bytes) = body.as_bytes() {
+                if let Ok(body_str) = std::str::from_utf8(bytes) {
+                    debug!("  Body: {}", body_str);
+                }
+            }
+        }
+        
+        // 重新构建请求（因为build()会消费req_builder）
+        let mut final_req_builder = match request.method.as_str() {
+            "GET" => self.http_client.get(&upstream_url),
+            "POST" => self.http_client.post(&upstream_url),
+            "PUT" => self.http_client.put(&upstream_url),
+            "DELETE" => self.http_client.delete(&upstream_url),
+            "PATCH" => self.http_client.patch(&upstream_url),
+            _ => return Err(AppError::Business(format!("不支持的HTTP方法: {}", request.method))),
+        };
+
+        // 重新添加认证头
+        final_req_builder = self.add_auth_headers(final_req_builder, account)?;
+
+        // 重新转发头部
+        for (key, value) in &request.headers {
+            let key_lower = key.to_lowercase();
+            if key_lower != "authorization" && key_lower != "host" && key_lower != "connection" {
+                final_req_builder = final_req_builder.header(key, value);
+                if key_lower == "x-stainless-helper-method" {
+                    debug!("🔄 重新转发流式头部: {} = {}", key, value);
+                }
+            }
+        }
+
+        // 重新添加请求体
+        if let Some(body) = &request.body {
+            final_req_builder = final_req_builder.body(body.clone());
+        }
+        
+        // 执行上游请求
+        info!("🔍 [{}] [上游请求] 开始发送请求到上游服务器", request.request_id);
+        let response = final_req_builder
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("上游请求失败: {}", e)))?;
+            .map_err(|e| {
+                error!("❌ [{}] [上游请求] 发送失败: {}", request.request_id, e);
+                AppError::ExternalService(format!("上游请求失败: {}", e))
+            })?;
+
+        info!("🔍 [{}] [上游响应] 收到上游响应", request.request_id);
 
         // 提取响应信息
         let status = response.status().as_u16();
-        let headers = response.headers()
+        let response_headers = response.headers();
+        
+        info!("🔍 [上游响应] HTTP状态码: {}", status);
+        info!("🔍 [上游响应] 响应头部数量: {}", response_headers.len());
+        
+        // 详细记录所有响应头部
+        for (name, value) in response_headers.iter() {
+            info!("🔍 [上游响应] 头部 '{}': '{}'", name, value.to_str().unwrap_or("<invalid_utf8>"));
+        }
+        
+        let mut headers: std::collections::HashMap<String, String> = response_headers
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
 
-        let body = response.bytes()
-            .await
-            .map_err(|e| AppError::ExternalService(format!("读取响应体失败: {}", e)))?
-            .to_vec();
+        // 检查是否是流式响应（在读取body之前）
+        let content_type = headers.get("content-type").cloned();
+        let is_sse = content_type.as_ref().map_or(false, |ct| ct.contains("text/event-stream"));
+        
+        info!("🔍 [上游响应] Content-Type: {:?}", content_type);
+        info!("🔍 [上游响应] 检测到SSE: {}", is_sse);
+
+        if is_sse {
+            info!("🔍 [SSE上游响应] ✅ 检测到流式响应，开始读取流数据");
+        }
+
+        // 对于SSE响应，保持流式特性
+        let body = if is_sse {
+            info!("🔍 [SSE响应] 保持流式响应，不缓存整个响应体");
+            // 对于SSE，我们需要特殊处理来保持流式特性
+            // 暂时还是读取整个响应，但标记需要流式处理
+            response.bytes().await
+                .map_err(|e| {
+                    error!("❌ [上游响应] 读取响应体失败: {}", e);
+                    AppError::ExternalService(format!("读取响应体失败: {}", e))
+                })?
+                .to_vec()
+        } else {
+            // 非流式响应，正常读取
+            response.bytes().await
+                .map_err(|e| {
+                    error!("❌ [上游响应] 读取响应体失败: {}", e);
+                    AppError::ExternalService(format!("读取响应体失败: {}", e))
+                })?
+                .to_vec()
+        };
+            
+        info!("🔍 [上游响应] ✅ 响应体读取完成，大小: {} bytes", body.len());
+            
+        // ✅ 修复：移除content-encoding相关头部，因为reqwest已经自动解压了
+        let removed_headers = ["content-encoding", "Content-Encoding", "content-length", "Content-Length"];
+        for header in &removed_headers {
+            if headers.remove(&header.to_string()).is_some() {
+                info!("🔍 [上游响应] 移除头部: {}", header);
+            }
+        }
+        
+        // 检查是否是流式响应
+        if is_sse {
+            info!("🔍 [SSE上游响应] 开始分析SSE响应体内容");
+            
+            if body.is_empty() {
+                error!("❌ [SSE上游响应] 上游返回了空的SSE响应体！");
+            } else if let Ok(body_str) = std::str::from_utf8(&body) {
+                let lines: Vec<&str> = body_str.lines().collect();
+                info!("🔍 [SSE上游响应] SSE响应行数: {}", lines.len());
+                
+                let mut event_count = 0;
+                let mut data_count = 0;
+                let mut error_count = 0;
+                
+                for (i, line) in lines.iter().enumerate() {
+                    if line.starts_with("event:") {
+                        event_count += 1;
+                        if event_count <= 3 {
+                            info!("🔍 [SSE上游响应] Event[{}]: {}", event_count, line);
+                        }
+                        
+                        // 检查是否有error事件
+                        if line.contains("error") {
+                            error_count += 1;
+                            error!("❌ [SSE上游响应] 发现错误事件: {}", line);
+                        }
+                    } else if line.starts_with("data:") {
+                        data_count += 1;
+                        if data_count <= 3 {
+                            let preview = if line.len() > 200 {
+                                format!("{}...", &line[..200])
+                            } else {
+                                line.to_string()
+                            };
+                            info!("🔍 [SSE上游响应] Data[{}]: {}", data_count, preview);
+                        }
+                    } else if !line.trim().is_empty() && i < 10 {
+                        info!("🔍 [SSE上游响应] Other[{}]: {}", i, line);
+                    }
+                }
+                
+                info!("🔍 [SSE上游响应] 统计 - 事件: {}, 数据块: {}, 错误: {}", event_count, data_count, error_count);
+                
+                // 检查结束标记
+                if let Some(last_lines) = lines.get(lines.len().saturating_sub(5)..) {
+                    info!("🔍 [SSE上游响应] 最后几行:");
+                    for (i, line) in last_lines.iter().enumerate() {
+                        info!("🔍 [SSE上游响应] 末尾[{}]: '{}'", i, line);
+                    }
+                }
+                
+                // 检查是否正确结束
+                let has_done_event = body_str.contains("event: done") || body_str.contains("event:done");
+                let has_message_stop = body_str.contains("message_stop") || body_str.contains("content_block_stop");
+                
+                info!("🔍 [SSE上游响应] 完整性检查 - done事件: {}, stop消息: {}", has_done_event, has_message_stop);
+                
+                // 显示更多内容用于调试
+                if body_str.len() <= 3000 {
+                    info!("🔍 [SSE上游响应] 完整SSE内容:\n{}", body_str);
+                } else {
+                    info!("🔍 [SSE上游响应] SSE内容前1000字符:\n{}", &body_str[..1000]);
+                    info!("🔍 [SSE上游响应] SSE内容后1000字符:\n{}", &body_str[body_str.len()-1000..]);
+                }
+            } else {
+                error!("❌ [SSE上游响应] SSE响应包含非UTF-8数据，前500字节: {:?}", 
+                       &body[..body.len().min(500)]);
+            }
+        } else {
+            info!("🔍 [普通上游响应] 非SSE响应");
+            if body.len() <= 2000 {
+                if let Ok(body_str) = std::str::from_utf8(&body) {
+                    info!("🔍 [普通上游响应] 响应内容: {}", body_str);
+                }
+            } else {
+                info!("🔍 [普通上游响应] 响应体过大({} bytes)，不打印内容", body.len());
+            }
+        }
 
         // 估算使用的tokens和成本
         let (tokens_used, cost_usd) = self.estimate_usage(&body, account).await;
@@ -226,12 +451,18 @@ impl IntelligentProxy {
         })
     }
 
-    /// 构建上游URL
-    fn build_upstream_url(&self, path: &str, account: &UpstreamAccount) -> AppResult<String> {
-        let base_url = match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi | 
-            crate::business::domain::AccountProvider::AnthropicOauth => {
-                "https://api.anthropic.com"
+    /// 构建上游URL  
+    fn build_upstream_url(&self, request: &ProxyRequest, account: &UpstreamAccount) -> AppResult<String> {
+        // ✅ 修复：优先使用账号配置中的base_url，否则使用默认值
+        let base_url = if let Some(custom_base_url) = &account.credentials.base_url {
+            custom_base_url.as_str()
+        } else {
+            // 默认base_url
+            match account.provider {
+                crate::business::domain::AccountProvider::AnthropicApi | 
+                crate::business::domain::AccountProvider::AnthropicOauth => {
+                    "https://api.anthropic.com"
+                }
             }
         };
 
@@ -240,15 +471,27 @@ impl IntelligentProxy {
             crate::business::domain::AccountProvider::AnthropicApi |
             crate::business::domain::AccountProvider::AnthropicOauth => {
                 // Claude API路径转换
-                if path.starts_with("/v1/messages") {
+                if request.path.starts_with("/v1/messages") {
                     "/v1/messages"
                 } else {
-                    path
+                    &request.path
                 }
             }
         };
 
-        Ok(format!("{}{}", base_url, converted_path))
+        // ✅ 修复：保留查询参数（如?beta=true）
+        let full_path = if request.path.contains('?') {
+            let parts: Vec<&str> = request.path.split('?').collect();
+            if parts.len() == 2 {
+                format!("{}?{}", converted_path, parts[1])
+            } else {
+                converted_path.to_string()
+            }
+        } else {
+            converted_path.to_string()
+        };
+
+        Ok(format!("{}{}", base_url, full_path))
     }
 
     /// 添加认证头
@@ -260,20 +503,22 @@ impl IntelligentProxy {
         match account.provider {
             crate::business::domain::AccountProvider::AnthropicApi |
             crate::business::domain::AccountProvider::AnthropicOauth => {
-                if let Some(session_key) = &account.credentials.session_key {
-                    req_builder = req_builder.header("x-api-key", session_key);
-                    req_builder = req_builder.header("anthropic-version", "2023-06-01");
+                // 优先使用session_key，如果不存在则使用access_token
+                let api_key = account.credentials.session_key.as_ref()
+                    .or(account.credentials.access_token.as_ref());
+                
+                if let Some(key) = api_key {
+                    // 只添加认证头部，不重复添加anthropic-version（客户端已提供）
+                    req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
                 } else {
                     return Err(AppError::Business("Anthropic账号缺少认证信息".to_string()));
                 }
             }
         }
 
-        req_builder = req_builder.header("User-Agent", "LLM-Gateway-Rust/1.0");
-        req_builder = req_builder.header("Content-Type", "application/json");
-
         Ok(req_builder)
     }
+
 
     /// 估算token使用量和成本
     async fn estimate_usage(&self, response_body: &[u8], account: &UpstreamAccount) -> (u32, f64) {
@@ -341,6 +586,7 @@ impl IntelligentProxy {
     pub fn get_smart_router(&self) -> Arc<SmartRouter> {
         Arc::clone(&self.smart_router)
     }
+
 }
 
 impl Default for ProxyStats {
