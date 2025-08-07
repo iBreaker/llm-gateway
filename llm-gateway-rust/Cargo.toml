@@ -31,6 +31,7 @@ prometheus = "0.13"
 
 # 异步和并发
 futures = "0.3"
+ futures-util = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"

@@ -2,12 +2,15 @@
 //! 
 //! 处理LLM API代理请求，集成智能路由和负载均衡
 
+ 
 use axum::{
+    body::Body,
     extract::State,
-    http::HeaderMap,
-    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
+    response::Response,
     Json, Extension,
 };
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, error, instrument};
@@ -30,13 +33,16 @@ pub struct ProxyMessageRequest {
     pub temperature: Option<f32>,
     pub stream: Option<bool>,
     pub system: Option<String>,
+    // 添加其他可能的字段以提高兼容性
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 消息结构
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Message {
     pub role: String,
-    pub content: String,
+    pub content: serde_json::Value, // 支持字符串或对象数组
 }
 
 /// 代理响应
@@ -105,11 +111,26 @@ pub async fn proxy_messages(
     headers: HeaderMap,
     body: String,
 ) -> AppResult<Response> {
-    info!("🚀 智能代理请求: API Key ID {}", api_key_info.id);
+    // 生成请求ID用于追踪
+    let request_id = format!("req_{}", chrono::Utc::now().timestamp_micros());
+    info!("🚀 [{}] 智能代理请求: API Key ID {}", request_id, api_key_info.id);
 
-    // 解析请求体
-    let request: ProxyMessageRequest = serde_json::from_str(&body)
+    // 先解析为通用JSON以支持任意字段
+    let raw_json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| AppError::Validation(format!("请求体解析失败: {}", e)))?;
+    
+    // 手动提取需要的字段
+    let request = ProxyMessageRequest {
+        model: raw_json.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        messages: raw_json.get("messages")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_else(Vec::new),
+        max_tokens: raw_json.get("max_tokens").and_then(|v| v.as_u64()).map(|v| v as u32),
+        temperature: raw_json.get("temperature").and_then(|v| v.as_f64()).map(|v| v as f32),
+        stream: raw_json.get("stream").and_then(|v| v.as_bool()),
+        system: raw_json.get("system").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        extra: raw_json.as_object().cloned().unwrap_or_default(),
+    };
 
     // 获取用户信息
     let user = get_user_by_api_key(&database, &api_key_info).await?;
@@ -119,9 +140,31 @@ pub async fn proxy_messages(
 
     // 获取可用的上游账号
     let available_accounts = get_available_upstream_accounts(&database, user.id).await?;
+    info!("🔍 获取到 {} 个上游账号", available_accounts.len());
+    
+    for (i, account) in available_accounts.iter().enumerate() {
+        info!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}, 健康状态={:?}", 
+              i + 1, account.id, account.account_name, account.provider, account.is_active, account.health_status);
+    }
 
     if available_accounts.is_empty() {
         return Err(AppError::Business("没有可用的上游账号".to_string()));
+    }
+
+    // 🔍 调试：检查客户端请求信息
+    info!("🔍 [{}] 客户端请求方法: POST", request_id);
+    info!("🔍 [{}] 客户端请求路径: /v1/messages", request_id);  
+    info!("🔍 [{}] 客户端请求头部: {:?}", request_id, headers);
+    
+    // 检查是否是流式请求
+    let is_streaming_request = headers.get("x-stainless-helper-method")
+        .map_or(false, |v| v.to_str().unwrap_or("").contains("stream"));
+    info!("🔍 [{}] 客户端流式请求: {}", request_id, is_streaming_request);
+    
+    if body.len() < 1000 {
+        info!("🔍 [{}] 客户端请求体: {}", request_id, body);
+    } else {
+        info!("🔍 [{}] 客户端请求体大小: {} bytes", request_id, body.len());
     }
 
     // 构建服务层代理请求
@@ -132,6 +175,7 @@ pub async fn proxy_messages(
         headers: headers_to_hashmap(&headers),
         body: Some(body.into_bytes()),
         features,
+        request_id: request_id.clone(),
     };
 
     // 创建智能代理服务
@@ -140,15 +184,177 @@ pub async fn proxy_messages(
     // 执行智能代理
     match proxy_service.proxy_request(service_request, &available_accounts).await {
         Ok(service_response) => {
-            // 转换为API响应格式
-            let api_response = convert_service_response_to_api(service_response, &request)?;
+            // 记录使用统计（简化版本）
+            record_usage_stats_simple(&database, &api_key_info, &service_response).await?;
             
-            // 记录使用统计
-            record_usage_stats(&database, &api_key_info, &api_response).await?;
+            info!("✅ 代理请求成功: 延迟 {}ms", service_response.latency_ms);
             
-            info!("✅ 代理请求成功: 延迟 {}ms", api_response.routing_info.response_time_ms);
+            // 🔍 调试：检查响应类型和内容
+            let is_sse = service_response.headers.get("content-type")
+                .map_or(false, |ct| ct.contains("text/event-stream"));
             
-            Ok(Json(api_response).into_response())
+            info!("🔍 [{}] [下游响应构建] 检测到SSE: {}, HTTP状态: {}", request_id, is_sse, service_response.status);
+            info!("🔍 [{}] [下游响应构建] 响应头部数量: {}", request_id, service_response.headers.len());
+            
+            // 详细记录所有响应头部
+            for (key, value) in &service_response.headers {
+                info!("🔍 [{}] [下游响应构建] 头部 '{}': '{}'", request_id, key, value);
+            }
+            
+            info!("🔍 [{}] [下游响应构建] 响应体大小: {} bytes", request_id, service_response.body.len());
+            
+            // 如果是SSE响应，详细分析内容
+            if is_sse {
+                info!("🔍 [{}] [SSE响应分析] 开始分析SSE响应内容", request_id);
+                
+                if service_response.body.is_empty() {
+                    error!("❌ [{}] [SSE响应分析] SSE响应体为空！这可能是问题根源", request_id);
+                } else if let Ok(body_str) = std::str::from_utf8(&service_response.body) {
+                    // 分析SSE响应的结构
+                    let lines: Vec<&str> = body_str.lines().collect();
+                    info!("🔍 [SSE响应分析] SSE响应行数: {}", lines.len());
+                    
+                    let mut event_count = 0;
+                    let mut data_chunks = 0;
+                    
+                    for (i, line) in lines.iter().enumerate() {
+                        if line.starts_with("event:") {
+                            event_count += 1;
+                            if i < 10 || event_count <= 5 {
+                                info!("🔍 [SSE响应分析] Event[{}]: {}", event_count, line);
+                            }
+                        } else if line.starts_with("data:") {
+                            data_chunks += 1;
+                            if i < 10 || data_chunks <= 5 {
+                                info!("🔍 [SSE响应分析] Data[{}]: {}", data_chunks, line.chars().take(100).collect::<String>());
+                            }
+                        } else if !line.is_empty() {
+                            if i < 10 {
+                                info!("🔍 [SSE响应分析] Other[{}]: {}", i, line);
+                            }
+                        }
+                    }
+                    
+                    info!("🔍 [SSE响应分析] 总计事件: {}, 数据块: {}", event_count, data_chunks);
+                    
+                    // 检查是否以正确的结束标记结尾
+                    if let Some(last_line) = lines.last() {
+                        info!("🔍 [SSE响应分析] 最后一行: '{}'", last_line);
+                    }
+                    
+                    // 打印完整内容（如果不太大）
+                    if body_str.len() <= 2000 {
+                        info!("🔍 [SSE响应分析] 完整SSE内容:\n{}", body_str);
+                    } else {
+                        info!("🔍 [SSE响应分析] SSE内容过大({} bytes)，显示前1000字符:\n{}", 
+                              body_str.len(), body_str.chars().take(1000).collect::<String>());
+                    }
+                } else {
+                    error!("❌ [SSE响应分析] SSE响应包含非UTF-8数据，前200字节: {:?}", 
+                           &service_response.body[..service_response.body.len().min(200)]);
+                }
+            } else {
+                info!("🔍 [普通响应] 非SSE响应，Content-Type: {:?}", 
+                      service_response.headers.get("content-type"));
+                if service_response.body.len() <= 1000 {
+                    if let Ok(body_str) = std::str::from_utf8(&service_response.body) {
+                        info!("🔍 [普通响应] 响应内容: {}", body_str);
+                    }
+                }
+            }
+            
+            // 检查是否需要SSE到JSON转换
+            let client_expects_streaming = is_streaming_request || headers.get("accept").map_or(false, |v| v.to_str().unwrap_or("").contains("text/event-stream"));
+            
+            let response = if is_sse && !client_expects_streaming {
+                // 关键修复：非流式客户端收到SSE响应时，转换为JSON
+                info!("🔧 [SSE转换] 检测到非流式客户端收到SSE响应，开始转换为JSON");
+                
+                let json_response = convert_sse_to_json(&service_response.body, &request_id)?;
+                let mut response_builder = Response::builder()
+                    .status(StatusCode::from_u16(service_response.status).unwrap_or(StatusCode::OK));
+                
+                // 添加JSON响应头，跳过SSE相关头部
+                for (key, value) in &service_response.headers {
+                    if key.to_lowercase() != "content-type" && key.to_lowercase() != "transfer-encoding" {
+                        if let (Ok(header_name), Ok(header_value)) = (
+                            key.parse::<axum::http::HeaderName>(),
+                            value.parse::<axum::http::HeaderValue>()
+                        ) {
+                            response_builder = response_builder.header(header_name, header_value);
+                        }
+                    }
+                }
+                
+                response_builder
+                    .header("content-type", "application/json")
+                    .body(Body::from(json_response))
+                    .map_err(|e| AppError::Internal(format!("构建JSON响应失败: {}", e)))?
+            } else {
+                // 直接返回上游响应，不做解析和转换
+                let mut response_builder = Response::builder()
+                    .status(StatusCode::from_u16(service_response.status).unwrap_or(StatusCode::OK));
+                    
+                info!("🔍 [下游响应构建] 开始构建最终响应，状态码: {}", service_response.status);
+                
+                // 添加响应头
+                let mut header_count = 0;
+                for (key, value) in &service_response.headers {
+                    match response_builder.headers_mut() {
+                        Some(headers) => {
+                            if let (Ok(header_name), Ok(header_value)) = (
+                                key.parse::<axum::http::HeaderName>(),
+                                value.parse::<axum::http::HeaderValue>()
+                            ) {
+                                headers.insert(header_name, header_value);
+                                header_count += 1;
+                                info!("🔍 [下游响应构建] ✓ 成功添加头部: '{}' = '{}'", key, value);
+                            } else {
+                                error!("❌ [下游响应构建] 无法解析头部: '{}' = '{}'", key, value);
+                            }
+                        }
+                        None => {
+                            response_builder = response_builder.header(key, value);
+                            header_count += 1;
+                            info!("🔍 [下游响应构建] ✓ 备用方式添加头部: '{}' = '{}'", key, value);
+                        }
+                    }
+                }
+                
+                info!("🔍 [下游响应构建] 成功添加 {} 个响应头部", header_count);
+                
+                if is_sse {
+                    info!("🔍 [下游响应构建] SSE响应，创建真正的流式响应");
+                    // 关键修复：将SSE响应体转换为字节流，而不是一次性响应体
+                    use futures_util::stream::{self, StreamExt};
+                    use std::io::Cursor;
+                    
+                    let body_data = service_response.body.clone();
+                    let mut cursor = Cursor::new(body_data);
+                    let mut buffer = Vec::new();
+                    
+                    // 按行分块发送SSE数据，保持连接活跃
+                    if let Ok(body_str) = std::str::from_utf8(&cursor.get_ref()) {
+                        for line in body_str.lines() {
+                            buffer.push(format!("{}\n", line).into_bytes());
+                        }
+                    }
+                    
+                    let chunks_stream = stream::iter(buffer.into_iter().map(Ok::<Vec<u8>, std::io::Error>));
+                    response_builder
+                        .body(Body::from_stream(chunks_stream))
+                        .map_err(|e| AppError::Internal(format!("构建流式响应失败: {}", e)))?
+                } else {
+                    // 否则，返回普通响应
+                    response_builder
+                        .body(Body::from(service_response.body.clone()))
+                        .map_err(|e| AppError::Internal(format!("构建响应失败: {}", e)))?
+                }
+            };
+                
+            info!("🔍 [下游响应构建] ✅ 最终响应构建完成，准备返回给客户端");
+            info!("🔍 [下游响应构建] 最终响应体大小: {} bytes", service_response.body.len());
+            Ok(response)
         }
         Err(e) => {
             error!("❌ 代理请求失败: {}", e);
@@ -244,6 +450,8 @@ async fn get_available_upstream_accounts(
     database: &Database,
     user_id: i64,
 ) -> AppResult<Vec<crate::business::domain::UpstreamAccount>> {
+    info!("🔍 开始查询用户 {} 的可用上游账号", user_id);
+    
     let accounts = sqlx::query!(
         r#"
         SELECT id, user_id, provider, name, credentials, is_active, 
@@ -256,7 +464,7 @@ async fn get_available_upstream_accounts(
                    ELSE 'unknown'
                END as health_status
         FROM upstream_accounts 
-        WHERE user_id = $1 AND is_active = true
+        WHERE user_id = $1
         ORDER BY last_health_check DESC
         "#,
         user_id
@@ -265,11 +473,20 @@ async fn get_available_upstream_accounts(
     .await
     .map_err(|e| AppError::Database(e))?;
 
+    info!("🔍 SQL查询返回 {} 条记录", accounts.len());
+
     let mut result = Vec::new();
-    for row in accounts {
+    for (i, row) in accounts.into_iter().enumerate() {
+        info!("🔍 处理第 {} 条记录: provider={}, name={}", i + 1, row.provider, row.name);
         let provider = match crate::business::domain::AccountProvider::from_str(&row.provider) {
-            Some(p) => p,
-            None => continue,
+            Some(p) => {
+                info!("🔍 成功解析 provider: {:?}", p);
+                p
+            },
+            None => {
+                info!("🔍 无法解析 provider: {}, 跳过此记录", row.provider);
+                continue;
+            },
         };
 
         let health_status = match row.health_status.as_deref() {
@@ -287,6 +504,7 @@ async fn get_available_upstream_accounts(
             expires_at: credentials.get("expires_at").and_then(|v| v.as_str())
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc)),
+            base_url: credentials.get("base_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
         };
 
         result.push(crate::business::domain::UpstreamAccount {
@@ -310,7 +528,21 @@ fn analyze_request_features(request: &ProxyMessageRequest) -> RequestFeatures {
     // 估算token数量
     let estimated_tokens = request.messages
         .iter()
-        .map(|msg| msg.content.len() / 4) // 粗略估算：4字符≈1token
+        .map(|msg| {
+            match &msg.content {
+                serde_json::Value::String(s) => s.len() / 4,
+                serde_json::Value::Array(arr) => {
+                    arr.iter().map(|item| {
+                        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                            text.len() / 4
+                        } else {
+                            50 // 默认估算
+                        }
+                    }).sum::<usize>()
+                }
+                _ => 50 // 默认估算
+            }
+        })
         .sum::<usize>() as u32;
 
     // 确定请求类型
@@ -349,89 +581,6 @@ fn headers_to_hashmap(headers: &HeaderMap) -> HashMap<String, String> {
         .collect()
 }
 
-/// 转换服务响应为API响应
-fn convert_service_response_to_api(
-    service_response: ServiceProxyResponse,
-    original_request: &ProxyMessageRequest,
-) -> AppResult<ProxyMessageResponse> {
-    // 解析上游响应
-    let response_text = String::from_utf8(service_response.body)
-        .map_err(|e| AppError::Internal(format!("响应解析失败: {}", e)))?;
-
-    // 这里简化处理，实际生产中需要根据不同提供商的响应格式进行转换
-    let content_blocks = vec![ContentBlock {
-        content_type: "text".to_string(),
-        text: response_text,
-    }];
-
-    let provider_name = match service_response.routing_decision.selected_account.provider {
-        crate::business::domain::AccountProvider::AnthropicApi |
-        crate::business::domain::AccountProvider::AnthropicOauth => "anthropic",
-    };
-
-    let response = ProxyMessageResponse {
-        id: format!("msg_{}", uuid::Uuid::new_v4()),
-        message_type: "message".to_string(),
-        role: "assistant".to_string(),
-        content: content_blocks,
-        model: original_request.model.clone().unwrap_or_else(|| "claude-3-sonnet".to_string()),
-        usage: Usage {
-            input_tokens: service_response.tokens_used / 2, // 粗略分配
-            output_tokens: service_response.tokens_used / 2,
-            total_tokens: service_response.tokens_used,
-            cost_usd: service_response.cost_usd,
-        },
-        routing_info: RoutingInfo {
-            strategy: format!("{:?}", service_response.routing_decision.strategy_used),
-            upstream_account_id: service_response.upstream_account_id,
-            upstream_provider: provider_name.to_string(),
-            confidence_score: service_response.routing_decision.confidence_score,
-            response_time_ms: service_response.latency_ms,
-            reasoning: service_response.routing_decision.reasoning,
-        },
-    };
-
-    Ok(response)
-}
-
-/// 记录使用统计
-async fn record_usage_stats(
-    database: &Database,
-    api_key_info: &ApiKeyInfo,
-    response: &ProxyMessageResponse,
-) -> AppResult<()> {
-    sqlx::query!(
-        r#"
-        INSERT INTO usage_records (
-            api_key_id, upstream_account_id, request_method, request_path,
-            response_status, tokens_used, cost_usd, latency_ms, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-        "#,
-        api_key_info.id,
-        response.routing_info.upstream_account_id,
-        "POST",
-        "/v1/messages",
-        200i32,
-        response.usage.total_tokens as i32,
-        response.usage.cost_usd,
-        response.routing_info.response_time_ms as i32
-    )
-    .execute(database.pool())
-    .await
-    .map_err(|e| AppError::Database(e))?;
-
-    // 更新API Key最后使用时间
-    sqlx::query!(
-        "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
-        api_key_info.id
-    )
-    .execute(database.pool())
-    .await
-    .map_err(|e| AppError::Database(e))?;
-
-    Ok(())
-}
 
 /// 记录失败统计
 async fn record_failure_stats(
@@ -453,6 +602,99 @@ async fn record_failure_stats(
         0i32,
         0.0,
         0i32
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    Ok(())
+}
+
+/// 将SSE响应转换为单个JSON响应
+fn convert_sse_to_json(sse_body: &[u8], request_id: &str) -> AppResult<Vec<u8>> {
+    info!("🔧 [{}] [SSE转换] 开始解析SSE内容", request_id);
+    
+    let body_str = std::str::from_utf8(sse_body)
+        .map_err(|e| AppError::Internal(format!("SSE内容不是有效UTF-8: {}", e)))?;
+    
+    let mut content_parts = Vec::new();
+    
+    for line in body_str.lines() {
+        if let Some(data_content) = line.strip_prefix("data: ") {
+            if data_content.trim() != "[DONE]" && !data_content.trim().is_empty() {
+                if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(data_content) {
+                    // 提取文本内容
+                    if let Some(delta) = data_json.get("delta") {
+                        if let Some(text) = delta.get("text") {
+                            if let Some(text_str) = text.as_str() {
+                                content_parts.push(text_str.to_string());
+                            }
+                        }
+                    }
+                    // 检查是否是最终的usage信息
+                    if let Some(_usage) = data_json.get("usage") {
+                        info!("🔧 [{}] [SSE转换] 找到使用统计信息", request_id);
+                    }
+                }
+            }
+        }
+    }
+    
+    let combined_text = content_parts.join("");
+    info!("🔧 [{}] [SSE转换] 提取的文本长度: {}", request_id, combined_text.len());
+    
+    // 构建标准Claude API响应格式
+    let json_response = serde_json::json!({
+        "id": format!("msg_{}", chrono::Utc::now().timestamp()),
+        "type": "message",
+        "role": "assistant", 
+        "content": [{
+            "type": "text",
+            "text": combined_text
+        }],
+        "model": "claude-3-sonnet-20240229",
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": combined_text.len() / 4,
+            "total_tokens": combined_text.len() / 4
+        }
+    });
+    
+    serde_json::to_vec(&json_response)
+        .map_err(|e| AppError::Internal(format!("序列化JSON响应失败: {}", e)))
+}
+
+/// 记录使用统计（简化版本）
+async fn record_usage_stats_simple(
+    database: &Database,
+    api_key_info: &ApiKeyInfo,
+    response: &ServiceProxyResponse,
+) -> AppResult<()> {
+    sqlx::query!(
+        r#"
+        INSERT INTO usage_records (
+            api_key_id, upstream_account_id, request_method, request_path,
+            response_status, tokens_used, cost_usd, latency_ms, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        "#,
+        api_key_info.id,
+        response.upstream_account_id,
+        "POST",
+        "/v1/messages",
+        response.status as i32,
+        response.tokens_used as i32,
+        response.cost_usd,
+        response.latency_ms as i32
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    // 更新API Key最后使用时间
+    sqlx::query!(
+        "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
+        api_key_info.id
     )
     .execute(database.pool())
     .await
