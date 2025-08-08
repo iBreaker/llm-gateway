@@ -6,12 +6,12 @@ use tracing::{info, error};
 use std::time::Duration;
 
 // 引入我们的缓存实现
-use llm_gateway_rust::infrastructure::cache::{RedisCache, CacheResult};
+use llm_gateway_rust::infrastructure::cache::{redis_cache::RedisCache, CacheResult};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化日志
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
     
     info!("🔍 开始Redis连接测试...");
     

@@ -1,7 +1,7 @@
 //! Redis缓存集成测试
 //! 测试LLM Gateway的Redis缓存实现
 
-use std::time::Duration;
+// use std::time::Duration;
 use tokio;
 
 // 手动实现简化的Redis缓存测试结构
