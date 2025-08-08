@@ -14,6 +14,11 @@ pub mod cache_manager;
 pub mod simple_cache;
 pub mod integration_test;
 pub mod invalidation_test;
+pub mod comprehensive_test;
+pub mod edge_case_tests;
+pub mod error_handling_tests;
+pub mod performance_tests;
+pub mod complete_coverage_tests;
 
 // 重新导出主要类型
 pub use cache_manager::{CacheManager, UserStats, AccountStats, RoutingDecision};
