@@ -117,31 +117,59 @@ impl Config {
                     .unwrap_or(24),
             },
             
-            cache: CacheConfig {
-                redis_url: env::var("REDIS_URL")
-                    .ok()
-                    .or_else(|| Some("redis://localhost:16379".to_string())),
-                redis_prefix: env::var("CACHE_PREFIX")
-                    .unwrap_or_else(|_| "llm-gateway:".to_string()),
-                memory_cache_size: env::var("MEMORY_CACHE_SIZE")
-                    .unwrap_or_else(|_| "1000".to_string())
-                    .parse()
-                    .unwrap_or(1000),
-                enable_memory_cache: env::var("ENABLE_MEMORY_CACHE")
-                    .unwrap_or_else(|_| "true".to_string())
-                    .parse()
-                    .unwrap_or(true),
-                enable_redis_cache: env::var("ENABLE_REDIS_CACHE")
-                    .unwrap_or_else(|_| "true".to_string())
-                    .parse()
-                    .unwrap_or(true),
-                default_ttl_seconds: env::var("CACHE_DEFAULT_TTL")
-                    .unwrap_or_else(|_| "300".to_string())
-                    .parse()
-                    .unwrap_or(300),
-            },
+            cache: CacheConfig::load_default(),
         };
 
         Ok(config)
+    }
+}
+
+impl CacheConfig {
+    /// 加载默认的缓存配置（从环境变量）
+    pub fn load_default() -> Self {
+        Self {
+            redis_url: env::var("REDIS_URL")
+                .ok()
+                .or_else(|| Some("redis://localhost:16379".to_string())),
+            redis_prefix: env::var("CACHE_PREFIX")
+                .unwrap_or_else(|_| "llm-gateway:".to_string()),
+            memory_cache_size: env::var("MEMORY_CACHE_SIZE")
+                .unwrap_or_else(|_| "1000".to_string())
+                .parse()
+                .unwrap_or(1000),
+            enable_memory_cache: env::var("ENABLE_MEMORY_CACHE")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            enable_redis_cache: env::var("ENABLE_REDIS_CACHE")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            default_ttl_seconds: env::var("CACHE_DEFAULT_TTL")
+                .unwrap_or_else(|_| "300".to_string())
+                .parse()
+                .unwrap_or(300),
+        }
+    }
+
+    /// 从设置服务创建缓存配置
+    pub async fn from_settings(settings: &crate::business::services::SharedSettingsService) -> Self {
+        let enable_cache = settings.is_cache_enabled().await;
+        let ttl_minutes = settings.get_cache_ttl_minutes().await;
+        
+        Self {
+            redis_url: env::var("REDIS_URL")
+                .ok()
+                .or_else(|| Some("redis://localhost:16379".to_string())),
+            redis_prefix: env::var("CACHE_PREFIX")
+                .unwrap_or_else(|_| "llm-gateway:".to_string()),
+            memory_cache_size: env::var("MEMORY_CACHE_SIZE")
+                .unwrap_or_else(|_| "1000".to_string())
+                .parse()
+                .unwrap_or(1000),
+            enable_memory_cache: enable_cache,
+            enable_redis_cache: enable_cache,
+            default_ttl_seconds: (ttl_minutes * 60) as u64, // 转换为秒
+        }
     }
 }

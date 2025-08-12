@@ -161,6 +161,13 @@ impl Database {
         self.cache_manager.as_ref()
     }
 
+    /// 为缓存管理器设置设置服务引用（用于动态配置）
+    pub fn set_cache_settings_service(&mut self, settings_service: crate::business::services::SharedSettingsService) {
+        if let Some(ref mut cache_manager) = self.cache_manager {
+            cache_manager.set_settings_service(settings_service);
+        }
+    }
+
     /// 失效用户相关的所有缓存
     pub async fn invalidate_user_cache(&self, user_id: i64) -> Result<(), DatabaseError> {
         if let Some(ref cache_manager) = self.cache_manager {
@@ -185,6 +192,21 @@ impl Database {
             cache_manager.clear_all_caches().await
                 .map_err(|e| DatabaseError::Configuration(format!("清空缓存失败: {}", e)))?;
         }
+        Ok(())
+    }
+
+    /// 根据设置重新配置缓存
+    pub async fn reconfigure_cache(&mut self, settings_service: &crate::business::services::SharedSettingsService) -> Result<(), DatabaseError> {
+        if let Some(ref mut cache_manager) = self.cache_manager {
+            // 使用动态更新方法，更高效
+            cache_manager.update_config_from_settings(settings_service).await
+                .map_err(|e| DatabaseError::Configuration(format!("缓存配置更新失败: {}", e)))?;
+        } else {
+            // 如果缓存管理器不存在，尝试创建一个新的
+            let new_cache_config = crate::infrastructure::config::CacheConfig::from_settings(settings_service).await;
+            self.cache_manager = Self::create_cache_manager(&new_cache_config).await.ok();
+        }
+        
         Ok(())
     }
 }

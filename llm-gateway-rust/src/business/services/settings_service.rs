@@ -187,6 +187,35 @@ impl SettingsService {
         info!("✅ 设置缓存刷新完成");
         Ok(())
     }
+
+    /// 触发缓存管理器重配置的回调（通过SharedSettingsService）
+    /// 这个方法用于从外部调用，传入一个SharedSettingsService来重新配置缓存
+    pub async fn on_settings_updated_with_cache_reconfiguration(
+        settings_service: &crate::business::services::SharedSettingsService,
+        database: &mut crate::infrastructure::database::Database,
+    ) -> AppResult<()> {
+        info!("🔄 检测到设置更新，刷新设置缓存并重配置系统缓存");
+        
+        // 首先刷新设置缓存
+        settings_service.reload_cache().await?;
+        
+        // 检查缓存相关设置是否更改
+        let cache_enabled = settings_service.is_cache_enabled().await;
+        let cache_ttl_minutes = settings_service.get_cache_ttl_minutes().await;
+        
+        info!("🔧 当前缓存设置: enabled={}, ttl_minutes={}", cache_enabled, cache_ttl_minutes);
+        
+        // 重新配置缓存管理器
+        if let Err(e) = database.reconfigure_cache(settings_service).await {
+            warn!("⚠️ 缓存管理器重配置失败: {}", e);
+            // 缓存重配置失败不应该阻止设置更新，只记录警告
+        } else {
+            info!("✅ 缓存管理器重配置成功");
+        }
+        
+        info!("✅ 设置更新和缓存重配置完成");
+        Ok(())
+    }
 }
 
 /// 全局设置服务实例

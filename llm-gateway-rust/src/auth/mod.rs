@@ -32,4 +32,6 @@ pub enum AuthError {
     AuthenticationFailed(String),
     #[error("密码错误: {0}")]
     Password(String),
+    #[error("账号已被锁定: {0}")]
+    AccountLocked(String),
 }

@@ -13,6 +13,7 @@ use tracing::{info, instrument};
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::{password, Claims};
+use crate::business::services::SharedSettingsService;
 
 /// 用户信息
 #[derive(Debug, Serialize)]
@@ -57,11 +58,12 @@ pub struct UpdateUserRequest {
 }
 
 /// 获取用户列表
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn list_users(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<UsersListResponse>> {
+    let database = &app_state.database;
     info!("📋 获取用户列表请求: 用户ID {}", claims.sub);
 
     // 查询所有用户
@@ -94,21 +96,39 @@ pub async fn list_users(
 }
 
 /// 创建用户
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn create_user(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<CreateUserRequest>,
 ) -> AppResult<Json<UserInfo>> {
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
     info!("👤 创建用户请求: {} (操作者: {})", request.email, claims.username);
+
+    // 检查用户数量限制
+    let max_users = settings.get_max_users().await;
+    let current_user_count = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM users WHERE is_active = true"
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?
+    .unwrap_or(0);
+
+    if current_user_count >= max_users as i64 {
+        return Err(AppError::Business(format!("系统用户数已达上限 ({})", max_users)));
+    }
 
     // 验证输入
     if request.email.is_empty() || request.username.is_empty() || request.password.is_empty() {
         return Err(AppError::Validation("邮箱、用户名和密码不能为空".to_string()));
     }
 
-    if request.password.len() < 8 {
-        return Err(AppError::Validation("密码至少需要8位字符".to_string()));
+    // 使用配置的密码最小长度
+    let min_password_length = settings.get_password_min_length().await;
+    if request.password.len() < min_password_length as usize {
+        return Err(AppError::Validation(format!("密码至少需要{}位字符", min_password_length)));
     }
 
     // 检查邮箱是否已存在
@@ -159,13 +179,14 @@ pub async fn create_user(
 }
 
 /// 更新用户
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn update_user(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<i64>,
     Json(request): Json<UpdateUserRequest>,
 ) -> AppResult<Json<UserInfo>> {
+    let database = &app_state.database;
     info!("🔄 更新用户请求: ID {} (操作者: {})", user_id, claims.username);
 
     // 验证输入
@@ -272,12 +293,13 @@ pub async fn update_user(
 }
 
 /// 删除用户
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn delete_user(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let database = &app_state.database;
     info!("🗑️ 删除用户请求: ID {} (操作者: {})", user_id, claims.username);
 
     // 检查是否试图删除自己

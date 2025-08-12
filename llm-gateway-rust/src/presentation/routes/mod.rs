@@ -14,13 +14,29 @@ use crate::presentation::handlers;
 use crate::auth::middleware::{auth_middleware, api_key_middleware};
 use crate::business::services::{SharedSettingsService, SharedRateLimitService};
 
+/// 应用状态
+#[derive(Clone)]
+pub struct AppState {
+    pub database: Database,
+    pub settings_service: SharedSettingsService,
+    pub rate_limit_service: SharedRateLimitService,
+}
+
 /// 创建应用路由
-pub async fn create_routes(database: Database, settings_service: SharedSettingsService, rate_limit_service: SharedRateLimitService) -> anyhow::Result<Router> {
+pub async fn create_routes(mut database: Database, settings_service: SharedSettingsService, rate_limit_service: SharedRateLimitService) -> anyhow::Result<Router> {
+    // 为缓存管理器设置设置服务引用，以便动态使用系统设置中的缓存配置
+    database.set_cache_settings_service(settings_service.clone());
+    
+    let app_state = AppState {
+        database: database.clone(),
+        settings_service: settings_service.clone(),
+        rate_limit_service: rate_limit_service.clone(),
+    };
     // 认证相关路由（公开）
     let auth_routes = Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh_token))
-        .layer(axum::Extension(settings_service.clone()));
+        .with_state(app_state.clone());
 
     // 需要JWT认证的路由
     let protected_routes = Router::new()
@@ -73,9 +89,9 @@ pub async fn create_routes(database: Database, settings_service: SharedSettingsS
         .route("/api/settings", put(handlers::settings::update_settings))
         .route("/api/settings/:key", get(handlers::settings::get_setting))
         
-        .layer(axum::Extension(settings_service.clone()))
+        .with_state(app_state.clone())
         .route_layer(middleware::from_fn_with_state(
-            database.clone(),
+            app_state.clone(),
             auth_middleware,
         ));
 
@@ -83,10 +99,9 @@ pub async fn create_routes(database: Database, settings_service: SharedSettingsS
     let api_key_routes = Router::new()
         .route("/messages", post(handlers::proxy::proxy_messages))
         .route("/models", get(handlers::proxy::list_models))
-        .layer(axum::Extension(settings_service.clone()))
-        .layer(axum::Extension(rate_limit_service.clone()))
+        .with_state(app_state.clone())
         .route_layer(middleware::from_fn_with_state(
-            database.clone(),
+            app_state.clone(),
             api_key_middleware,
         ));
 
@@ -94,7 +109,8 @@ pub async fn create_routes(database: Database, settings_service: SharedSettingsS
     let public_routes = Router::new()
         .route("/health", get(handlers::health::health_check))
         .route("/api/health/system", get(handlers::health::get_system_health))
-        .route("/api/health/cache", get(handlers::health::get_cache_metrics));
+        .route("/api/health/cache", get(handlers::health::get_cache_metrics))
+        .with_state(app_state.clone());
 
     // 检查是否存在构建的前端文件
     let frontend_dist_path = std::env::var("FRONTEND_DIST_PATH")
@@ -111,7 +127,7 @@ pub async fn create_routes(database: Database, settings_service: SharedSettingsS
             .nest("/v1", api_key_routes.clone())
             .nest("/api/v1", api_key_routes) // 同时支持 /api/v1 前缀
             .fallback_service(ServeDir::new(&frontend_dist_path).append_index_html_on_directories(true))
-            .with_state(database)
+            .with_state(app_state.clone())
     } else {
         tracing::info!("🔧 开发模式：仅提供 API 服务");
         
@@ -122,7 +138,7 @@ pub async fn create_routes(database: Database, settings_service: SharedSettingsS
             .merge(protected_routes)
             .nest("/v1", api_key_routes.clone())
             .nest("/api/v1", api_key_routes) // 同时支持 /api/v1 前缀
-            .with_state(database)
+            .with_state(app_state.clone())
     };
     
     let app = final_app

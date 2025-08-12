@@ -13,6 +13,7 @@ use tracing::{info, warn, instrument};
 
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
+use crate::business::services::SharedSettingsService;
 
 /// 系统健康状态
 #[derive(Debug, Serialize)]
@@ -69,23 +70,32 @@ pub struct HealthSummary {
 }
 
 /// 基础健康检查
-#[instrument]
-pub async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
+#[instrument(skip(app_state))]
+pub async fn health_check(
+    State(app_state): State<crate::presentation::routes::AppState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     info!("🏥 基础健康检查请求");
+    
+    let settings = &app_state.settings_service;
+    let system_name = settings.get_system_name().await;
+    let system_description = settings.get_system_description().await;
     
     Ok(Json(serde_json::json!({
         "status": "ok",
-        "service": "llm-gateway-rust",
+        "service": system_name,
+        "description": system_description,
         "version": env!("CARGO_PKG_VERSION"),
         "timestamp": chrono::Utc::now().to_rfc3339()
     })))
 }
 
 /// 系统健康检查（详细）
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_system_health(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
 ) -> AppResult<Json<SystemHealthResponse>> {
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
     info!("🏥 系统健康检查请求");
     
     let mut checks = HashMap::new();
@@ -186,10 +196,12 @@ pub async fn get_system_health(
 
     // 确定总体健康状态
     let overall_status = determine_overall_status(&checks);
+    
+    let system_name = settings.get_system_name().await;
 
     let response = SystemHealthResponse {
         status: overall_status,
-        service: "llm-gateway-rust".to_string(),
+        service: system_name,
         version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
         checks,
@@ -199,11 +211,12 @@ pub async fn get_system_health(
 }
 
 /// 检查单个上游账号健康状态
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn check_account_health(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<UpstreamHealthResponse>> {
+    let database = &app_state.database;
     info!("🔍 检查上游账号健康状态: ID {}", account_id);
 
     // 查询账号信息
@@ -285,11 +298,12 @@ pub async fn check_account_health(
 }
 
 /// 批量健康检查
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn batch_health_check(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Json(request): Json<BatchHealthCheckRequest>,
 ) -> AppResult<Json<BatchHealthCheckResponse>> {
+    let database = &app_state.database;
     info!("🔍 批量健康检查: {} 个账号", request.account_ids.len());
 
     if request.account_ids.len() > 50 {
@@ -308,9 +322,9 @@ pub async fn batch_health_check(
     // 并发检查所有账号
     let mut tasks = Vec::new();
     for account_id in request.account_ids {
-        let db = database.clone();
+        let state = app_state.clone();
         let task = tokio::spawn(async move {
-            check_single_account_health(db, account_id).await
+            check_single_account_health(state, account_id).await
         });
         tasks.push(task);
     }
@@ -354,10 +368,11 @@ pub async fn batch_health_check(
 }
 
 /// 检查所有账号健康状态
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn check_all_accounts_health(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
 ) -> AppResult<Json<BatchHealthCheckResponse>> {
+    let database = &app_state.database;
     info!("🔍 检查所有账号健康状态");
 
     // 获取所有激活的账号ID
@@ -369,7 +384,7 @@ pub async fn check_all_accounts_health(
     .map_err(|e| AppError::Database(e))?;
 
     let request = BatchHealthCheckRequest { account_ids };
-    batch_health_check(State(database), Json(request)).await
+    batch_health_check(State(app_state.clone()), Json(request)).await
 }
 
 // 辅助函数
@@ -450,10 +465,10 @@ fn determine_overall_status(checks: &HashMap<String, HealthCheck>) -> String {
 
 /// 执行单个账号的健康检查
 async fn check_single_account_health(
-    database: Database,
+    app_state: crate::presentation::routes::AppState,
     account_id: i64,
 ) -> AppResult<UpstreamHealthResponse> {
-    check_account_health(State(database), Path(account_id)).await
+    check_account_health(State(app_state), Path(account_id)).await
         .map(|json_response| json_response.0)
 }
 
@@ -471,10 +486,11 @@ async fn perform_simple_health_check() -> Result<u64, Box<dyn std::error::Error 
 }
 
 /// 获取缓存系统详细监控信息
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_cache_metrics(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let database = &app_state.database;
     info!("📊 获取缓存监控指标");
 
     let cache_manager = database.cache_manager()

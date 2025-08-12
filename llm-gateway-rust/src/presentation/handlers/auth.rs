@@ -3,9 +3,10 @@
 //! 处理用户登录、注销、token刷新等认证相关请求
 
 use axum::{
-    extract::State,
+    extract::{State, ConnectInfo},
     response::Json,
     Extension,
+    http::HeaderMap,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, instrument};
@@ -14,6 +15,7 @@ use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::{jwt::JwtService, password, Claims};
 use crate::business::services::SharedSettingsService;
+use sqlx::types::ipnetwork::IpNetwork;
 
 /// 创建JWT服务实例（使用设置中的过期时间）
 async fn create_jwt_service(settings: &SharedSettingsService) -> JwtService {
@@ -63,17 +65,55 @@ pub struct TokenResponse {
 }
 
 /// 用户登录
-#[instrument(skip(database, settings, request))]
+#[instrument(skip(app_state, request, headers))]
 pub async fn login(
-    State(database): State<Database>,
-    Extension(settings): Extension<SharedSettingsService>,
+    State(app_state): State<crate::presentation::routes::AppState>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> AppResult<Json<LoginResponse>> {
-    info!("🔐 用户登录请求: {}", request.email);
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
+    info!("🔐 用户登录请求: {} (来源: {})", request.email, addr.ip());
 
     // 验证输入
     if request.email.is_empty() || request.password.is_empty() {
         return Err(AppError::Validation("邮箱和密码不能为空".to_string()));
+    }
+
+    let client_ip = addr.ip();
+    let user_agent = headers.get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    // 检查登录失败次数
+    let max_login_attempts = settings.get_max_login_attempts().await;
+    let recent_failed_attempts = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM login_attempts 
+         WHERE email = $1 AND success = false 
+         AND attempt_time > NOW() - INTERVAL '1 hour'",
+        request.email
+    )
+    .fetch_one(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?
+    .unwrap_or(0);
+
+    if recent_failed_attempts >= max_login_attempts as i64 {
+        // 记录被锁定的登录尝试
+        record_login_attempt(
+            &database,
+            &request.email,
+            client_ip,
+            user_agent.as_deref(),
+            false,
+            Some("too_many_attempts"),
+        ).await?;
+
+        warn!("账号被锁定: {} ({} 次失败尝试)", request.email, recent_failed_attempts);
+        return Err(AppError::Authentication(
+            crate::auth::AuthError::AccountLocked(format!("登录失败次数过多，请1小时后重试 ({}次失败)", recent_failed_attempts))
+        ));
     }
 
     // 查询用户 (支持email或username登录)
@@ -96,6 +136,16 @@ pub async fn login(
         .map_err(|e| AppError::Authentication(crate::auth::AuthError::Password(e.to_string())))?;
 
     if !is_valid {
+        // 记录登录失败
+        record_login_attempt(
+            &database,
+            &request.email,
+            client_ip,
+            user_agent.as_deref(),
+            false,
+            Some("invalid_credentials"),
+        ).await?;
+
         warn!("密码错误: {}", request.email);
         return Err(AppError::Authentication(crate::auth::AuthError::InvalidCredentials));
     }
@@ -124,6 +174,16 @@ pub async fn login(
     let refresh_token = jwt_service.generate_token(user_row.id, &user_row.username)
         .map_err(AppError::Authentication)?;
 
+    // 记录登录成功
+    record_login_attempt(
+        &database,
+        &request.email,
+        client_ip,
+        user_agent.as_deref(),
+        true,
+        None,
+    ).await?;
+
     info!("✅ 用户登录成功: {} (ID: {})", user_row.username, user_row.id);
 
     // 获取动态过期时间
@@ -146,11 +206,12 @@ pub async fn login(
 }
 
 /// 获取当前用户信息
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_current_user(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<UserInfo>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -177,12 +238,13 @@ pub async fn get_current_user(
 }
 
 /// 刷新Token
-#[instrument(skip(database, settings, request))]
+#[instrument(skip(app_state, request))]
 pub async fn refresh_token(
-    State(database): State<Database>,
-    Extension(settings): Extension<SharedSettingsService>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> AppResult<Json<TokenResponse>> {
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
     info!("🔄 Token刷新请求");
 
     // 验证refresh token
@@ -233,9 +295,9 @@ pub async fn refresh_token(
 }
 
 /// 用户登出
-#[instrument(skip(_database))]
+#[instrument(skip(_app_state))]
 pub async fn logout(
-    State(_database): State<Database>,
+    State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<serde_json::Value>> {
     info!("👋 用户登出: {} (ID: {})", claims.username, claims.sub);
@@ -256,20 +318,23 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn change_password(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<ChangePasswordRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
     info!("🔒 用户修改密码: {} (ID: {})", claims.username, user_id);
 
-    // 验证密码强度
-    if request.new_password.len() < 8 {
-        return Err(AppError::Validation("新密码至少需要8位字符".to_string()));
+    // 验证密码强度（使用配置的最小长度）
+    let min_password_length = settings.get_password_min_length().await;
+    if request.new_password.len() < min_password_length as usize {
+        return Err(AppError::Validation(format!("新密码至少需要{}位字符", min_password_length)));
     }
 
     // 获取当前密码哈希
@@ -311,4 +376,31 @@ pub async fn change_password(
         "success": true,
         "message": "密码修改成功"
     })))
+}
+
+/// 记录登录尝试
+async fn record_login_attempt(
+    database: &Database,
+    email: &str,
+    ip_address: std::net::IpAddr,
+    user_agent: Option<&str>,
+    success: bool,
+    failure_reason: Option<&str>,
+) -> AppResult<()> {
+    sqlx::query!(
+        r#"
+        INSERT INTO login_attempts (email, ip_address, user_agent, success, failure_reason)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+        email,
+        IpNetwork::from(ip_address),
+        user_agent,
+        success,
+        failure_reason
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    Ok(())
 }

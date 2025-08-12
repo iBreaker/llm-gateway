@@ -10,6 +10,7 @@ use serde::{Serialize, Deserialize};
 use tracing::{debug, info, warn};
 
 use crate::shared::AppResult;
+use crate::business::services::SharedSettingsService;
 
 use super::{
     CacheConfig, CacheResult, CacheLayer, CacheTtlProfile, CacheKeyBuilder,
@@ -62,6 +63,9 @@ pub struct CacheManager {
     
     // 缓存指标
     metrics: Arc<RwLock<CacheMetrics>>,
+    
+    // 设置服务引用，用于动态检查缓存配置
+    settings_service: Option<crate::business::services::SharedSettingsService>,
 }
 
 impl CacheManager {
@@ -126,12 +130,49 @@ impl CacheManager {
             memory_cache_health,
             redis_cache,
             metrics: Arc::new(RwLock::new(CacheMetrics::default())),
+            settings_service: None, // 初始化时为None，后续通过set_settings_service设置
         })
+    }
+
+    /// 设置设置服务引用，用于动态检查缓存配置
+    pub fn set_settings_service(&mut self, settings_service: crate::business::services::SharedSettingsService) {
+        self.settings_service = Some(settings_service);
+    }
+
+    /// 检查当前缓存是否应该启用（动态检查设置）
+    async fn is_cache_enabled(&self) -> bool {
+        if let Some(ref settings) = self.settings_service {
+            settings.is_cache_enabled().await
+        } else {
+            // 如果没有设置服务，使用配置文件中的默认值
+            self.config.enable_memory_cache || self.config.enable_redis_cache
+        }
+    }
+
+    /// 获取当前的动态TTL设置
+    async fn get_dynamic_ttl(&self) -> (std::time::Duration, std::time::Duration) {
+        if let Some(ref settings) = self.settings_service {
+            let ttl_minutes = settings.get_cache_ttl_minutes().await;
+            let memory_ttl = std::time::Duration::from_secs((ttl_minutes * 60) as u64);
+            let redis_ttl = std::time::Duration::from_secs((ttl_minutes * 60 * 2) as u64);
+            (memory_ttl, redis_ttl)
+        } else {
+            // 如果没有设置服务，使用配置文件中的默认值
+            (self.config.memory_default_ttl, self.config.redis_default_ttl)
+        }
     }
 
     /// 获取用户统计数据
     pub async fn get_user_stats(&self, user_id: i64, time_range: &str) -> AppResult<Option<UserStats>> {
         let key = self.key_builder.user_stats_key(user_id, time_range);
+        
+        // 动态检查缓存是否启用
+        let cache_enabled = self.is_cache_enabled().await;
+        if !cache_enabled {
+            self.record_cache_miss().await;
+            debug!("用户统计缓存已禁用: user_id={}, range={}", user_id, time_range);
+            return Ok(None);
+        }
         
         // L1: 检查内存缓存
         if self.config.enable_memory_cache {
@@ -172,12 +213,22 @@ impl CacheManager {
     pub async fn set_user_stats(&self, user_id: i64, time_range: &str, stats: UserStats) -> AppResult<()> {
         let key = self.key_builder.user_stats_key(user_id, time_range);
         
+        // 动态检查缓存是否启用
+        let cache_enabled = self.is_cache_enabled().await;
+        if !cache_enabled {
+            debug!("用户统计缓存已禁用，跳过缓存: user_id={}, range={}", user_id, time_range);
+            return Ok(());
+        }
+        
+        // 获取动态TTL设置
+        let (memory_ttl, redis_ttl) = self.get_dynamic_ttl().await;
+        
         // L1: 设置内存缓存
         if self.config.enable_memory_cache {
             if let Err(e) = self.memory_cache_stats.set(
                 key.clone(),
                 stats.clone(),
-                Some(CacheTtlProfile::MediumTerm.memory_ttl()),
+                Some(memory_ttl),
             ).await {
                 warn!("设置L1缓存失败: key={}, error={}", key, e);
             }
@@ -188,13 +239,14 @@ impl CacheManager {
             if let Err(e) = redis.set(
                 &key,
                 &stats,
-                Some(CacheTtlProfile::MediumTerm.redis_ttl()),
+                Some(redis_ttl),
             ).await {
                 warn!("设置L2缓存失败: key={}, error={}", key, e);
             }
         }
 
-        debug!("用户统计已缓存: user_id={}, range={}", user_id, time_range);
+        debug!("用户统计已缓存: user_id={}, range={}, memory_ttl={:?}, redis_ttl={:?}", 
+               user_id, time_range, memory_ttl, redis_ttl);
         Ok(())
     }
 
@@ -417,6 +469,36 @@ impl CacheManager {
         let mut metrics = self.metrics.write().await;
         metrics.total_requests += 1;
         // 未命中不需要特别记录，因为可以通过总请求数 - 命中数计算
+    }
+
+    /// 动态更新缓存配置
+    /// 这个方法允许在运行时更新缓存的启用状态和TTL，而无需重启整个缓存管理器
+    pub async fn update_config_from_settings(&mut self, settings_service: &crate::business::services::SharedSettingsService) -> AppResult<()> {
+        use tracing::{info, warn};
+        
+        info!("🔧 开始更新缓存管理器配置");
+        
+        // 获取最新的缓存设置
+        let cache_enabled = settings_service.is_cache_enabled().await;
+        let cache_ttl_minutes = settings_service.get_cache_ttl_minutes().await;
+        
+        // 更新配置
+        self.config.enable_memory_cache = cache_enabled;
+        self.config.enable_redis_cache = cache_enabled;
+        self.config.memory_default_ttl = std::time::Duration::from_secs((cache_ttl_minutes * 60) as u64);
+        self.config.redis_default_ttl = std::time::Duration::from_secs((cache_ttl_minutes * 60 * 2) as u64); // Redis TTL 更长
+        
+        info!("✅ 缓存配置更新完成: enabled={}, ttl_minutes={}", cache_enabled, cache_ttl_minutes);
+        
+        // 如果缓存被禁用，清空所有缓存
+        if !cache_enabled {
+            info!("🧹 缓存已禁用，清空所有现有缓存");
+            if let Err(e) = self.clear_all_caches().await {
+                warn!("⚠️ 清空缓存时发生错误: {}", e);
+            }
+        }
+        
+        Ok(())
     }
 }
 

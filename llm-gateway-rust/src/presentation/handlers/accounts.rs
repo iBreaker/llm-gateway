@@ -56,11 +56,12 @@ pub struct UpdateAccountRequest {
 }
 
 /// 获取账号列表
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn list_accounts(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<AccountsListResponse>> {
+    let database = &app_state.database;
     info!("📋 获取账号列表请求: 用户ID {}", claims.sub);
 
     // 从数据库查询账号列表
@@ -112,12 +113,13 @@ pub async fn list_accounts(
 }
 
 /// 创建账号
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn create_account(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<CreateAccountRequest>,
 ) -> AppResult<Json<AccountInfo>> {
+    let database = &app_state.database;
     info!("➕ 创建账号请求: {} (操作者: {})", request.name, claims.username);
 
     // 解析用户ID
@@ -197,13 +199,14 @@ pub async fn create_account(
 }
 
 /// 更新账号
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn update_account(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
     Json(request): Json<UpdateAccountRequest>,
 ) -> AppResult<Json<AccountInfo>> {
+    let database = &app_state.database;
     info!("🔄 更新账号请求: ID {} (操作者: {})", account_id, claims.username);
 
     // 解析用户ID
@@ -283,12 +286,13 @@ pub async fn update_account(
 }
 
 /// 删除账号
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn delete_account(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let database = &app_state.database;
     info!("🗑️ 删除账号请求: ID {} (操作者: {})", account_id, claims.username);
 
     // 解析用户ID
@@ -311,9 +315,9 @@ pub async fn delete_account(
 }
 
 /// 账号健康检查
-#[instrument(skip(_database))]
+#[instrument(skip(_app_state))]
 pub async fn health_check_account(
-    State(_database): State<Database>,
+    State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
@@ -335,9 +339,9 @@ pub async fn health_check_account(
 }
 
 /// OAuth相关接口 - 生成授权URL
-#[instrument(skip(_database))]
+#[instrument(skip(_app_state))]
 pub async fn generate_oauth_url(
-    State(_database): State<Database>,
+    State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<serde_json::Value>> {
     info!("🔗 生成OAuth授权URL请求 (操作者: {})", claims.username);
@@ -351,9 +355,9 @@ pub async fn generate_oauth_url(
 }
 
 /// OAuth相关接口 - 交换授权码
-#[instrument(skip(_database, _request))]
+#[instrument(skip(_app_state, _request))]
 pub async fn exchange_oauth_code(
-    State(_database): State<Database>,
+    State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(_request): Json<serde_json::Value>,
 ) -> AppResult<Json<serde_json::Value>> {

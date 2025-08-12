@@ -89,11 +89,12 @@ pub struct SettingItem {
 }
 
 /// 获取所有系统设置
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_settings(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<SystemSettingsResponse>> {
+    let database = &app_state.database;
     info!("⚙️ 获取系统设置请求: 用户ID {}", claims.sub);
 
     // 查询所有设置
@@ -148,13 +149,14 @@ pub async fn get_settings(
 }
 
 /// 更新系统设置
-#[instrument(skip(database, settings_service, request))]
+#[instrument(skip(app_state, request))]
 pub async fn update_settings(
-    State(database): State<Database>,
-    Extension(settings_service): Extension<SharedSettingsService>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<UpdateSettingsRequest>,
 ) -> AppResult<Json<SystemSettingsResponse>> {
+    let database = &app_state.database;
+    let settings_service = &app_state.settings_service;
     info!("⚙️ 更新系统设置请求: 用户ID {}", claims.sub);
 
     // 验证管理员权限（在实际部署中应该检查用户角色）
@@ -274,16 +276,17 @@ pub async fn update_settings(
     settings_service.on_settings_updated().await?;
 
     // 返回更新后的设置
-    get_settings(State(database), Extension(claims)).await
+    get_settings(State(app_state.clone()), Extension(claims)).await
 }
 
 /// 获取单个设置
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_setting(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(key): Path<String>,
 ) -> AppResult<Json<SettingItem>> {
+    let database = &app_state.database;
     info!("🔍 获取单个设置: {} (用户: {})", key, claims.username);
 
     let setting_row = sqlx::query!(

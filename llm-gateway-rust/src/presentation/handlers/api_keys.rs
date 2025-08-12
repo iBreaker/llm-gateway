@@ -14,6 +14,7 @@ use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult, types::PaginationParams};
 use crate::auth::Claims;
 use crate::shared::utils::{generate_api_key, sha256_hash};
+use crate::business::services::SharedSettingsService;
 
 /// 创建API Key请求
 #[derive(Debug, Deserialize)]
@@ -65,12 +66,14 @@ pub struct ApiKeyListResponse {
 }
 
 /// 创建API Key
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn create_api_key(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<CreateApiKeyRequest>,
 ) -> AppResult<Json<CreateApiKeyResponse>> {
+    let database = &app_state.database;
+    let settings = &app_state.settings_service;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -90,6 +93,7 @@ pub async fn create_api_key(
     }
 
     // 检查用户API Key数量限制
+    let max_api_keys = settings.get_max_api_keys().await;
     let current_count = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND is_active = true",
         user_id
@@ -99,8 +103,8 @@ pub async fn create_api_key(
     .map_err(|e| AppError::Database(e))?
     .unwrap_or(0);
 
-    if current_count >= 10 {
-        return Err(AppError::Business("每个用户最多只能创建10个API Key".to_string()));
+    if current_count >= max_api_keys as i64 {
+        return Err(AppError::Business(format!("API密钥数量已达上限 ({})", max_api_keys)));
     }
 
     // 生成API Key
@@ -148,12 +152,13 @@ pub async fn create_api_key(
 }
 
 /// 获取用户的API Key列表
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn list_api_keys(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Query(pagination): Query<PaginationParams>,
 ) -> AppResult<Json<ApiKeyListResponse>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -227,12 +232,13 @@ pub async fn list_api_keys(
 }
 
 /// 获取单个API Key详情
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_api_key(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(key_id): Path<i64>,
 ) -> AppResult<Json<ApiKeyResponse>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -276,13 +282,14 @@ pub async fn get_api_key(
 }
 
 /// 更新API Key
-#[instrument(skip(database, request))]
+#[instrument(skip(app_state, request))]
 pub async fn update_api_key(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(key_id): Path<i64>,
     Json(request): Json<UpdateApiKeyRequest>,
 ) -> AppResult<Json<ApiKeyResponse>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -353,16 +360,17 @@ pub async fn update_api_key(
     info!("✅ API Key更新成功: ID {}", key_id);
 
     // 返回更新后的API Key信息
-    get_api_key(State(database), Extension(claims), Path(key_id)).await
+    get_api_key(State(app_state.clone()), Extension(claims), Path(key_id)).await
 }
 
 /// 删除API Key
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn delete_api_key(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(key_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 
@@ -391,12 +399,13 @@ pub async fn delete_api_key(
 }
 
 /// 重新生成API Key
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn regenerate_api_key(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(key_id): Path<i64>,
 ) -> AppResult<Json<CreateApiKeyResponse>> {
+    let database = &app_state.database;
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Authentication(crate::auth::AuthError::InvalidToken))?;
 

@@ -100,12 +100,13 @@ pub struct ChartPoint {
 }
 
 /// 获取详细统计数据
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_detailed_stats(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Query(params): Query<StatsQuery>,
 ) -> AppResult<Json<DetailedStats>> {
+    let database = &app_state.database;
     let range = params.range.unwrap_or_else(|| "7d".to_string());
     info!("📊 获取详细统计数据请求: 用户ID {}, 时间范围: {}", claims.sub, range);
 
@@ -474,11 +475,12 @@ fn create_empty_stats(range: String) -> DetailedStats {
 }
 
 /// 获取基础统计数据
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn get_basic_stats(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
 ) -> AppResult<Json<StatsOverview>> {
+    let database = &app_state.database;
     info!("📈 获取基础统计数据请求: 用户ID {}", claims.sub);
 
     let user_id: i64 = claims.sub.parse().map_err(|_| crate::shared::AppError::Authentication(crate::infrastructure::AuthError::InvalidToken))?;

@@ -27,10 +27,11 @@ pub struct ApiKeyInfo {
 
 /// JWT认证中间件
 pub async fn auth_middleware(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, AppError> {
+    let database = &app_state.database;
     let headers = request.headers();
     
     // 从Authorization header中提取token
@@ -71,10 +72,11 @@ pub async fn auth_middleware(
 
 /// API Key认证中间件
 pub async fn api_key_middleware(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, AppError> {
+    let database = &app_state.database;
     let headers = request.headers();
     
     // 从多个可能的header中提取API key

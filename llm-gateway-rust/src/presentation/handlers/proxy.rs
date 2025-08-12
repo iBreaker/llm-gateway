@@ -106,13 +106,14 @@ pub struct ModelInfo {
 
 /// 代理消息请求（主要入口）
 #[axum::debug_handler]
-#[instrument(skip(database, headers, body))]
+#[instrument(skip(app_state, headers, body))]
 pub async fn proxy_messages(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(api_key_info): Extension<ApiKeyInfo>,
     headers: HeaderMap,
     body: String,
 ) -> AppResult<Response> {
+    let database = &app_state.database;
     // 生成请求ID用于追踪
     let request_id = format!("req_{}", chrono::Utc::now().timestamp_micros());
     info!("🚀 [{}] 智能代理请求: API Key ID {}", request_id, api_key_info.id);
@@ -260,11 +261,12 @@ pub async fn proxy_messages(
 }
 
 /// 获取可用模型列表
-#[instrument(skip(database))]
+#[instrument(skip(app_state))]
 pub async fn list_models(
-    State(database): State<Database>,
+    State(app_state): State<crate::presentation::routes::AppState>,
     Extension(api_key_info): Extension<ApiKeyInfo>,
 ) -> AppResult<Json<ModelListResponse>> {
+    let database = &app_state.database;
     info!("📋 获取模型列表: API Key ID {}", api_key_info.id);
 
     // 获取用户的上游账号
