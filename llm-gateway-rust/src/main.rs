@@ -7,6 +7,8 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use llm_gateway_rust::{Config, Database, create_routes};
+use llm_gateway_rust::business::services::{SettingsService, SharedSettingsService, RateLimitService, SharedRateLimitService};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,8 +42,17 @@ async fn main() -> anyhow::Result<()> {
         info!("⚠️ 数据库表未找到，请确保已运行 sqlx migrate run");
     }
 
+    // 初始化设置服务
+    let settings_service: SharedSettingsService = Arc::new(SettingsService::new(database.clone()));
+    settings_service.initialize().await?;
+    info!("✅ 设置服务初始化成功");
+
+    // 初始化速率限制服务
+    let rate_limit_service: SharedRateLimitService = Arc::new(RateLimitService::new(settings_service.clone()));
+    info!("✅ 速率限制服务初始化成功");
+
     // 创建路由
-    let app = create_routes(database).await?;
+    let app = create_routes(database, settings_service, rate_limit_service).await?;
     info!("✅ 路由创建成功");
 
     // 启动服务器

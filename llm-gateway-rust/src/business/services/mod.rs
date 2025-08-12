@@ -8,12 +8,16 @@
 // pub mod upstream_service;
 // pub mod proxy_service;
 // pub mod health_service;
+
+pub mod token_parser;
 // pub mod stats_service;
 
 // 负载均衡和智能路由服务（已实现）
 pub mod load_balancer;
 pub mod smart_router;
 pub mod intelligent_proxy;
+pub mod settings_service;
+pub mod rate_limit_service;
 use crate::shared::{error::AppResult, types::*};
 use crate::business::domain::*;
 
@@ -21,6 +25,8 @@ use crate::business::domain::*;
 pub use load_balancer::{IntelligentLoadBalancer, LoadBalancingStrategy, NodeMetrics, CircuitBreaker};
 pub use smart_router::{SmartRouter, RequestFeatures, RequestPriority, RequestType, UserPreferences, RoutingDecision};
 pub use intelligent_proxy::{IntelligentProxy, ProxyStats};
+pub use settings_service::{SettingsService, SharedSettingsService};
+pub use rate_limit_service::{RateLimitService, SharedRateLimitService, RateLimitResult};
 
 /// 认证服务接口
 pub trait AuthService: Send + Sync {
@@ -142,8 +148,45 @@ pub struct ProxyResponse {
     pub headers: std::collections::HashMap<String, String>,
     pub body: Vec<u8>,
     pub latency_ms: u32,
-    pub tokens_used: u32,
+    pub first_token_latency_ms: Option<u32>,
+    pub queue_time_ms: u32,
+    pub retry_count: u32,
+    pub token_usage: TokenUsage,
     pub cost_usd: f64,
+    pub model_name: Option<String>,
+    pub request_type: String,
+    pub upstream_provider: String,
+    pub routing_info: RoutingInfo,
+    pub cache_info: CacheInfo,
+    pub error_info: Option<ErrorInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub cache_creation_tokens: u32,
+    pub cache_read_tokens: u32,
+    pub total_tokens: u32,
+    pub tokens_per_second: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoutingInfo {
+    pub strategy: String,
+    pub confidence_score: f64,
+    pub reasoning: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheInfo {
+    pub hit_rate: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ErrorInfo {
+    pub error_type: String,
+    pub error_message: String,
 }
 
 #[derive(Debug, serde::Serialize)]

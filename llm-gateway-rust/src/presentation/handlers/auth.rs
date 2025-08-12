@@ -13,11 +13,13 @@ use tracing::{info, warn, instrument};
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::{jwt::JwtService, password, Claims};
+use crate::business::services::SharedSettingsService;
 
-/// 创建JWT服务实例
-fn create_jwt_service() -> JwtService {
+/// 创建JWT服务实例（使用设置中的过期时间）
+async fn create_jwt_service(settings: &SharedSettingsService) -> JwtService {
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
-    JwtService::new(&secret, "llm-gateway".to_string())
+    let expiry_hours = settings.get_token_expiry_hours().await;
+    JwtService::new_with_expiry(&secret, "llm-gateway".to_string(), expiry_hours as u64)
 }
 
 /// 登录请求
@@ -61,9 +63,10 @@ pub struct TokenResponse {
 }
 
 /// 用户登录
-#[instrument(skip(database, request))]
+#[instrument(skip(database, settings, request))]
 pub async fn login(
     State(database): State<Database>,
+    Extension(settings): Extension<SharedSettingsService>,
     Json(request): Json<LoginRequest>,
 ) -> AppResult<Json<LoginResponse>> {
     info!("🔐 用户登录请求: {}", request.email);
@@ -112,8 +115,8 @@ pub async fn login(
     .await
     .map_err(|e| AppError::Database(e))?;
 
-    // 生成JWT token
-    let jwt_service = create_jwt_service();
+    // 生成JWT token（使用动态过期时间）
+    let jwt_service = create_jwt_service(&settings).await;
     let access_token = jwt_service.generate_token(user_row.id, &user_row.username)
         .map_err(AppError::Authentication)?;
 
@@ -122,6 +125,10 @@ pub async fn login(
         .map_err(AppError::Authentication)?;
 
     info!("✅ 用户登录成功: {} (ID: {})", user_row.username, user_row.id);
+
+    // 获取动态过期时间
+    let expiry_hours = settings.get_token_expiry_hours().await;
+    let expires_in = (expiry_hours * 3600) as i64; // 转换为秒
 
     let response = LoginResponse {
         user: UserInfo {
@@ -132,7 +139,7 @@ pub async fn login(
         },
         access_token,
         refresh_token,
-        expires_in: 3600,
+        expires_in,
     };
 
     Ok(Json(response))
@@ -170,15 +177,16 @@ pub async fn get_current_user(
 }
 
 /// 刷新Token
-#[instrument(skip(database, request))]
+#[instrument(skip(database, settings, request))]
 pub async fn refresh_token(
     State(database): State<Database>,
+    Extension(settings): Extension<SharedSettingsService>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> AppResult<Json<TokenResponse>> {
     info!("🔄 Token刷新请求");
 
     // 验证refresh token
-    let jwt_service = create_jwt_service();
+    let jwt_service = create_jwt_service(&settings).await;
     let claims = jwt_service.verify_token(&request.refresh_token)
         .map_err(AppError::Authentication)?;
 
@@ -211,10 +219,14 @@ pub async fn refresh_token(
 
     info!("✅ Token刷新成功: 用户ID {}", user_id);
 
+    // 获取动态过期时间
+    let expiry_hours = settings.get_token_expiry_hours().await;
+    let expires_in = (expiry_hours * 3600) as i64;
+
     let response = TokenResponse {
         access_token,
         refresh_token,
-        expires_in: 3600,
+        expires_in,
     };
 
     Ok(Json(response))

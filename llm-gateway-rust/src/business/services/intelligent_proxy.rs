@@ -35,7 +35,7 @@ pub struct ProxyResponse {
     pub headers: std::collections::HashMap<String, String>,
     pub body: Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>>,
     pub latency_ms: u64,
-    pub tokens_used: u32,
+    pub token_usage: super::TokenUsage,
     pub cost_usd: f64,
     pub upstream_account_id: i64,
     pub routing_decision: RoutingDecision,
@@ -127,11 +127,11 @@ impl IntelligentProxy {
                 ).await;
 
                 // 更新统计信息
-                self.update_stats(true, latency, response.tokens_used, response.cost_usd, &routing_decision).await;
+                self.update_stats(true, latency, response.token_usage.total_tokens, response.cost_usd, &routing_decision).await;
 
                 info!(
                     "✅ 代理请求成功：延迟 {}ms, tokens: {}, 成本: ${:.4}",
-                    latency, response.tokens_used, response.cost_usd
+                    latency, response.token_usage.total_tokens, response.cost_usd
                 );
 
                 Ok(response)
@@ -335,14 +335,23 @@ impl IntelligentProxy {
 
         info!("🔍 [上游响应] ✅ 流式响应体准备就绪");
 
-        let (tokens_used, cost_usd) = self.estimate_usage(&Vec::new(), account).await; // 在流式传输中，无法预先计算
+        // TODO: 临时使用简单估算，稍后实现完整的Token解析
+        let estimated_tokens = 100; // 流式传输的估算值
+        let cost_usd = (estimated_tokens as f64 / 1000.0) * 0.003;
 
         Ok(ProxyResponse {
             status,
             headers,
             body: Box::pin(body_stream),
             latency_ms: 0, // 将由调用者设置
-            tokens_used, // 在流式传输中，这只是一个估算值
+            token_usage: super::TokenUsage {
+                input_tokens: estimated_tokens / 2,
+                output_tokens: estimated_tokens / 2,
+                cache_creation_tokens: 0,
+                cache_read_tokens: 0,
+                total_tokens: estimated_tokens,
+                tokens_per_second: None,
+            }, // 在流式传输中，这只是一个估算值
             cost_usd,    // 在流式传输中，这只是一个估算值
             upstream_account_id: account.id,
             routing_decision: RoutingDecision { // 将由调用者设置
@@ -423,21 +432,67 @@ impl IntelligentProxy {
     }
 
 
-    /// 估算token使用量和成本
-    async fn estimate_usage(&self, response_body: &[u8], account: &UpstreamAccount) -> (u32, f64) {
-        // 简化的token估算逻辑
-        let content_length = response_body.len();
-        let estimated_tokens = (content_length / 4).max(1) as u32; // 粗略估算：4字符=1token
-
-        // 成本计算（基于提供商定价）
-        let cost_per_1k_tokens = match account.provider {
+    /// 解析实际Token使用量和成本
+    async fn parse_usage_and_cost(
+        &self, 
+        response_body: &[u8], 
+        account: &UpstreamAccount,
+        model_name: Option<&str>,
+        latency_ms: u32
+    ) -> (super::TokenUsage, f64) {
+        use super::token_parser::TokenParser;
+        
+        // 确定提供商名称
+        let provider_name = match account.provider {
             crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => 0.003, // $0.003 per 1K tokens
+            crate::business::domain::AccountProvider::AnthropicOauth => "anthropic",
         };
 
-        let cost_usd = (estimated_tokens as f64 / 1000.0) * cost_per_1k_tokens;
+        // 解析Token使用情况
+        let mut token_usage = TokenParser::parse_token_usage(response_body, provider_name, model_name);
+        
+        // 计算tokens_per_second
+        token_usage.tokens_per_second = TokenParser::calculate_tokens_per_second(
+            token_usage.total_tokens, 
+            latency_ms
+        );
 
-        (estimated_tokens, cost_usd)
+        // 计算详细成本（考虑不同类型Token的不同定价）
+        let cost_usd = self.calculate_detailed_cost(&token_usage, account, model_name);
+
+        (token_usage, cost_usd)
+    }
+
+    /// 计算详细成本（考虑缓存Token的不同定价）
+    fn calculate_detailed_cost(
+        &self,
+        token_usage: &super::TokenUsage,
+        account: &UpstreamAccount,
+        model_name: Option<&str>
+    ) -> f64 {
+        // 基础定价（每1K tokens）
+        let (input_price, output_price) = match account.provider {
+            crate::business::domain::AccountProvider::AnthropicApi |
+            crate::business::domain::AccountProvider::AnthropicOauth => {
+                // Claude 3.5 Sonnet定价示例
+                match model_name {
+                    Some(model) if model.contains("haiku") => (0.00025, 0.00125),    // Haiku
+                    Some(model) if model.contains("sonnet") => (0.003, 0.015),      // Sonnet
+                    Some(model) if model.contains("opus") => (0.015, 0.075),        // Opus
+                    _ => (0.003, 0.015), // 默认Sonnet定价
+                }
+            }
+        };
+
+        // 计算各部分成本
+        let input_cost = (token_usage.input_tokens as f64 / 1000.0) * input_price;
+        let output_cost = (token_usage.output_tokens as f64 / 1000.0) * output_price;
+        
+        // 缓存Token定价：创建缓存125%，读取缓存10%
+        let cache_creation_cost = (token_usage.cache_creation_tokens as f64 / 1000.0) * input_price * 1.25;
+        let cache_read_cost = (token_usage.cache_read_tokens as f64 / 1000.0) * input_price * 0.1;
+
+        input_cost + output_cost + cache_creation_cost + cache_read_cost
     }
 
     /// 更新统计信息
@@ -445,7 +500,7 @@ impl IntelligentProxy {
         &self,
         success: bool,
         latency_ms: u64,
-        tokens_used: u32,
+        total_tokens: u32,
         cost_usd: f64,
         routing_decision: &RoutingDecision,
     ) {
@@ -462,7 +517,7 @@ impl IntelligentProxy {
         let alpha = 0.1;
         stats.average_latency_ms = alpha * latency_ms as f64 + (1.0 - alpha) * stats.average_latency_ms;
 
-        stats.total_tokens += tokens_used as u64;
+        stats.total_tokens += total_tokens as u64;
         stats.total_cost_usd += cost_usd;
 
         // 按提供商统计

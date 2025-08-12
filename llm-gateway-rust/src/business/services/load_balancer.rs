@@ -32,6 +32,20 @@ pub enum LoadBalancingStrategy {
     Geographic,
 }
 
+impl LoadBalancingStrategy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LoadBalancingStrategy::RoundRobin => "round_robin",
+            LoadBalancingStrategy::WeightedRoundRobin => "weighted_round_robin",
+            LoadBalancingStrategy::LeastConnections => "least_connections",
+            LoadBalancingStrategy::FastestResponse => "fastest_response",
+            LoadBalancingStrategy::HealthBased => "health_based",
+            LoadBalancingStrategy::Adaptive => "adaptive",
+            LoadBalancingStrategy::Geographic => "geographic",
+        }
+    }
+}
+
 /// 节点性能指标
 #[derive(Debug, Clone)]
 pub struct NodeMetrics {

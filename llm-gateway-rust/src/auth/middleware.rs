@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use crate::infrastructure::Database;
 use crate::shared::AppError;
 use super::AuthError;
+use crate::business::services::{SharedRateLimitService, RateLimitResult};
 
 /// API Key信息
 #[derive(Debug, Clone)]
@@ -82,6 +83,29 @@ pub async fn api_key_middleware(
 
     // 验证API Key
     let api_key_info = validate_api_key(&database, &api_key).await?;
+
+    // 检查速率限制（如果有速率限制服务）
+    if let Some(rate_limit_service) = request.extensions().get::<SharedRateLimitService>() {
+        match rate_limit_service.check_rate_limit(api_key_info.id).await {
+            RateLimitResult::Allowed => {
+                // 允许继续
+            },
+            RateLimitResult::MinuteLimitExceeded { limit, reset_in_seconds } => {
+                return Err(AppError::RateLimitExceeded {
+                    limit,
+                    reset_in_seconds,
+                    limit_type: "minute".to_string(),
+                });
+            },
+            RateLimitResult::DailyLimitExceeded { limit, reset_in_seconds } => {
+                return Err(AppError::RateLimitExceeded {
+                    limit,
+                    reset_in_seconds,
+                    limit_type: "daily".to_string(),
+                });
+            },
+        }
+    }
 
     // 检查权限（这里可以根据需要扩展）
     // TODO: 根据请求路径检查具体权限

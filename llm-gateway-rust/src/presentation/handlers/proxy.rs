@@ -10,6 +10,7 @@ use axum::{
     response::Response,
     Json, Extension,
 };
+use num_traits::cast::FromPrimitive;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,8 +20,8 @@ use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::middleware::ApiKeyInfo;
 use crate::business::services::{
-    IntelligentProxy, RequestFeatures, RequestPriority, RequestType,
-    intelligent_proxy::{ProxyRequest as ServiceProxyRequest, ProxyResponse as ServiceProxyResponse}
+    IntelligentProxy, RequestFeatures, RequestPriority, RequestType, ProxyResponse,
+    intelligent_proxy::{ProxyRequest as ServiceProxyRequest}
 };
 use crate::business::domain::User;
 
@@ -186,7 +187,9 @@ pub async fn proxy_messages(
     match proxy_service.proxy_request(service_request, &available_accounts).await {
         Ok(service_response) => {
             // 记录使用统计（简化版本）
-            record_usage_stats_simple(&database, &api_key_info, &service_response).await?;
+            // TODO: 需要转换ServiceProxyResponse到新的ProxyResponse格式
+            // 记录使用统计（从流式响应中提取信息）
+            record_usage_stats_from_streaming_response(&database, &api_key_info, &service_response).await?;
             
             info!("✅ 代理请求成功: 延迟 {}ms", service_response.latency_ms);
             
@@ -249,7 +252,7 @@ pub async fn proxy_messages(
             error!("❌ 代理请求失败: {}", e);
             
             // 记录失败统计
-            record_failure_stats(&database, &api_key_info).await?;
+            record_failure_stats(&database, &api_key_info, Some("proxy_error"), Some(&e.to_string())).await?;
             
             Err(e)
         }
@@ -475,22 +478,44 @@ fn headers_to_hashmap(headers: &HeaderMap) -> HashMap<String, String> {
 async fn record_failure_stats(
     database: &Database,
     api_key_info: &ApiKeyInfo,
+    error_type: Option<&str>,
+    error_message: Option<&str>,
 ) -> AppResult<()> {
     sqlx::query!(
         r#"
         INSERT INTO usage_records (
-            api_key_id, request_method, request_path,
-            response_status, tokens_used, cost_usd, latency_ms, created_at
+            api_key_id, request_method, request_path, response_status,
+            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens,
+            cost_usd, latency_ms, first_token_latency_ms, queue_time_ms, retry_count,
+            model_name, request_type, upstream_provider, routing_strategy, confidence_score,
+            reasoning, cache_hit_rate, tokens_per_second, error_type, error_message, created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW())
         "#,
         api_key_info.id,
         "POST",
         "/v1/messages",
         500i32,
-        0i32,
-        0.0,
-        0i32
+        0i32, // input_tokens
+        0i32, // output_tokens  
+        0i32, // cache_creation_tokens
+        0i32, // cache_read_tokens
+        0i32, // total_tokens
+        0.0,  // cost_usd
+        0i32, // latency_ms
+        None::<i32>, // first_token_latency_ms
+        0i32, // queue_time_ms
+        0i32, // retry_count
+        None::<String>, // model_name
+        "chat", // request_type
+        "unknown", // upstream_provider
+        "failed", // routing_strategy
+        None::<sqlx::types::BigDecimal>, // confidence_score
+        None::<String>, // reasoning
+        None::<sqlx::types::BigDecimal>, // cache_hit_rate
+        None::<sqlx::types::BigDecimal>, // tokens_per_second
+        error_type, // error_type
+        error_message // error_message
     )
     .execute(database.pool())
     .await
@@ -500,28 +525,121 @@ async fn record_failure_stats(
 }
 
 
-/// 记录使用统计（简化版本）
-async fn record_usage_stats_simple(
+/// 记录使用统计（从流式响应）
+async fn record_usage_stats_from_streaming_response(
     database: &Database,
     api_key_info: &ApiKeyInfo,
-    response: &ServiceProxyResponse,
+    response: &crate::business::services::intelligent_proxy::ProxyResponse,
 ) -> AppResult<()> {
+    // 计算 tokens_per_second
+    let tokens_per_second = if response.latency_ms > 0 {
+        Some((response.token_usage.total_tokens as f64) / (response.latency_ms as f64 / 1000.0))
+    } else {
+        None
+    };
+
     sqlx::query!(
         r#"
         INSERT INTO usage_records (
-            api_key_id, upstream_account_id, request_method, request_path,
-            response_status, tokens_used, cost_usd, latency_ms, created_at
+            api_key_id, upstream_account_id, request_method, request_path, response_status,
+            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens,
+            cost_usd, latency_ms, first_token_latency_ms, queue_time_ms, retry_count,
+            model_name, request_type, upstream_provider, routing_strategy, confidence_score,
+            reasoning, cache_hit_rate, tokens_per_second, error_type, error_message, created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
         "#,
         api_key_info.id,
-        response.upstream_account_id,
+        Some(response.upstream_account_id),
         "POST",
         "/v1/messages",
         response.status as i32,
-        response.tokens_used as i32,
+        response.token_usage.input_tokens as i32,
+        response.token_usage.output_tokens as i32,
+        response.token_usage.cache_creation_tokens as i32,
+        response.token_usage.cache_read_tokens as i32,
+        response.token_usage.total_tokens as i32,
         response.cost_usd,
-        response.latency_ms as i32
+        response.latency_ms as i32,
+        None::<i32>, // first_token_latency_ms - 流式响应中暂不可用
+        0i32, // queue_time_ms - 暂不可用
+        0i32, // retry_count - 暂不可用
+        None::<String>, // model_name - 需要从请求中解析
+        "chat", // request_type
+        response.routing_decision.selected_account.provider.as_str(),
+        response.routing_decision.strategy_used.as_str(),
+        Some(sqlx::types::BigDecimal::from_f64(response.routing_decision.confidence_score).unwrap_or_default()),
+        Some(&response.routing_decision.reasoning),
+        None::<sqlx::types::BigDecimal>, // cache_hit_rate - 暂不可用
+        tokens_per_second.map(|tps| sqlx::types::BigDecimal::from_f64(tps).unwrap_or_default()),
+        None::<String>, // error_type - 成功请求
+        None::<String> // error_message - 成功请求
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    // 更新API Key最后使用时间
+    sqlx::query!(
+        "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
+        api_key_info.id
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    Ok(())
+}
+
+/// 记录使用统计（详细版本）
+async fn record_usage_stats_detailed(
+    database: &Database,
+    api_key_info: &ApiKeyInfo,
+    response: &ProxyResponse,
+) -> AppResult<()> {
+    // 计算 tokens_per_second
+    let tokens_per_second = if response.latency_ms > 0 {
+        Some((response.token_usage.total_tokens as f64) / (response.latency_ms as f64 / 1000.0))
+    } else {
+        None
+    };
+
+    sqlx::query!(
+        r#"
+        INSERT INTO usage_records (
+            api_key_id, upstream_account_id, request_method, request_path, response_status,
+            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens,
+            cost_usd, latency_ms, first_token_latency_ms, queue_time_ms, retry_count,
+            model_name, request_type, upstream_provider, routing_strategy, confidence_score,
+            reasoning, cache_hit_rate, tokens_per_second, error_type, error_message, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
+        "#,
+        api_key_info.id,
+        None::<i64>, // TODO: 从响应中获取upstream_account_id
+        "POST",
+        "/v1/messages",
+        response.status as i32,
+        response.token_usage.input_tokens as i32,
+        response.token_usage.output_tokens as i32,
+        response.token_usage.cache_creation_tokens as i32,
+        response.token_usage.cache_read_tokens as i32,
+        response.token_usage.total_tokens as i32,
+        response.cost_usd,
+        response.latency_ms as i32,
+        response.first_token_latency_ms.map(|x| x as i32),
+        response.queue_time_ms as i32,
+        response.retry_count as i32,
+        response.model_name.as_deref(),
+        &response.request_type,
+        &response.upstream_provider,
+        &response.routing_info.strategy,
+        Some(sqlx::types::BigDecimal::from_f64(response.routing_info.confidence_score).unwrap_or_default()),
+        Some(&response.routing_info.reasoning),
+        response.cache_info.hit_rate.map(|r| sqlx::types::BigDecimal::from_f64(r).unwrap_or_default()),
+        tokens_per_second.map(|tps| sqlx::types::BigDecimal::from_f64(tps).unwrap_or_default()),
+        response.error_info.as_ref().map(|e| e.error_type.as_str()),
+        response.error_info.as_ref().map(|e| e.error_message.as_str())
     )
     .execute(database.pool())
     .await

@@ -9,3 +9,4 @@ pub mod proxy;
 pub mod users;
 pub mod accounts;
 pub mod stats;
+pub mod settings;

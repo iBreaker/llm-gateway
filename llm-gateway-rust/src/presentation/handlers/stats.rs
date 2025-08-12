@@ -144,7 +144,14 @@ pub async fn get_detailed_stats(
             COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as successful_requests,
             COALESCE(AVG(latency_ms), 0) as avg_response_time,
             COALESCE(SUM(cost_usd), 0) as total_cost,
-            COALESCE(SUM(tokens_used), 0) as total_tokens
+            COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+            COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+            COALESCE(SUM(cache_creation_tokens), 0) as total_cache_creation_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as total_cache_read_tokens,
+            COALESCE(SUM(total_tokens), 0) as total_tokens,
+            COALESCE(AVG(first_token_latency_ms), 0) as avg_first_token_latency,
+            COALESCE(AVG(tokens_per_second), 0) as avg_tokens_per_second,
+            COALESCE(AVG(cache_hit_rate), 0) as avg_cache_hit_rate
         FROM usage_records 
         WHERE api_key_id = ANY($1::bigint[])
         AND created_at >= NOW() - INTERVAL '1 day' * $2
@@ -230,7 +237,13 @@ pub async fn get_detailed_stats(
         SELECT 
             DATE(created_at) as date,
             COUNT(*) as requests,
-            COALESCE(SUM(tokens_used), 0) as tokens
+            COALESCE(SUM(input_tokens), 0) as input_tokens,
+            COALESCE(SUM(output_tokens), 0) as output_tokens,
+            COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(total_tokens), 0) as tokens,
+            COALESCE(AVG(cache_hit_rate), 0) as avg_cache_hit_rate,
+            COALESCE(AVG(tokens_per_second), 0) as avg_tokens_per_second
         FROM usage_records
         WHERE api_key_id = ANY($1::bigint[])
         AND created_at >= NOW() - INTERVAL '1 day' * $2

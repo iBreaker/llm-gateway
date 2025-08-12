@@ -48,6 +48,14 @@ pub enum AppError {
     /// 资源未找到错误
     #[error("资源未找到: {0}")]
     NotFound(String),
+    
+    /// 速率限制错误
+    #[error("速率限制: {limit_type}限制每{limit}次请求，请{reset_in_seconds}秒后重试")]
+    RateLimitExceeded {
+        limit: i32,
+        reset_in_seconds: i64,
+        limit_type: String,
+    },
 }
 
 impl AppError {
@@ -63,6 +71,7 @@ impl AppError {
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::RateLimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,
         }
     }
     
@@ -78,6 +87,7 @@ impl AppError {
             AppError::Internal(_) => "INTERNAL_ERROR",
             AppError::Forbidden(_) => "FORBIDDEN",
             AppError::NotFound(_) => "NOT_FOUND",
+            AppError::RateLimitExceeded { .. } => "RATE_LIMIT_EXCEEDED",
         }
     }
 }

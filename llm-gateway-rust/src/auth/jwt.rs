@@ -21,22 +21,34 @@ pub struct JwtService {
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
     issuer: String,
+    expiry_hours: u64,
 }
 
 impl JwtService {
-    /// 创建新的JWT服务
+    /// 创建新的JWT服务（默认24小时过期）
     pub fn new(secret: &str, issuer: String) -> Self {
         Self {
             encoding_key: EncodingKey::from_secret(secret.as_bytes()),
             decoding_key: DecodingKey::from_secret(secret.as_bytes()),
             issuer,
+            expiry_hours: 24,
+        }
+    }
+
+    /// 创建JWT服务并指定过期时间
+    pub fn new_with_expiry(secret: &str, issuer: String, expiry_hours: u64) -> Self {
+        Self {
+            encoding_key: EncodingKey::from_secret(secret.as_bytes()),
+            decoding_key: DecodingKey::from_secret(secret.as_bytes()),
+            issuer,
+            expiry_hours,
         }
     }
 
     /// 生成JWT Token
     pub fn generate_token(&self, user_id: i64, username: &str) -> Result<String, AuthError> {
         let now = Utc::now();
-        let exp = now + Duration::hours(24); // 24小时过期
+        let exp = now + Duration::hours(self.expiry_hours as i64);
 
         let claims = Claims {
             sub: user_id.to_string(),

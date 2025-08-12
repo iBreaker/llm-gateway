@@ -30,10 +30,19 @@ export interface DashboardData {
     requestsByProvider: Record<string, number>
     requestsByModel: Record<string, number>
     tokensConsumed: number
+    inputTokens: number
+    outputTokens: number
+    cacheCreationTokens: number
+    cacheReadTokens: number
+    avgTokensPerSecond: number
+    cacheHitRate: number
     dailyUsage: {
       date: string
       requests: number
       tokens: number
+      inputTokens: number
+      outputTokens: number
+      cacheReadTokens: number
     }[]
   }
   performance: {
@@ -351,21 +360,111 @@ export default function StatisticsDashboard({ userId }: StatisticsDashboardProps
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">Token使用分析</h2>
+            <p className="text-sm text-gray-600 mt-1">详细的Token消耗和缓存统计</p>
           </div>
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <TokenStatCard
                 title="总Token消耗"
                 value={data?.usage?.tokensConsumed || 0}
                 total={data?.usage?.tokensConsumed || 0}
                 color="blue"
+                subtitle="全部Token使用量"
               />
               <TokenStatCard
-                title="平均每请求Token"
-                value={Math.round((data?.usage?.tokensConsumed || 0) / Math.max(data?.overview?.totalRequests || 1, 1))}
+                title="输入Token"
+                value={data?.usage?.inputTokens || 0}
                 total={data?.usage?.tokensConsumed || 0}
                 color="green"
+                subtitle="提示词Token"
               />
+              <TokenStatCard
+                title="输出Token"
+                value={data?.usage?.outputTokens || 0}
+                total={data?.usage?.tokensConsumed || 0}
+                color="orange"
+                subtitle="生成内容Token"
+              />
+              <TokenStatCard
+                title="缓存Token"
+                value={(data?.usage?.cacheReadTokens || 0) + (data?.usage?.cacheCreationTokens || 0)}
+                total={data?.usage?.tokensConsumed || 0}
+                color="purple"
+                subtitle="缓存相关Token"
+              />
+            </div>
+            
+            {/* 缓存效率分析 */}
+            {((data?.usage?.cacheReadTokens || 0) > 0 || (data?.usage?.cacheCreationTokens || 0) > 0) && (
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">缓存效率分析</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-green-800">缓存读取Token</span>
+                      <span className="text-xs text-green-600">节省90%费用</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {formatNumber(data?.usage?.cacheReadTokens || 0)}
+                    </p>
+                    <p className="text-xs text-green-500 mt-1">
+                      节省约 ${((data?.usage?.cacheReadTokens || 0) * 0.003 * 0.9 / 1000).toFixed(4)}
+                    </p>
+                  </div>
+                  
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-yellow-800">缓存创建Token</span>
+                      <span className="text-xs text-yellow-600">增加25%费用</span>
+                    </div>
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {formatNumber(data?.usage?.cacheCreationTokens || 0)}
+                    </p>
+                    <p className="text-xs text-yellow-500 mt-1">
+                      额外费用 ${((data?.usage?.cacheCreationTokens || 0) * 0.003 * 0.25 / 1000).toFixed(4)}
+                    </p>
+                  </div>
+                  
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-blue-800">缓存命中率</span>
+                      <span className="text-xs text-blue-600">效率指标</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {data?.usage?.cacheHitRate ? (data.usage.cacheHitRate * 100).toFixed(1) : '0.0'}%
+                    </p>
+                    <p className="text-xs text-blue-500 mt-1">
+                      {(data?.usage?.cacheHitRate || 0) > 0.7 ? '优秀' : (data?.usage?.cacheHitRate || 0) > 0.4 ? '良好' : '待优化'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 性能指标 */}
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">性能指标</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-800">平均Token生成速度</span>
+                    <span className="text-xs text-gray-600">tokens/秒</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-600">
+                    {data?.usage?.avgTokensPerSecond ? data.usage.avgTokensPerSecond.toFixed(1) : '0.0'}
+                  </p>
+                </div>
+                
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-800">平均每请求Token</span>
+                    <span className="text-xs text-gray-600">效率指标</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-600">
+                    {Math.round((data?.usage?.tokensConsumed || 0) / Math.max(data?.overview?.totalRequests || 1, 1))}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -458,9 +557,10 @@ interface TokenStatCardProps {
   value: number
   total: number
   color: 'blue' | 'green' | 'orange' | 'purple'
+  subtitle?: string
 }
 
-function TokenStatCard({ title, value, total, color }: TokenStatCardProps) {
+function TokenStatCard({ title, value, total, color, subtitle }: TokenStatCardProps) {
   const percentage = total > 0 ? (value / total * 100).toFixed(1) : '0.0'
   
   const colorClasses = {
@@ -477,7 +577,9 @@ function TokenStatCard({ title, value, total, color }: TokenStatCardProps) {
         <span className="text-sm font-semibold">{percentage}%</span>
       </div>
       <div className="text-2xl font-bold">{formatNumber(value)}</div>
-      <div className="text-xs text-gray-500 mt-1">占总量 {percentage}%</div>
+      <div className="text-xs text-gray-500 mt-1">
+        {subtitle || `占总量 ${percentage}%`}
+      </div>
     </div>
   )
 }

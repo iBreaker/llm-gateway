@@ -12,13 +12,15 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer, services::ServeDir};
 use crate::infrastructure::Database;
 use crate::presentation::handlers;
 use crate::auth::middleware::{auth_middleware, api_key_middleware};
+use crate::business::services::{SharedSettingsService, SharedRateLimitService};
 
 /// 创建应用路由
-pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
+pub async fn create_routes(database: Database, settings_service: SharedSettingsService, rate_limit_service: SharedRateLimitService) -> anyhow::Result<Router> {
     // 认证相关路由（公开）
     let auth_routes = Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
-        .route("/api/auth/refresh", post(handlers::auth::refresh_token));
+        .route("/api/auth/refresh", post(handlers::auth::refresh_token))
+        .layer(axum::Extension(settings_service.clone()));
 
     // 需要JWT认证的路由
     let protected_routes = Router::new()
@@ -66,6 +68,12 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
         .route("/api/stats/detailed", get(handlers::stats::get_detailed_stats))
         .route("/api/stats/basic", get(handlers::stats::get_basic_stats))
         
+        // 系统设置管理
+        .route("/api/settings", get(handlers::settings::get_settings))
+        .route("/api/settings", put(handlers::settings::update_settings))
+        .route("/api/settings/:key", get(handlers::settings::get_setting))
+        
+        .layer(axum::Extension(settings_service.clone()))
         .route_layer(middleware::from_fn_with_state(
             database.clone(),
             auth_middleware,
@@ -75,6 +83,8 @@ pub async fn create_routes(database: Database) -> anyhow::Result<Router> {
     let api_key_routes = Router::new()
         .route("/messages", post(handlers::proxy::proxy_messages))
         .route("/models", get(handlers::proxy::list_models))
+        .layer(axum::Extension(settings_service.clone()))
+        .layer(axum::Extension(rate_limit_service.clone()))
         .route_layer(middleware::from_fn_with_state(
             database.clone(),
             api_key_middleware,
