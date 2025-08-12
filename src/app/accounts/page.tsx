@@ -474,10 +474,7 @@ export default function AccountsPage() {
                   状态
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  优先级/权重
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  健康状态
+                  启用状态
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   使用统计
@@ -490,7 +487,7 @@ export default function AccountsPage() {
             <tbody className="divide-y divide-zinc-200">
               {filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                     <Server className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
                     <p>暂无上游账号</p>
                     <p className="text-xs mt-1">点击上方按钮添加第一个账号</p>
@@ -519,7 +516,6 @@ export default function AccountsPage() {
                           <div className={`text-sm font-medium ${account.status === 'INACTIVE' ? 'text-zinc-500' : 'text-zinc-900'}`}>
                             {account.name}
                           </div>
-                          <div className="text-xs text-zinc-500">{account.provider} • {account.accountType}</div>
                           <div className="text-xs text-zinc-400 mt-1">
                             创建于 {new Date(account.createdAt).toLocaleDateString()}
                           </div>
@@ -533,19 +529,14 @@ export default function AccountsPage() {
                       <StatusBadge status={account.status} />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-900">
-                        <div>活跃状态</div>
-                        <div className="text-xs text-zinc-500">{account.isActive ? '启用' : '禁用'}</div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-900">
-                        <div>健康检查</div>
-                        <div className="text-xs text-zinc-500">
-                          {account.lastHealthCheck 
-                            ? `最后检查: ${new Date(account.lastHealthCheck).toLocaleDateString()}`
-                            : '未检查'}
-                        </div>
+                      <div className="text-sm">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-sm ${
+                          account.isActive 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-zinc-100 text-zinc-700'
+                        }`}>
+                          {account.isActive ? '启用' : '禁用'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -553,12 +544,6 @@ export default function AccountsPage() {
                         <div>{account.requestCount.toLocaleString()} 请求</div>
                         <div className="text-xs text-zinc-500">
                           成功率: {account.successRate.toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-zinc-400">
-                          {account.lastHealthCheck 
-                            ? `最后检查: ${new Date(account.lastHealthCheck).toLocaleDateString()}`
-                            : '从未检查'
-                          }
                         </div>
                       </div>
                     </td>
@@ -648,13 +633,19 @@ interface StatusBadgeProps {
 
 function StatusBadge({ status }: StatusBadgeProps) {
   const statusConfig = {
+    // 新的实时状态映射
+    healthy: { color: 'bg-green-100 text-green-700', text: '正常' },
+    degraded: { color: 'bg-yellow-100 text-yellow-700', text: '降级' },
+    unhealthy: { color: 'bg-red-100 text-red-700', text: '异常' },
+    unknown: { color: 'bg-zinc-100 text-zinc-700', text: '未知' },
+    // 保持向后兼容性
     ACTIVE: { color: 'bg-green-100 text-green-700', text: '活跃' },
     INACTIVE: { color: 'bg-zinc-100 text-zinc-700', text: '停用' },
     ERROR: { color: 'bg-red-100 text-red-700', text: '错误' },
     PENDING: { color: 'bg-yellow-100 text-yellow-700', text: '待验证' }
   }
 
-  const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING
+  const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.unknown
 
   return (
     <span className={`px-2 py-1 text-xs font-medium rounded-sm ${config.color}`}>

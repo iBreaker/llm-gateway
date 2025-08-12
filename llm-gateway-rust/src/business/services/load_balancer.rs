@@ -494,12 +494,11 @@ impl IntelligentLoadBalancer {
         // 基础权重（假设数据库中存储，这里简化为固定值）
         let base_weight = 100;
         
-        // 根据健康状态调整权重
-        let health_multiplier = match account.health_status {
-            HealthStatus::Healthy => 1.0,
-            HealthStatus::Degraded => 0.5,
-            HealthStatus::Unhealthy => 0.1,
-            HealthStatus::Unknown => 0.3,
+        // 简化权重计算，主要基于账号是否激活
+        let health_multiplier = if account.is_active && account.credentials.is_valid() {
+            1.0
+        } else {
+            0.1
         };
 
         (base_weight as f64 * health_multiplier) as i32

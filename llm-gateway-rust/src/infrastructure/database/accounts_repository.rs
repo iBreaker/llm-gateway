@@ -7,7 +7,7 @@ use tracing::{debug, error, info, instrument};
 use chrono::Utc;
 use serde_json;
 
-use crate::business::domain::{UpstreamAccount, AccountProvider, AccountCredentials, HealthStatus};
+use crate::business::domain::{UpstreamAccount, AccountProvider, AccountCredentials};
 use crate::shared::{AppError, AppResult};
 use crate::shared::types::{UserId, UpstreamAccountId};
 use crate::infrastructure::cache::{SimpleCache, AccountStats};
@@ -48,10 +48,6 @@ impl AccountsRepository {
                 name,
                 credentials,
                 is_active,
-                last_health_check,
-                response_time_ms,
-                error_count,
-                error_message,
                 created_at,
                 updated_at
             FROM upstream_accounts 
@@ -84,16 +80,6 @@ impl AccountsRepository {
                         base_url: None,
                     });
 
-                let health_status = if row.error_count.unwrap_or(0) > 5 {
-                    HealthStatus::Unhealthy
-                } else if row.error_count.unwrap_or(0) > 2 {
-                    HealthStatus::Degraded
-                } else if row.last_health_check.is_some() {
-                    HealthStatus::Healthy
-                } else {
-                    HealthStatus::Unknown
-                };
-
                 UpstreamAccount {
                     id: row.id,
                     user_id: row.user_id,
@@ -101,9 +87,7 @@ impl AccountsRepository {
                     account_name: row.name,
                     credentials,
                     is_active: row.is_active,
-                    health_status,
                     created_at: row.created_at,
-                    last_health_check: row.last_health_check,
                 }
             })
             .collect();
@@ -129,10 +113,6 @@ impl AccountsRepository {
                 name,
                 credentials,
                 is_active,
-                last_health_check,
-                response_time_ms,
-                error_count,
-                error_message,
                 created_at,
                 updated_at
             FROM upstream_accounts 
@@ -161,16 +141,6 @@ impl AccountsRepository {
                     base_url: None,
                 });
 
-            let health_status = if row.error_count.unwrap_or(0) > 5 {
-                HealthStatus::Unhealthy
-            } else if row.error_count.unwrap_or(0) > 2 {
-                HealthStatus::Degraded
-            } else if row.last_health_check.is_some() {
-                HealthStatus::Healthy
-            } else {
-                HealthStatus::Unknown
-            };
-
             Some(UpstreamAccount {
                 id: row.id,
                 user_id: row.user_id,
@@ -178,9 +148,7 @@ impl AccountsRepository {
                 account_name: row.name,
                 credentials,
                 is_active: row.is_active,
-                health_status,
                 created_at: row.created_at,
-                last_health_check: row.last_health_check,
             })
         } else {
             None
@@ -213,10 +181,9 @@ impl AccountsRepository {
                 provider, 
                 name, 
                 credentials, 
-                is_active,
-                error_count
+                is_active
             ) 
-            VALUES ($1, $2, $3, $4, true, 0)
+            VALUES ($1, $2, $3, $4, true)
             RETURNING 
                 id,
                 user_id,
@@ -224,10 +191,6 @@ impl AccountsRepository {
                 name,
                 credentials,
                 is_active,
-                last_health_check,
-                response_time_ms,
-                error_count,
-                error_message,
                 created_at,
                 updated_at
             "#,
@@ -262,9 +225,7 @@ impl AccountsRepository {
             account_name: row.name,
             credentials,
             is_active: row.is_active,
-            health_status: HealthStatus::Unknown,
             created_at: row.created_at,
-            last_health_check: row.last_health_check,
         };
 
         info!("上游账号创建成功: ID {}", account.id);
@@ -374,75 +335,6 @@ impl AccountsRepository {
         Ok(deleted)
     }
 
-    /// 更新健康检查状态
-    #[instrument(skip(self))]
-    pub async fn update_health_status(
-        &self,
-        account_id: UpstreamAccountId,
-        response_time_ms: Option<i32>,
-        error_message: Option<&str>,
-    ) -> AppResult<()> {
-        info!("更新账号 {} 健康状态", account_id);
-
-        let now = Utc::now();
-        
-        if let Some(error_msg) = error_message {
-            // 错误情况：增加错误计数
-            sqlx::query!(
-                r#"
-                UPDATE upstream_accounts 
-                SET 
-                    last_health_check = $1,
-                    error_count = error_count + 1,
-                    error_message = $2,
-                    response_time_ms = $3
-                WHERE id = $4
-                "#,
-                now,
-                error_msg,
-                response_time_ms.unwrap_or(0),
-                account_id
-            )
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                error!("更新健康状态失败: {}", e);
-                AppError::Database(e)
-            })?;
-        } else {
-            // 成功情况：重置错误计数
-            sqlx::query!(
-                r#"
-                UPDATE upstream_accounts 
-                SET 
-                    last_health_check = $1,
-                    error_count = 0,
-                    error_message = NULL,
-                    response_time_ms = $2
-                WHERE id = $3
-                "#,
-                now,
-                response_time_ms.unwrap_or(0),
-                account_id
-            )
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                error!("更新健康状态失败: {}", e);
-                AppError::Database(e)
-            })?;
-        }
-
-        // 更新完成后，失效缓存中的账号统计
-        if let Some(ref cache) = self.simple_cache {
-            if cache.remove_account_stats(account_id).await {
-                debug!("清除账号 {} 的缓存统计，因为健康状态已更新", account_id);
-            }
-        }
-
-        info!("账号 {} 健康状态更新完成", account_id);
-        Ok(())
-    }
 
     /// 获取账号的使用统计（带缓存）
     #[instrument(skip(self))]

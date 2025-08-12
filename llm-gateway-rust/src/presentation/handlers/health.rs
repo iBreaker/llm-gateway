@@ -1,6 +1,7 @@
 //! 健康检查处理器
 //! 
-//! 处理系统健康检查、上游账号健康检查等
+//! 处理系统健康检查和手动强制账号健康检查
+//! 注意：账号状态主要通过实时接口返回判断，这里提供手动强制检查功能
 
 use axum::{
     extract::{Path, State},
@@ -210,14 +211,15 @@ pub async fn get_system_health(
     Ok(Json(response))
 }
 
-/// 检查单个上游账号健康状态
+/// 手动强制检查单个上游账号健康状态
+/// 注意：这是手动强制检查，账号状态主要应通过实时接口返回判断
 #[instrument(skip(app_state))]
 pub async fn check_account_health(
     State(app_state): State<crate::presentation::routes::AppState>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<UpstreamHealthResponse>> {
     let database = &app_state.database;
-    info!("🔍 检查上游账号健康状态: ID {}", account_id);
+    info!("🔍 手动强制检查上游账号健康状态: ID {}", account_id);
 
     // 查询账号信息
     let account = sqlx::query!(
@@ -297,14 +299,15 @@ pub async fn check_account_health(
     Ok(Json(response))
 }
 
-/// 批量健康检查
+/// 手动强制批量健康检查
+/// 注意：这是手动强制检查，账号状态主要应通过实时接口返回判断
 #[instrument(skip(app_state, request))]
 pub async fn batch_health_check(
     State(app_state): State<crate::presentation::routes::AppState>,
     Json(request): Json<BatchHealthCheckRequest>,
 ) -> AppResult<Json<BatchHealthCheckResponse>> {
     let database = &app_state.database;
-    info!("🔍 批量健康检查: {} 个账号", request.account_ids.len());
+    info!("🔍 手动强制批量健康检查: {} 个账号", request.account_ids.len());
 
     if request.account_ids.len() > 50 {
         return Err(AppError::Validation("一次最多检查50个账号".to_string()));
@@ -367,13 +370,14 @@ pub async fn batch_health_check(
     Ok(Json(response))
 }
 
-/// 检查所有账号健康状态
+/// 手动强制检查所有账号健康状态
+/// 注意：这是手动强制检查，账号状态主要应通过实时接口返回判断
 #[instrument(skip(app_state))]
 pub async fn check_all_accounts_health(
     State(app_state): State<crate::presentation::routes::AppState>,
 ) -> AppResult<Json<BatchHealthCheckResponse>> {
     let database = &app_state.database;
-    info!("🔍 检查所有账号健康状态");
+    info!("🔍 手动强制检查所有账号健康状态");
 
     // 获取所有激活的账号ID
     let account_ids = sqlx::query_scalar!(

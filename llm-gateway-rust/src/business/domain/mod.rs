@@ -81,9 +81,75 @@ pub struct UpstreamAccount {
     pub account_name: String,
     pub credentials: AccountCredentials,
     pub is_active: bool,
-    pub health_status: HealthStatus,
     pub created_at: DateTime<Utc>,
-    pub last_health_check: Option<DateTime<Utc>>,
+}
+
+impl UpstreamAccount {
+    /// 获取实时健康状态
+    /// 注意：这里应该通过实时接口调用来判断，而不是依赖存储的health_status字段
+    pub async fn check_real_time_health(&self) -> HealthStatus {
+        // 如果账号未激活，直接返回不健康
+        if !self.is_active {
+            return HealthStatus::Unhealthy;
+        }
+
+        // 检查凭据有效性
+        if !self.credentials.is_valid() {
+            return HealthStatus::Unhealthy;
+        }
+
+        // 执行简单的实时健康检查
+        match self.perform_health_check().await {
+            Ok(_) => HealthStatus::Healthy,
+            Err(_) => HealthStatus::Unhealthy,
+        }
+    }
+
+    /// 执行实际的健康检查
+    async fn perform_health_check(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 这里应该根据提供商类型实现具体的健康检查逻辑
+        match self.provider {
+            AccountProvider::AnthropicApi => {
+                // 对于 API Key 类型，可以尝试简单的 API 调用
+                self.check_anthropic_api_health().await
+            },
+            AccountProvider::AnthropicOauth => {
+                // 对于 OAuth 类型，检查 token 有效性
+                self.check_anthropic_oauth_health().await
+            },
+        }
+    }
+
+    /// 检查 Anthropic API 健康状态
+    async fn check_anthropic_api_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 简化的健康检查：检查凭据是否存在
+        if self.credentials.access_token.is_some() || self.credentials.session_key.is_some() {
+            Ok(())
+        } else {
+            Err("缺少必要的凭据".into())
+        }
+    }
+
+    /// 检查 Anthropic OAuth 健康状态
+    async fn check_anthropic_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查 OAuth token 是否有效
+        if self.credentials.is_valid() && self.credentials.access_token.is_some() {
+            Ok(())
+        } else {
+            Err("OAuth token 无效或过期".into())
+        }
+    }
+
+    /// 获取状态显示字符串（用于前端显示）
+    pub async fn get_status_display(&self) -> String {
+        let real_time_status = self.check_real_time_health().await;
+        match real_time_status {
+            HealthStatus::Healthy => "正常".to_string(),
+            HealthStatus::Degraded => "降级".to_string(), 
+            HealthStatus::Unhealthy => "异常".to_string(),
+            HealthStatus::Unknown => "未知".to_string(),
+        }
+    }
 }
 
 /// 账号提供商

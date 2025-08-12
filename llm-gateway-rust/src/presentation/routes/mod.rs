@@ -60,7 +60,8 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
         .route("/api/api-keys/:id", delete(handlers::api_keys::delete_api_key))
         .route("/api/api-keys/:id/regenerate", post(handlers::api_keys::regenerate_api_key))
         
-        // 健康检查管理
+        
+        // 手动健康检查管理
         .route("/api/health/account/:id", get(handlers::health::check_account_health))
         .route("/api/health/batch", post(handlers::health::batch_health_check))
         .route("/api/health/all", post(handlers::health::check_all_accounts_health))

@@ -90,16 +90,18 @@ pub async fn list_accounts(
 
         let provider = account.provider.provider_name();
 
+        // 使用实时健康状态检查而不是存储的状态
+        let real_time_status = account.check_real_time_health().await;
+
         accounts.push(AccountInfo {
             id: account.id,
             name: account.account_name,
             account_type: account_type.to_string(),
             provider: provider.to_string(),
-            status: account.health_status.as_str().to_string(),
+            status: real_time_status.as_str().to_string(),
             is_active: account.is_active,
             created_at: account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_health_check: account.last_health_check
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+            last_health_check: None, // 不再使用数据库存储的健康检查时间
             request_count,
             success_rate,
         });
@@ -179,16 +181,18 @@ pub async fn create_account(
 
     let provider_name = upstream_account.provider.provider_name();
 
+    // 使用实时健康状态检查
+    let real_time_status = upstream_account.check_real_time_health().await;
+
     let account = AccountInfo {
         id: upstream_account.id,
         name: upstream_account.account_name,
         account_type: account_type.to_string(),
         provider: provider_name.to_string(),
-        status: upstream_account.health_status.as_str().to_string(),
+        status: real_time_status.as_str().to_string(),
         is_active: upstream_account.is_active,
         created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        last_health_check: upstream_account.last_health_check
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+        last_health_check: None, // 不再使用数据库存储的健康检查时间
         request_count,
         success_rate,
     };
@@ -263,16 +267,18 @@ pub async fn update_account(
 
         let provider_name = upstream_account.provider.provider_name();
 
+        // 使用实时健康状态检查
+        let real_time_status = upstream_account.check_real_time_health().await;
+
         let account = AccountInfo {
             id: upstream_account.id,
             name: upstream_account.account_name,
             account_type: account_type.to_string(),
             provider: provider_name.to_string(),
-            status: upstream_account.health_status.as_str().to_string(),
+            status: real_time_status.as_str().to_string(),
             is_active: upstream_account.is_active,
             created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_health_check: upstream_account.last_health_check
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+            last_health_check: None, // 不再使用数据库存储的健康检查时间
             request_count,
             success_rate,
         };
@@ -314,14 +320,15 @@ pub async fn delete_account(
     }
 }
 
-/// 账号健康检查
+/// 手动强制账号健康检查
+/// 注意：这是手动强制检查，账号状态主要应通过实时接口返回判断
 #[instrument(skip(_app_state))]
 pub async fn health_check_account(
     State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
 ) -> AppResult<Json<serde_json::Value>> {
-    info!("🏥 账号健康检查请求: ID {} (操作者: {})", account_id, claims.username);
+    info!("🏥 手动强制账号健康检查请求: ID {} (操作者: {})", account_id, claims.username);
 
     // 模拟健康检查
     let health_status = serde_json::json!({

@@ -394,12 +394,11 @@ impl SmartRouter {
             confidence += 0.1;
         }
 
-        // 账号健康状态
-        match account.health_status {
-            crate::business::domain::HealthStatus::Healthy => confidence += 0.15,
-            crate::business::domain::HealthStatus::Degraded => confidence -= 0.05,
-            crate::business::domain::HealthStatus::Unhealthy => confidence -= 0.2,
-            crate::business::domain::HealthStatus::Unknown => confidence -= 0.1,
+        // 账号基础状态检查
+        if account.is_active && account.credentials.is_valid() {
+            confidence += 0.15;
+        } else {
+            confidence -= 0.2;
         }
 
         confidence.min(1.0).max(0.0)
@@ -417,7 +416,7 @@ impl SmartRouter {
 
         reasons.push(format!("策略: {:?}", strategy));
         reasons.push(format!("提供商: {:?}", account.provider));
-        reasons.push(format!("健康状态: {:?}", account.health_status));
+        reasons.push(format!("账号状态: {}", if account.is_active { "活跃" } else { "非活跃" }));
         reasons.push(format!("请求类型: {:?}", features.request_type));
         reasons.push(format!("优先级: {:?}", features.priority));
         reasons.push(format!("置信度: {:.2}", confidence));

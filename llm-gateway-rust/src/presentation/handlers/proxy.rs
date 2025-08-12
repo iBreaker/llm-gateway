@@ -146,8 +146,8 @@ pub async fn proxy_messages(
     info!("🔍 获取到 {} 个上游账号", available_accounts.len());
     
     for (i, account) in available_accounts.iter().enumerate() {
-        info!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}, 健康状态={:?}", 
-              i + 1, account.id, account.account_name, account.provider, account.is_active, account.health_status);
+        info!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}", 
+              i + 1, account.id, account.account_name, account.provider, account.is_active);
     }
 
     if available_accounts.is_empty() {
@@ -383,12 +383,6 @@ async fn get_available_upstream_accounts(
             },
         };
 
-        let health_status = match row.health_status.as_deref() {
-            Some("healthy") => crate::business::domain::HealthStatus::Healthy,
-            Some("degraded") => crate::business::domain::HealthStatus::Degraded,
-            Some("unhealthy") => crate::business::domain::HealthStatus::Unhealthy,
-            _ => crate::business::domain::HealthStatus::Unknown,
-        };
 
         let credentials: serde_json::Value = row.credentials;
         let account_credentials = crate::business::domain::AccountCredentials {
@@ -408,9 +402,7 @@ async fn get_available_upstream_accounts(
             account_name: row.name,
             credentials: account_credentials,
             is_active: row.is_active,
-            health_status,
             created_at: row.created_at,
-            last_health_check: row.last_health_check,
         });
     }
 
