@@ -66,7 +66,7 @@ pub async fn list_users(
 
     // 查询所有用户
     let users_rows = sqlx::query!(
-        "SELECT id, username, email, is_active, created_at, updated_at 
+        "SELECT id, username, email, is_active, created_at, updated_at, last_login_at 
          FROM users 
          ORDER BY created_at DESC"
     )
@@ -82,7 +82,7 @@ pub async fn list_users(
             role: "USER".to_string(), // 默认角色，后续可从数据库获取
             is_active: row.is_active,
             created_at: row.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_login_at: None, // 后续可添加最后登录时间字段
+            last_login_at: row.last_login_at.map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
         }
     }).collect();
 
@@ -248,7 +248,7 @@ pub async fn update_user(
 
     // 查询更新后的用户信息
     let updated_user = sqlx::query!(
-        "SELECT id, username, email, is_active, created_at 
+        "SELECT id, username, email, is_active, created_at, last_login_at 
          FROM users WHERE id = $1",
         user_id
     )
@@ -265,7 +265,7 @@ pub async fn update_user(
         role: request.role,
         is_active: updated_user.is_active,
         created_at: updated_user.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        last_login_at: None,
+        last_login_at: updated_user.last_login_at.map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
     };
 
     Ok(Json(user_info))

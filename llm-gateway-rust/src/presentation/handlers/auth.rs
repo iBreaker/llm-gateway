@@ -103,6 +103,15 @@ pub async fn login(
         return Err(AppError::Authentication(crate::auth::AuthError::UserNotFound));
     }
 
+    // 更新最后登录时间
+    sqlx::query!(
+        "UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1",
+        user_row.id
+    )
+    .execute(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
     // 生成JWT token
     let jwt_service = create_jwt_service();
     let access_token = jwt_service.generate_token(user_row.id, &user_row.username)
