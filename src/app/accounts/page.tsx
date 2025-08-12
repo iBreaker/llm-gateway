@@ -828,25 +828,14 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
   const generateOAuthUrl = async () => {
     setIsGeneratingAuth(true)
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/oauth/anthropic/generate-auth-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setOauthSession(data.data)
-        setShowOAuthFlow(true)
-      } else {
-        alert(data.message || '生成授权链接失败')
-      }
-    } catch (error) {
-      alert('网络错误')
+      const response = await apiClient.post<{data: OAuthSession}>('/api/oauth/anthropic/generate-auth-url')
+      
+      console.log('🔍 OAuth URL 生成响应:', response)
+      setOauthSession(response.data)
+      setShowOAuthFlow(true)
+    } catch (error: any) {
+      console.error('❌ OAuth URL 生成失败:', error)
+      alert(error.message || '生成授权链接失败')
     } finally {
       setIsGeneratingAuth(false)
     }
@@ -861,31 +850,18 @@ function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModal
 
     setIsExchangingCode(true)
     try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/oauth/anthropic/exchange-code', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          sessionId: oauthSession.sessionId,
-          callbackUrl: authorizationInput.trim()
-        })
+      const response = await apiClient.post('/api/oauth/anthropic/exchange-code', {
+        sessionId: oauthSession.sessionId,
+        callbackUrl: authorizationInput.trim()
       })
 
-      const data = await response.json()
-
-      if (response.ok) {
-        // OAuth 成功，关闭模态框并刷新账号列表
-        alert('Anthropic OAuth 账号添加成功！')
-        onClose()
-        window.location.reload() // 简单刷新页面
-      } else {
-        alert(data.message || '授权码交换失败')
-      }
-    } catch (error) {
-      alert('网络错误')
+      console.log('✅ OAuth 授权码交换成功:', response)
+      alert('Anthropic OAuth 账号添加成功！')
+      onClose()
+      window.location.reload() // 简单刷新页面
+    } catch (error: any) {
+      console.error('❌ OAuth 授权码交换失败:', error)
+      alert(error.message || '授权码交换失败')
     } finally {
       setIsExchangingCode(false)
     }
