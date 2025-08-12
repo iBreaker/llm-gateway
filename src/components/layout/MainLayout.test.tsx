@@ -20,7 +20,7 @@ jest.mock('next/navigation', () => ({
 
 // Mock AuthContext
 const mockAuthContext = {
-  user: null,
+  user: null as any,
   isLoading: false,
   logout: jest.fn()
 }
@@ -348,13 +348,13 @@ describe('MainLayout Component', () => {
       </MainLayout>
     )
     
-    // 活跃页面的图标应该有较深的颜色
-    const activeIcon = screen.getByTestId('barchart-icon').parentElement
-    expect(activeIcon).toHaveClass('text-zinc-600')
+    // 活跃页面的链接应该有活跃样式
+    const activeLink = screen.getByText('系统概览').closest('a')
+    expect(activeLink).toHaveClass('bg-zinc-100', 'text-zinc-900')
     
-    // 非活跃页面的图标应该有较浅的颜色
-    const inactiveIcon = screen.getByTestId('link-icon').parentElement
-    expect(inactiveIcon).toHaveClass('text-zinc-400')
+    // 非活跃页面的链接应该有非活跃样式
+    const inactiveLink = screen.getByText('上游账号').closest('a')
+    expect(inactiveLink).toHaveClass('text-zinc-700', 'hover:bg-zinc-50')
   })
 
   // 侧边栏尺寸测试

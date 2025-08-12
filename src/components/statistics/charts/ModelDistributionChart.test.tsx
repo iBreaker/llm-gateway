@@ -59,10 +59,10 @@ describe('ModelDistributionChart Component', () => {
       />
     )
     
-    expect(screen.getByText('gpt-4')).toBeInTheDocument()
-    expect(screen.getByText('gpt-3.5-turbo')).toBeInTheDocument()
-    expect(screen.getByText('claude-3-opus')).toBeInTheDocument()
-    expect(screen.getByText('claude-3-sonnet')).toBeInTheDocument()
+    expect(screen.getAllByText('gpt-4')).toHaveLength(2) // 图例和表格中各一个
+    expect(screen.getAllByText('gpt-3.5-turbo')).toHaveLength(2)
+    expect(screen.getAllByText('claude-3-opus')).toHaveLength(2)
+    expect(screen.getAllByText('claude-3-sonnet')).toHaveLength(2)
   })
 
   // 空数据状态测试
@@ -91,15 +91,16 @@ describe('ModelDistributionChart Component', () => {
 
   // SVG饼状图渲染测试
   it('renders SVG pie chart when data is provided', () => {
-    render(
+    const { container } = render(
       <ModelDistributionChart 
         data={mockData}
         title="Chart with Data"
       />
     )
     
-    const svg = screen.getByRole('img', { hidden: true }) || document.querySelector('svg')
+    const svg = container.querySelector('svg')
     expect(svg).toBeInTheDocument()
+    expect(svg).toHaveClass('transform', '-rotate-90')
   })
 
   // 中心总计显示测试
@@ -162,10 +163,10 @@ describe('ModelDistributionChart Component', () => {
     const sortedData = [...mockData].sort((a, b) => b.requests - a.requests)
     const firstModel = sortedData[0]
     
-    expect(screen.getByText(firstModel.requests.toLocaleString())).toBeInTheDocument()
+    expect(screen.getAllByText(firstModel.requests.toLocaleString())).toHaveLength(2) // 中心显示和图例中的请求数
     expect(screen.getByText(`$${firstModel.cost.toFixed(4)}`)).toBeInTheDocument()
     expect(screen.getByText(`${Math.round(firstModel.avgResponseTime)}ms`)).toBeInTheDocument()
-    expect(screen.getByText(`${firstModel.successRate.toFixed(1)}%`)).toBeInTheDocument()
+    expect(screen.getByText(`${firstModel.successRate.toFixed(1)}%`)).toBeInTheDocument() // 表格中的成功率
   })
 
   // 数据排序测试
@@ -194,9 +195,9 @@ describe('ModelDistributionChart Component', () => {
   // 成功率状态指示器测试
   it('shows correct success rate status indicators', () => {
     const testData = [
-      { ...mockData[0], successRate: 99.5 }, // 绿色
-      { ...mockData[1], successRate: 97.0 }, // 黄色
-      { ...mockData[2], successRate: 93.0 }  // 红色
+      { ...mockData[0], model: 'high-success', requests: 3000, successRate: 99.5 }, // 绿色 - 最高请求数，会排在第一位
+      { ...mockData[1], model: 'medium-success', requests: 2000, successRate: 97.0 }, // 黄色
+      { ...mockData[2], model: 'low-success', requests: 1000, successRate: 93.0 }  // 红色
     ]
     
     const { container } = render(
@@ -242,7 +243,7 @@ describe('ModelDistributionChart Component', () => {
     )
     
     expect(screen.getByText('Single Model')).toBeInTheDocument()
-    expect(screen.getByText('gpt-4')).toBeInTheDocument()
+    expect(screen.getAllByText('gpt-4')).toHaveLength(2) // 图例和表格中各一个
     expect(screen.getByText('100.0% 请求量')).toBeInTheDocument()
   })
 
@@ -263,7 +264,7 @@ describe('ModelDistributionChart Component', () => {
       />
     )
     
-    expect(screen.getByText('test-model')).toBeInTheDocument()
+    expect(screen.getAllByText('test-model')).toHaveLength(2) // 图例和表格中各一个
     expect(screen.getByText('$0.0000')).toBeInTheDocument()
     expect(screen.getByText('0ms')).toBeInTheDocument()
   })
@@ -287,7 +288,7 @@ describe('ModelDistributionChart Component', () => {
     )
     
     expect(screen.getByText('50.0M')).toBeInTheDocument()
-    expect(screen.getByText('999,999')).toBeInTheDocument()
+    expect(screen.getAllByText('999,999')).toHaveLength(3) // 中心显示、图例和表格中各一次
     expect(screen.getByText('$999.9900')).toBeInTheDocument()
     expect(screen.getByText('10000ms')).toBeInTheDocument()
   })
@@ -322,7 +323,7 @@ describe('ModelDistributionChart Component', () => {
     )
     
     expect(screen.getByText('Updated Chart')).toBeInTheDocument()
-    expect(screen.getByText('new-model')).toBeInTheDocument()
+    expect(screen.getAllByText('new-model')).toHaveLength(2) // 图例中和表格中各一个
     expect(screen.queryByText('gpt-4')).not.toBeInTheDocument()
   })
 

@@ -264,16 +264,11 @@ describe('RealTimeMetrics Component', () => {
 
   // 时间显示测试
   it('displays activity timestamps correctly', () => {
-    const mockDate = new Date('2023-01-01T12:00:00Z')
-    jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any)
-    
     render(<RealTimeMetrics data={mockData} />)
     
     // 检查时间戳格式
     const timestamps = screen.getAllByText(/\d{1,2}:\d{2}:\d{2}/)
     expect(timestamps.length).toBeGreaterThan(0)
-    
-    Date.mockRestore()
   })
 
   // 图标测试

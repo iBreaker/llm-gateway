@@ -6,10 +6,15 @@ import { FilterOptions } from './StatisticsDashboard'
 
 // 模拟数据
 const mockFilters: FilterOptions = {
-  timeRange: '24h',
+  dateRange: {
+    start: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    end: new Date().toISOString(),
+    preset: '24h'
+  },
   models: [],
   accounts: [],
-  status: []
+  status: [],
+  granularity: 'day'
 }
 
 const mockAvailableModels = ['gpt-4', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']

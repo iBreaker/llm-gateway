@@ -103,6 +103,21 @@ export class ApiClient {
     const response = await fetch(url, processedOptions)
     
     if (!response.ok) {
+      // 处理401未授权错误
+      if (response.status === 401) {
+        // 清理localStorage中的认证信息
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        localStorage.removeItem('user')
+        
+        // 跳转到登录页面
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login'
+        }
+        
+        throw new Error('认证已过期，请重新登录')
+      }
+      
       const errorData = await response.json().catch(() => ({}))
       throw new Error(errorData.message || `HTTP ${response.status}`)
     }

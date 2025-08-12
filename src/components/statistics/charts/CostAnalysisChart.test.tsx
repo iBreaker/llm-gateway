@@ -333,7 +333,7 @@ describe('CostAnalysisChart Component', () => {
     )
     
     expect(screen.getByText('零成本项目')).toBeInTheDocument()
-    expect(screen.getByText('$0.0000')).toBeInTheDocument()
+    expect(screen.getAllByText('$0.0000')).toHaveLength(2) // 总成本和项目成本各一个
     expect(screen.getByText('0.0%')).toBeInTheDocument()
   })
 

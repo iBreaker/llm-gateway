@@ -222,6 +222,8 @@ describe('TimeRangeSelector Component', () => {
 
   // 边界情况测试
   it('handles invalid date strings gracefully', () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation()
+    
     const invalidValue = {
       start: 'invalid-date',
       end: 'invalid-date',
@@ -231,6 +233,8 @@ describe('TimeRangeSelector Component', () => {
     expect(() => {
       render(<TimeRangeSelector value={invalidValue} onChange={mockOnChange} />)
     }).not.toThrow()
+    
+    consoleSpy.mockRestore()
   })
 
   it('handles undefined preset gracefully', () => {

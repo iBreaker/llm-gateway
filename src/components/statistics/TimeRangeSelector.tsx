@@ -20,6 +20,20 @@ const presets = [
   { value: 'custom', label: '自定义', hours: 0 }
 ]
 
+// 安全格式化日期为datetime-local格式
+function formatDateForInput(dateString: string): string {
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) {
+      // 如果日期无效，返回当前时间
+      return new Date().toISOString().slice(0, 16)
+    }
+    return date.toISOString().slice(0, 16)
+  } catch {
+    return new Date().toISOString().slice(0, 16)
+  }
+}
+
 export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
   const [showCustom, setShowCustom] = useState(value.preset === 'custom')
 
@@ -75,7 +89,7 @@ export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
             <label className="text-sm text-gray-600">从:</label>
             <input
               type="datetime-local"
-              value={new Date(value.start).toISOString().slice(0, 16)}
+              value={formatDateForInput(value.start)}
               onChange={(e) => handleCustomDateChange('start', e.target.value)}
               className="rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
             />
@@ -84,7 +98,7 @@ export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
             <label className="text-sm text-gray-600">到:</label>
             <input
               type="datetime-local"
-              value={new Date(value.end).toISOString().slice(0, 16)}
+              value={formatDateForInput(value.end)}
               onChange={(e) => handleCustomDateChange('end', e.target.value)}
               className="rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
             />
