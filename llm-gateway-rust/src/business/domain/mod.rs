@@ -117,6 +117,14 @@ impl UpstreamAccount {
                 // 对于 OAuth 类型，检查 token 有效性
                 self.check_anthropic_oauth_health().await
             },
+            AccountProvider::GeminiOauth => {
+                // Gemini OAuth 健康检查（待实现）
+                self.check_gemini_oauth_health().await
+            },
+            AccountProvider::QwenOauth => {
+                // Qwen OAuth 健康检查（待实现）
+                self.check_qwen_oauth_health().await
+            },
         }
     }
 
@@ -134,9 +142,34 @@ impl UpstreamAccount {
     async fn check_anthropic_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // 检查 OAuth token 是否有效
         if self.credentials.is_valid() && self.credentials.access_token.is_some() {
-            Ok(())
+            // 可以进一步检查 token 是否即将过期，是否需要刷新
+            if self.credentials.needs_refresh() && self.credentials.refresh_token.is_none() {
+                Err("OAuth token 即将过期且无法刷新".into())
+            } else {
+                Ok(())
+            }
         } else {
             Err("OAuth token 无效或过期".into())
+        }
+    }
+
+    /// 检查 Gemini OAuth 健康状态（待实现）
+    async fn check_gemini_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // TODO: 实现 Gemini OAuth 健康检查
+        if self.credentials.access_token.is_some() {
+            Ok(())
+        } else {
+            Err("Gemini OAuth 功能尚未实现".into())
+        }
+    }
+
+    /// 检查 Qwen OAuth 健康状态（待实现）
+    async fn check_qwen_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // TODO: 实现 Qwen OAuth 健康检查
+        if self.credentials.access_token.is_some() {
+            Ok(())
+        } else {
+            Err("Qwen OAuth 功能尚未实现".into())
         }
     }
 
@@ -156,8 +189,10 @@ impl UpstreamAccount {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountProvider {
-    AnthropicApi,     // 对应 ANTHROPIC_API
-    AnthropicOauth,   // 对应 ANTHROPIC_OAUTH  
+    AnthropicApi,     // Anthropic API Key 方式
+    AnthropicOauth,   // Anthropic OAuth 方式
+    GeminiOauth,      // Gemini OAuth 方式（待实现）
+    QwenOauth,        // Qwen OAuth 方式（待实现）
 }
 
 impl AccountProvider {
@@ -165,6 +200,8 @@ impl AccountProvider {
         match self {
             AccountProvider::AnthropicApi => "anthropic_api",
             AccountProvider::AnthropicOauth => "anthropic_oauth",
+            AccountProvider::GeminiOauth => "gemini_oauth",
+            AccountProvider::QwenOauth => "qwen_oauth",
         }
     }
 
@@ -173,7 +210,8 @@ impl AccountProvider {
         match s {
             "anthropic_api" => Some(AccountProvider::AnthropicApi),
             "anthropic_oauth" => Some(AccountProvider::AnthropicOauth),
-            "claude_code" => Some(AccountProvider::AnthropicApi), // 向后兼容
+            "gemini_oauth" => Some(AccountProvider::GeminiOauth),
+            "qwen_oauth" => Some(AccountProvider::QwenOauth),
             _ => None,
         }
     }
@@ -183,6 +221,8 @@ impl AccountProvider {
         match self {
             AccountProvider::AnthropicApi => "Anthropic API",
             AccountProvider::AnthropicOauth => "Anthropic OAuth",
+            AccountProvider::GeminiOauth => "Gemini OAuth",
+            AccountProvider::QwenOauth => "Qwen OAuth",
         }
     }
 
@@ -190,6 +230,28 @@ impl AccountProvider {
     pub fn provider_name(&self) -> &'static str {
         match self {
             AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => "Anthropic",
+            AccountProvider::GeminiOauth => "Google Gemini",
+            AccountProvider::QwenOauth => "Alibaba Qwen",
+        }
+    }
+
+    /// 判断是否为 OAuth 类型
+    pub fn is_oauth(&self) -> bool {
+        match self {
+            AccountProvider::AnthropicOauth | 
+            AccountProvider::GeminiOauth | 
+            AccountProvider::QwenOauth => true,
+            AccountProvider::AnthropicApi => false,
+        }
+    }
+
+    /// 获取支持的认证方式
+    pub fn auth_methods(&self) -> Vec<&'static str> {
+        match self {
+            AccountProvider::AnthropicApi => vec!["api_key"],
+            AccountProvider::AnthropicOauth => vec!["oauth"],
+            AccountProvider::GeminiOauth => vec!["oauth"],
+            AccountProvider::QwenOauth => vec!["oauth"],
         }
     }
 }

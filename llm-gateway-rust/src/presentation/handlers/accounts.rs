@@ -85,6 +85,7 @@ pub async fn list_accounts(
         let account_type = match account.provider {
             AccountProvider::AnthropicApi => "anthropic_api",
             AccountProvider::AnthropicOauth => "anthropic_oauth",
+            _ => "unknown", // TODO: 实现其他提供商
         };
 
         let provider = account.provider.provider_name();
@@ -176,6 +177,7 @@ pub async fn create_account(
     let account_type = match upstream_account.provider {
         AccountProvider::AnthropicApi => "anthropic_api",
         AccountProvider::AnthropicOauth => "anthropic_oauth",
+        _ => "unknown", // TODO: 实现其他提供商
     };
 
     let provider_name = upstream_account.provider.provider_name();
@@ -262,6 +264,7 @@ pub async fn update_account(
         let account_type = match upstream_account.provider {
             AccountProvider::AnthropicApi => "anthropic_api",
             AccountProvider::AnthropicOauth => "anthropic_oauth",
+            _ => "unknown", // TODO: 实现其他提供商
         };
 
         let provider_name = upstream_account.provider.provider_name();
@@ -344,37 +347,3 @@ pub async fn health_check_account(
     Ok(Json(health_status))
 }
 
-/// OAuth相关接口 - 生成授权URL
-#[instrument(skip(_app_state))]
-pub async fn generate_oauth_url(
-    State(_app_state): State<crate::presentation::routes::AppState>,
-    Extension(claims): Extension<Claims>,
-) -> AppResult<Json<serde_json::Value>> {
-    info!("🔗 生成OAuth授权URL请求 (操作者: {})", claims.username);
-
-    let auth_url = serde_json::json!({
-        "auth_url": "https://api.anthropic.com/oauth/authorize?client_id=example&redirect_uri=http://localhost:7439/accounts/oauth/callback&scope=read_write",
-        "state": "random_state_token_123"
-    });
-
-    Ok(Json(auth_url))
-}
-
-/// OAuth相关接口 - 交换授权码
-#[instrument(skip(_app_state, _request))]
-pub async fn exchange_oauth_code(
-    State(_app_state): State<crate::presentation::routes::AppState>,
-    Extension(claims): Extension<Claims>,
-    Json(_request): Json<serde_json::Value>,
-) -> AppResult<Json<serde_json::Value>> {
-    info!("🔄 交换OAuth授权码请求 (操作者: {})", claims.username);
-
-    let result = serde_json::json!({
-        "success": true,
-        "account_id": 999,
-        "account_name": "OAuth Account",
-        "message": "OAuth账号创建成功"
-    });
-
-    Ok(Json(result))
-}

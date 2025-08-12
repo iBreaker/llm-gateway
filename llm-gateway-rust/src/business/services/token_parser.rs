@@ -52,10 +52,10 @@ impl TokenParser {
         model_name: Option<&str>
     ) -> TokenUsage {
         match provider.to_lowercase().as_str() {
-            "anthropic" | "claude" | "claude_code" => {
+            "anthropic" | "claude" | "anthropic_api" | "anthropic_oauth" => {
                 Self::parse_anthropic_tokens(response_body, model_name)
             }
-            "gemini" | "google" | "gemini_cli" => {
+            "gemini" | "google" | "gemini_oauth" => {
                 Self::parse_gemini_tokens(response_body, model_name)
             }
             _ => {

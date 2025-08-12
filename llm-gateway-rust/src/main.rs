@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
     info!("🌐 服务器启动成功，监听端口: {}", port);
     info!("📖 API 文档: http://localhost:{}/health", port);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 
     Ok(())
 }

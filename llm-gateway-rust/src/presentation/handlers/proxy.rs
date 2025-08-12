@@ -18,12 +18,12 @@ use tracing::{info, error, instrument};
 
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
-use crate::auth::middleware::ApiKeyInfo;
+use crate::auth::middleware::{ApiKeyInfo, UpstreamApiKey};
 use crate::business::services::{
     IntelligentProxy, RequestFeatures, RequestPriority, RequestType,
     intelligent_proxy::{ProxyRequest as ServiceProxyRequest}
 };
-use crate::business::domain::User;
+
 
 /// 代理消息请求（Claude格式）
 #[derive(Debug, Deserialize)]
@@ -104,19 +104,64 @@ pub struct ModelInfo {
     pub capabilities: Vec<String>,
 }
 
+use crate::business::domain::{AccountCredentials, AccountProvider, User};
+
 /// 代理消息请求（主要入口）
 #[axum::debug_handler]
 #[instrument(skip(app_state, headers, body))]
 pub async fn proxy_messages(
     State(app_state): State<crate::presentation::routes::AppState>,
-    Extension(api_key_info): Extension<ApiKeyInfo>,
+    maybe_api_key_info: Option<Extension<ApiKeyInfo>>,
+    maybe_upstream_key: Option<Extension<UpstreamApiKey>>,
     headers: HeaderMap,
     body: String,
 ) -> AppResult<Response> {
     let database = &app_state.database;
-    // 生成请求ID用于追踪
     let request_id = format!("req_{}", chrono::Utc::now().timestamp_micros());
-    info!("🚀 [{}] 智能代理请求: API Key ID {}", request_id, api_key_info.id);
+
+    let (available_accounts, user, api_key_info) = if let Some(Extension(upstream_key)) = maybe_upstream_key {
+        info!("🚀 [{}] 智能代理请求: 使用上游Key直接代理", request_id);
+        let temp_account = crate::business::domain::UpstreamAccount {
+            id: -1,
+            user_id: -1, // Indicates a stateless session
+            provider: AccountProvider::AnthropicApi,
+            account_name: "Stateless Anthropic Key".to_string(),
+            credentials: AccountCredentials {
+                session_key: None,
+                access_token: Some(upstream_key.0),
+                refresh_token: None,
+                expires_at: None,
+                base_url: None,
+            },
+            is_active: true,
+            created_at: chrono::Utc::now(),
+        };
+        let dummy_user = User {
+            id: -1,
+            username: "stateless_user".to_string(),
+            email: "".to_string(),
+            is_active: true,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let dummy_api_key_info = ApiKeyInfo {
+            id: -1,
+            user_id: -1,
+            name: "stateless_key".to_string(),
+            permissions: vec!["*".to_string()],
+            rate_limit: None,
+            last_used_at: None,
+            expires_at: None,
+        };
+        (vec![temp_account], dummy_user, dummy_api_key_info)
+    } else if let Some(Extension(api_key_info)) = maybe_api_key_info {
+        info!("🚀 [{}] 智能代理请求: API Key ID {}", request_id, api_key_info.id);
+        let user = get_user_by_api_key(&database, &api_key_info).await?;
+        let accounts = get_available_upstream_accounts(&database, user.id).await?;
+        (accounts, user, api_key_info)
+    } else {
+        return Err(AppError::Authentication(crate::auth::AuthError::ApiKeyNotFound));
+    };
 
     // 先解析为通用JSON以支持任意字段
     let raw_json: serde_json::Value = serde_json::from_str(&body)
@@ -135,14 +180,9 @@ pub async fn proxy_messages(
         extra: raw_json.as_object().cloned().unwrap_or_default(),
     };
 
-    // 获取用户信息
-    let user = get_user_by_api_key(&database, &api_key_info).await?;
-
     // 分析请求特征
     let features = analyze_request_features(&request);
 
-    // 获取可用的上游账号
-    let available_accounts = get_available_upstream_accounts(&database, user.id).await?;
     info!("🔍 获取到 {} 个上游账号", available_accounts.len());
     
     for (i, account) in available_accounts.iter().enumerate() {
@@ -260,6 +300,7 @@ pub async fn proxy_messages(
     }
 }
 
+
 /// 获取可用模型列表
 #[instrument(skip(app_state))]
 pub async fn list_models(
@@ -298,6 +339,9 @@ pub async fn list_models(
                         capabilities: vec!["text".to_string(), "fast".to_string()],
                     },
                 ]);
+            }
+            _ => {
+                // TODO: 添加其他提供商的模型支持
             }
         }
     }

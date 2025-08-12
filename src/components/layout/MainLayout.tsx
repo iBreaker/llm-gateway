@@ -33,8 +33,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   if (!user) {
-    console.log('❌ MainLayout: 没有用户信息，返回null')
-    return null
+    console.log('❌ MainLayout: 没有用户信息，但认证逻辑由AuthContext处理，返回loading')
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900"></div>
+      </div>
+    )
   }
 
   console.log('✅ MainLayout: 渲染完整布局')

@@ -78,8 +78,11 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
         .route("/api/accounts/:id", put(handlers::accounts::update_account))
         .route("/api/accounts/:id", delete(handlers::accounts::delete_account))
         .route("/api/accounts/:id/health-check", post(handlers::accounts::health_check_account))
-        .route("/api/accounts/oauth/anthropic/generate-auth-url", post(handlers::accounts::generate_oauth_url))
-        .route("/api/accounts/oauth/anthropic/exchange-code", post(handlers::accounts::exchange_oauth_code))
+        
+        // OAuth授权管理
+        .route("/api/oauth/anthropic/generate-auth-url", post(handlers::oauth::generate_anthropic_auth_url))
+        .route("/api/oauth/anthropic/exchange-code", post(handlers::oauth::exchange_anthropic_code))
+        .route("/api/oauth/anthropic/refresh-token/:id", post(handlers::oauth::refresh_anthropic_token))
         
         // 统计数据
         .route("/api/stats/detailed", get(handlers::stats::get_detailed_stats))

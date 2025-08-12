@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, error, instrument, debug};
+use tracing::{info, error, instrument};
 
 use crate::business::domain::{UpstreamAccount, User};
 use crate::business::services::{
@@ -171,24 +171,7 @@ impl IntelligentProxy {
         
         info!("🔍 [{}] [上游请求构建] 目标URL: {}", request.request_id, upstream_url);
         info!("🔍 [{}] [上游请求构建] 方法: {}", request.request_id, request.method);
-        info!("🔍 [{}] [上游请求构建] 客户端头部数量: {}", request.request_id, request.headers.len());
         
-        // 详细记录客户端请求头部
-        for (key, value) in &request.headers {
-            info!("🔍 [{}] [上游请求构建] 客户端头部 '{}': '{}'", request.request_id, key, value);
-        }
-        
-        if let Some(body) = &request.body {
-            info!("🔍 [{}] [上游请求构建] 请求体大小: {} bytes", request.request_id, body.len());
-            if body.len() <= 1000 {
-                if let Ok(body_str) = std::str::from_utf8(body) {
-                    info!("🔍 [{}] [上游请求构建] 请求体内容: {}", request.request_id, body_str);
-                }
-            }
-        } else {
-            info!("🔍 [{}] [上游请求构建] 无请求体", request.request_id);
-        }
-
         // 构建HTTP请求
         let mut req_builder = match request.method.as_str() {
             "GET" => self.http_client.get(&upstream_url),
@@ -200,97 +183,42 @@ impl IntelligentProxy {
         };
 
         // 添加认证头
-        info!("🔍 [上游请求构建] 开始添加认证头部");
         req_builder = self.add_auth_headers(req_builder, account)?;
 
-        // 透明转发原始请求头（过滤不应该转发的头部）
-        info!("🔍 [上游请求构建] 开始转发客户端头部");
-        let mut forwarded_count = 0;
-        let mut skipped_count = 0;
-        
+        // 转发客户端请求头（过滤不应该转发的头部）
+        info!("🔍 [{}] [上游请求] 开始转发客户端请求头", request.request_id);
+        let mut forwarded_headers_count = 0;
         for (key, value) in &request.headers {
             let key_lower = key.to_lowercase();
-            // 过滤不应该转发的头部：authorization（需要替换）、host（会自动设置）、connection（连接相关）
-            // ✅ 确保转发重要的流式相关头部如x-stainless-helper-method
             if key_lower != "authorization" && key_lower != "host" && key_lower != "connection" {
                 req_builder = req_builder.header(key, value);
-                forwarded_count += 1;
-                if key_lower == "x-stainless-helper-method" {
-                    info!("🔍 [上游请求构建] ✅ 转发流式头部: {} = {}", key, value);
-                } else if key_lower.contains("stream") || key_lower.contains("sse") || key_lower.contains("event") {
-                    info!("🔍 [上游请求构建] ✅ 转发流式相关头部: {} = {}", key, value);
-                } else {
-                    info!("🔍 [上游请求构建] ✓ 转发头部: {} = {}", key, value);
-                }
+                forwarded_headers_count += 1;
+                info!("🔍 [{}] [上游请求] 转发头部: '{}': '{}'", request.request_id, key, value);
             } else {
-                skipped_count += 1;
-                info!("🔍 [上游请求构建] ⏭ 跳过头部: {} = {}", key, value);
+                info!("🔍 [{}] [上游请求] 过滤头部: '{}'", request.request_id, key);
             }
         }
-        
-        info!("🔍 [上游请求构建] 头部转发统计 - 转发: {}, 跳过: {}", forwarded_count, skipped_count);
+        info!("🔍 [{}] [上游请求] 共转发 {} 个请求头部", request.request_id, forwarded_headers_count);
 
         // 添加请求体
         if let Some(body) = &request.body {
-            info!("🔍 [上游请求构建] 添加请求体，大小: {} bytes", body.len());
             req_builder = req_builder.body(body.clone());
-        } else {
-            info!("🔍 [上游请求构建] 无请求体需要添加");
-        }
-
-        // 构建最终的请求，先不发送，用于调试
-        let final_request = req_builder.build()
-            .map_err(|e| AppError::ExternalService(format!("构建请求失败: {}", e)))?;
-
-        // 打印详细的上游请求信息
-        debug!("🔍 即将发送上游请求详情:");
-        debug!("  URL: {}", final_request.url());
-        debug!("  Method: {}", final_request.method());
-        debug!("  Headers: {:#?}", final_request.headers());
-        if let Some(body) = final_request.body() {
-            if let Some(bytes) = body.as_bytes() {
-                if let Ok(body_str) = std::str::from_utf8(bytes) {
-                    debug!("  Body: {}", body_str);
-                }
-            }
-        }
-        
-        // 重新构建请求（因为build()会消费req_builder）
-        let mut final_req_builder = match request.method.as_str() {
-            "GET" => self.http_client.get(&upstream_url),
-            "POST" => self.http_client.post(&upstream_url),
-            "PUT" => self.http_client.put(&upstream_url),
-            "DELETE" => self.http_client.delete(&upstream_url),
-            "PATCH" => self.http_client.patch(&upstream_url),
-            _ => return Err(AppError::Business(format!("不支持的HTTP方法: {}", request.method))),
-        };
-
-        // 重新添加认证头
-        final_req_builder = self.add_auth_headers(final_req_builder, account)?;
-
-        // 重新转发头部
-        for (key, value) in &request.headers {
-            let key_lower = key.to_lowercase();
-            if key_lower != "authorization" && key_lower != "host" && key_lower != "connection" {
-                final_req_builder = final_req_builder.header(key, value);
-                if key_lower == "x-stainless-helper-method" {
-                    debug!("🔄 重新转发流式头部: {} = {}", key, value);
-                }
-            }
-        }
-
-        // 重新添加请求体
-        if let Some(body) = &request.body {
-            final_req_builder = final_req_builder.body(body.clone());
         }
         
         // 执行上游请求
         info!("🔍 [{}] [上游请求] 开始发送请求到上游服务器", request.request_id);
-        let response = final_req_builder
+        
+        // 添加请求的详细信息日志
+        info!("🔍 [{}] [上游请求] 最终请求详情:", request.request_id);
+        info!("🔍 [{}] [上游请求] - 目标URL: {}", request.request_id, upstream_url);
+        info!("🔍 [{}] [上游请求] - 方法: {}", request.request_id, request.method);
+        
+        let response = req_builder
             .send()
             .await
             .map_err(|e| {
                 error!("❌ [{}] [上游请求] 发送失败: {}", request.request_id, e);
+                error!("❌ [{}] [上游请求] 错误详情: {:?}", request.request_id, e);
                 AppError::ExternalService(format!("上游请求失败: {}", e))
             })?;
 
@@ -300,43 +228,51 @@ impl IntelligentProxy {
         let status = response.status().as_u16();
         let response_headers = response.headers();
         
-        info!("🔍 [上游响应] HTTP状态码: {}", status);
-        info!("🔍 [上游响应] 响应头部数量: {}", response_headers.len());
-        
-        // 详细记录所有响应头部
-        for (name, value) in response_headers.iter() {
-            info!("🔍 [上游响应] 头部 '{}': '{}'", name, value.to_str().unwrap_or("<invalid_utf8>"));
-        }
+        info!("🔍 [{}] [上游响应] HTTP状态码: {}", request.request_id, status);
         
         let headers: std::collections::HashMap<String, String> = response_headers
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
 
-        // 检查是否是流式响应（在读取body之前）
+        // 检查是否是流式响应
         let content_type = headers.get("content-type").cloned();
         let is_sse = content_type.as_ref().map_or(false, |ct| ct.contains("text/event-stream"));
         
-        info!("🔍 [上游响应] Content-Type: {:?}", content_type);
-        info!("🔍 [上游响应] 检测到SSE: {}", is_sse);
+        info!("🔍 [{}] [上游响应] Content-Type: {:?}", request.request_id, content_type);
+        info!("🔍 [{}] [上游响应] 检测到SSE: {}", request.request_id, is_sse);
 
-        if is_sse {
-            info!("🔍 [SSE上游响应] ✅ 检测到流式响应，开始读取流数据");
+        // 如果是401错误，记录响应体内容用于调试
+        if status == 401 {
+            error!("❌ [{}] [上游响应] 收到401认证错误，开始读取错误响应体", request.request_id);
+            
+            // 对于401错误，先读取响应体来获取详细错误信息
+            let error_body = response.text().await
+                .map_err(|e| {
+                    error!("❌ [{}] [上游响应] 读取401错误响应体失败: {}", request.request_id, e);
+                    AppError::ExternalService(format!("读取401错误响应体失败: {}", e))
+                })?;
+            
+            error!("❌ [{}] [上游响应] 401错误详情: {}", request.request_id, error_body);
+            
+            // 返回包含详细信息的错误
+            return Err(AppError::ExternalService(format!("401认证错误: {}", error_body)));
         }
 
         // 对于SSE响应，保持流式特性
+        let request_id_clone = request.request_id.clone();
         let body_stream = response.bytes_stream()
-            .map(|result| {
+            .map(move |result| {
                 result.map_err(|e| {
-                    error!("❌ [上游响应] 读取流式响应体失败: {}", e);
+                    error!("❌ [{}] [上游响应] 读取流式响应体失败: {}", request_id_clone, e);
                     AppError::ExternalService(format!("读取流式响应体失败: {}", e))
                 })
             });
 
-        info!("🔍 [上游响应] ✅ 流式响应体准备就绪");
+        info!("🔍 [{}] [上游响应] ✅ 流式响应体准备就绪", request.request_id);
 
         // TODO: 临时使用简单估算，稍后实现完整的Token解析
-        let estimated_tokens = 100; // 流式传输的估算值
+        let estimated_tokens = 100;
         let cost_usd = (estimated_tokens as f64 / 1000.0) * 0.003;
 
         Ok(ProxyResponse {
@@ -351,8 +287,8 @@ impl IntelligentProxy {
                 cache_read_tokens: 0,
                 total_tokens: estimated_tokens,
                 tokens_per_second: None,
-            }, // 在流式传输中，这只是一个估算值
-            cost_usd,    // 在流式传输中，这只是一个估算值
+            },
+            cost_usd,
             upstream_account_id: account.id,
             routing_decision: RoutingDecision { // 将由调用者设置
                 selected_account: account.clone(),
@@ -365,7 +301,7 @@ impl IntelligentProxy {
 
     /// 构建上游URL  
     fn build_upstream_url(&self, request: &ProxyRequest, account: &UpstreamAccount) -> AppResult<String> {
-        // ✅ 修复：优先使用账号配置中的base_url，否则使用默认值
+        // 优先使用账号配置中的base_url，否则使用默认值
         let base_url = if let Some(custom_base_url) = &account.credentials.base_url {
             custom_base_url.as_str()
         } else {
@@ -375,6 +311,7 @@ impl IntelligentProxy {
                 crate::business::domain::AccountProvider::AnthropicOauth => {
                     "https://api.anthropic.com"
                 }
+                _ => "https://api.unknown.com" // TODO: 实现其他提供商
             }
         };
 
@@ -389,9 +326,10 @@ impl IntelligentProxy {
                     &request.path
                 }
             }
+            _ => &request.path // TODO: 实现其他提供商的路径转换
         };
 
-        // ✅ 修复：保留查询参数（如?beta=true）
+        // 保留查询参数（如?beta=true）
         let full_path = if request.path.contains('?') {
             let parts: Vec<&str> = request.path.split('?').collect();
             if parts.len() == 2 {
@@ -412,26 +350,75 @@ impl IntelligentProxy {
         mut req_builder: reqwest::RequestBuilder,
         account: &UpstreamAccount,
     ) -> AppResult<reqwest::RequestBuilder> {
+        info!("🔍 [认证] 开始添加认证头部, 账号ID: {}, 提供商: {:?}", account.id, account.provider);
+        
         match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => {
-                // 优先使用session_key，如果不存在则使用access_token
+            crate::business::domain::AccountProvider::AnthropicApi => {
+                // AnthropicApi类型：使用session_key或access_token
                 let api_key = account.credentials.session_key.as_ref()
                     .or(account.credentials.access_token.as_ref());
                 
                 if let Some(key) = api_key {
-                    // 只添加认证头部，不重复添加anthropic-version（客户端已提供）
-                    req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
+                    info!("🔍 [认证] AnthropicApi认证密钥长度: {}, 前缀: {}", 
+                          key.len(), 
+                          if key.len() > 10 { &key[..10] } else { key });
+                    
+                    // 对于Anthropic API，根据key的格式选择认证方式
+                    if key.starts_with("sk-ant-") {
+                        info!("🔍 [认证] 使用 x-api-key 认证方式");
+                        req_builder = req_builder.header("x-api-key", key);
+                    } else {
+                        info!("🔍 [认证] 使用 Authorization Bearer 认证方式");
+                        req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
+                    }
                 } else {
-                    return Err(AppError::Business("Anthropic账号缺少认证信息".to_string()));
+                    error!("❌ [认证] Anthropic API账号缺少认证信息");
+                    return Err(AppError::Business("Anthropic API账号缺少认证信息".to_string()));
                 }
+            }
+            crate::business::domain::AccountProvider::AnthropicOauth => {
+                // AnthropicOauth类型：专门使用OAuth access_token
+                if let Some(access_token) = &account.credentials.access_token {
+                    info!("🔍 [认证] AnthropicOauth OAuth token长度: {}, 前缀: {}", 
+                          access_token.len(), 
+                          if access_token.len() > 10 { &access_token[..10] } else { access_token });
+                    
+                    // 检查token是否过期
+                    if let Some(expires_at) = account.credentials.expires_at {
+                        let now = chrono::Utc::now();
+                        if expires_at <= now {
+                            error!("❌ [认证] OAuth token已过期: expires_at={}, now={}", expires_at, now);
+                            return Err(AppError::Business("OAuth access_token已过期".to_string()));
+                        } else {
+                            info!("🔍 [认证] OAuth token有效期: 还有{}分钟", 
+                                  (expires_at - now).num_minutes());
+                        }
+                    } else {
+                        info!("🔍 [认证] OAuth token没有设置过期时间");
+                    }
+                    
+                    // 关键修复：根据token格式选择认证方式
+                    if access_token.starts_with("sk-ant-") {
+                        info!("🔍 [认证] OAuth token是sk-ant-*格式，使用 x-api-key 认证");
+                        req_builder = req_builder.header("x-api-key", access_token);
+                    } else {
+                        info!("🔍 [认证] OAuth token非sk-ant-*格式，使用 Authorization Bearer 认证");
+                        req_builder = req_builder.header("Authorization", format!("Bearer {}", access_token));
+                    }
+                } else {
+                    error!("❌ [认证] Anthropic OAuth账号缺少access_token");
+                    return Err(AppError::Business("Anthropic OAuth账号缺少access_token".to_string()));
+                }
+            }
+            _ => {
+                error!("❌ [认证] 不支持的提供商类型: {:?}", account.provider);
+                return Err(AppError::Business("不支持的提供商类型".to_string()));
             }
         }
 
+        info!("✅ [认证] 认证头部添加完成");
         Ok(req_builder)
     }
-
-
 
     /// 更新统计信息
     async fn update_stats(
@@ -482,7 +469,6 @@ impl IntelligentProxy {
     pub fn get_smart_router(&self) -> Arc<SmartRouter> {
         Arc::clone(&self.smart_router)
     }
-
 }
 
 impl Default for ProxyStats {
@@ -547,9 +533,7 @@ mod tests {
                 base_url: None,
             },
             is_active: true,
-            health_status: HealthStatus::Healthy,
             created_at: Utc::now(),
-            last_health_check: Some(Utc::now()),
         }
     }
 }

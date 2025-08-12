@@ -5,6 +5,7 @@
 pub mod middleware;
 pub mod jwt;
 pub mod password;
+pub mod oauth;
 
 // 重新导出常用类型
 pub use jwt::Claims;
@@ -34,4 +35,6 @@ pub enum AuthError {
     Password(String),
     #[error("账号已被锁定: {0}")]
     AccountLocked(String),
+    #[error("Token刷新失败")]
+    TokenRefreshFailed,
 }

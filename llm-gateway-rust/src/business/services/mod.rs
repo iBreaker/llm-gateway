@@ -171,6 +171,19 @@ pub struct TokenUsage {
     pub tokens_per_second: Option<f64>,
 }
 
+impl Default for TokenUsage {
+    fn default() -> Self {
+        Self {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: 0,
+            tokens_per_second: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RoutingInfo {
     pub strategy: String,

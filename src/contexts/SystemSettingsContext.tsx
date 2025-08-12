@@ -70,7 +70,17 @@ export function SystemSettingsProvider({ children }: SystemSettingsProviderProps
   const [isLoading, setIsLoading] = useState(true)
 
   const refreshSettings = async () => {
+    // 检查是否有认证token，没有则使用默认设置
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      console.log('🔍 SystemSettings: 没有认证token，使用默认设置')
+      setSettings(defaultSettings)
+      setIsLoading(false)
+      return
+    }
+
     try {
+      console.log('🔍 SystemSettings: 获取系统设置')
       const settingsData = await apiClient.get<SystemSettings>('/api/settings')
       setSettings(settingsData)
     } catch (error) {

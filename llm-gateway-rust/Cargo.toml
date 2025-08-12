@@ -51,6 +51,11 @@ once_cell = "1.19"
 bcrypt = "0.15"
 jsonwebtoken = "9.2"
 md5 = "0.7"
+sha2 = "0.10"
+base64 = "0.21"
+
+# OAuth相关
+url = "2.4"
 
 # 环境变量
 dotenv = "0.15"

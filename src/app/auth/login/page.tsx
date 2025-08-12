@@ -12,10 +12,12 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const router = useRouter()
   
-  console.log('🔐 LoginPage: 登录页面渲染')
+  // 简单的渲染日志
+  console.log('🔐 LoginPage: 渲染', { email: !!email, password: !!password })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('🔐 handleSubmit 被调用', { email, password: password ? '***' : '' })
     setIsLoading(true)
     setError('')
 
@@ -58,6 +60,7 @@ export default function LoginPage() {
               登录到管理控制台
             </p>
           </div>
+          
           
           <form className="space-y-4" onSubmit={handleSubmit}>
             <Input

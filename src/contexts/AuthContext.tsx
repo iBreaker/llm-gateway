@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 
 interface User {
@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
+  const hasCheckedAuth = useRef(false)
 
   const logout = () => {
     localStorage.removeItem('access_token')
@@ -33,61 +34,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    console.log('🔍 AuthContext: checkAuth 开始执行, pathname:', pathname)
+    console.log('🔍 AuthContext: useEffect 触发', { pathname, hasChecked: hasCheckedAuth.current, isLoading })
     
-    const checkAuth = async () => {
-      // 如果是登录页面，直接跳过认证检查 (处理带/不带尾部斜杠的情况)
-      if (pathname === '/auth/login' || pathname === '/auth/login/') {
-        console.log('✅ AuthContext: 检测到登录页面，跳过认证检查')
+    // 登录页面直接设置为非加载状态，不做任何检查
+    if (pathname.startsWith('/auth/login')) {
+      console.log('✅ AuthContext: 登录页面，直接设置非加载状态')
+      if (isLoading) {
         setIsLoading(false)
-        return
+        hasCheckedAuth.current = true
       }
-
-      console.log('🔍 AuthContext: 非登录页面，检查token')
-      const token = localStorage.getItem('access_token')
-      const userStr = localStorage.getItem('user')
-      
-      if (!token) {
-        console.log('❌ AuthContext: 没有token，跳转到登录页面')
-        router.push('/auth/login')
-        setIsLoading(false)
-        return
-      }
-
-      // 从localStorage获取用户信息
-      try {
-        console.log('✅ AuthContext: 有token，设置用户信息')
-        if (userStr) {
-          const userData = JSON.parse(userStr)
-          setUser({
-            id: userData.id.toString(),
-            email: userData.email,
-            username: userData.username,
-            role: 'user' // 默认角色
-          })
-        } else {
-          // 如果没有用户数据，使用默认值
-          setUser({
-            id: '1',
-            email: 'user@example.com',
-            username: 'user',
-            role: 'user'
-          })
-        }
-      } catch (error) {
-        console.error('❌ AuthContext: Auth check failed:', error)
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        localStorage.removeItem('user')
-        router.push('/auth/login')
-      } finally {
-        console.log('🏁 AuthContext: 设置 isLoading = false')
-        setIsLoading(false)
-      }
+      return
     }
 
-    checkAuth()
-  }, [router, pathname])
+    // 已经检查过就不再检查
+    if (hasCheckedAuth.current) {
+      console.log('🔍 AuthContext: 已检查过，跳过')
+      return
+    }
+
+    console.log('🔍 AuthContext: 执行认证检查')
+    const token = localStorage.getItem('access_token')
+    
+    if (!token) {
+      console.log('❌ AuthContext: 无token，跳转登录')
+      setUser(null)
+      setIsLoading(false)
+      hasCheckedAuth.current = true
+      router.push('/auth/login')
+      return
+    }
+
+    console.log('✅ AuthContext: 有token，认证成功')
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const userData = JSON.parse(userStr)
+        setUser({
+          id: userData.id.toString(),
+          email: userData.email,
+          username: userData.username,
+          role: 'user'
+        })
+      } catch (error) {
+        console.error('❌ AuthContext: 用户数据解析失败')
+        localStorage.clear()
+        setUser(null)
+        router.push('/auth/login')
+      }
+    }
+    
+    setIsLoading(false)
+    hasCheckedAuth.current = true
+  }, [pathname])
 
   return (
     <AuthContext.Provider value={{ user, isLoading, logout }}>

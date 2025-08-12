@@ -25,6 +25,10 @@ pub struct ApiKeyInfo {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+/// 上游API Key的包装器
+#[derive(Debug, Clone)]
+pub struct UpstreamApiKey(pub String);
+
 /// JWT认证中间件
 pub async fn auth_middleware(
     State(app_state): State<crate::presentation::routes::AppState>,
@@ -84,36 +88,40 @@ pub async fn api_key_middleware(
         .ok_or_else(|| AppError::Authentication(AuthError::ApiKeyNotFound))?;
 
     // 验证API Key
-    let api_key_info = validate_api_key(&database, &api_key).await?;
-
-    // 检查速率限制（如果有速率限制服务）
-    if let Some(rate_limit_service) = request.extensions().get::<SharedRateLimitService>() {
-        match rate_limit_service.check_rate_limit(api_key_info.id).await {
-            RateLimitResult::Allowed => {
-                // 允许继续
-            },
-            RateLimitResult::MinuteLimitExceeded { limit, reset_in_seconds } => {
-                return Err(AppError::RateLimitExceeded {
-                    limit,
-                    reset_in_seconds,
-                    limit_type: "minute".to_string(),
-                });
-            },
-            RateLimitResult::DailyLimitExceeded { limit, reset_in_seconds } => {
-                return Err(AppError::RateLimitExceeded {
-                    limit,
-                    reset_in_seconds,
-                    limit_type: "daily".to_string(),
-                });
-            },
+    match validate_api_key(&database, &api_key).await {
+        Ok(api_key_info) => {
+            // 检查速率限制
+            if let Some(rate_limit_service) = request.extensions().get::<SharedRateLimitService>() {
+                match rate_limit_service.check_rate_limit(api_key_info.id).await {
+                    RateLimitResult::Allowed => {},
+                    RateLimitResult::MinuteLimitExceeded { limit, reset_in_seconds } => {
+                        return Err(AppError::RateLimitExceeded {
+                            limit,
+                            reset_in_seconds,
+                            limit_type: "minute".to_string(),
+                        });
+                    },
+                    RateLimitResult::DailyLimitExceeded { limit, reset_in_seconds } => {
+                        return Err(AppError::RateLimitExceeded {
+                            limit,
+                            reset_in_seconds,
+                            limit_type: "daily".to_string(),
+                        });
+                    },
+                }
+            }
+            // 将API Key信息添加到请求扩展中
+            request.extensions_mut().insert(api_key_info);
+        },
+        Err(AppError::Authentication(AuthError::ApiKeyNotFound)) => {
+            // 如果作为网关Key未找到，则假定为上游Key，并传递给下游处理器
+            request.extensions_mut().insert(UpstreamApiKey(api_key));
+        },
+        Err(e) => {
+            // 其他错误（如数据库连接问题）则直接返回
+            return Err(e);
         }
     }
-
-    // 检查权限（这里可以根据需要扩展）
-    // TODO: 根据请求路径检查具体权限
-
-    // 将API Key信息添加到请求扩展中
-    request.extensions_mut().insert(api_key_info);
 
     Ok(next.run(request).await)
 }

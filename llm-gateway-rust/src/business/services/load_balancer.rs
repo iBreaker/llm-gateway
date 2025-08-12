@@ -454,6 +454,7 @@ impl IntelligentLoadBalancer {
                 // 提供商多样性评分（避免所有请求都打到同一个提供商）
                 let provider_diversity_score = match account.provider {
                     AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => 1.0,
+                    AccountProvider::GeminiOauth | AccountProvider::QwenOauth => 1.0, // TODO: 实现
                 };
 
                 // 综合评分：健康(25%) + 成功率(25%) + 响应时间(20%) + 负载(15%) + 多样性(15%)

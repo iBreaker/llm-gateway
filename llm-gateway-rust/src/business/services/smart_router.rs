@@ -162,6 +162,7 @@ impl SmartRouter {
                     "claude-3-sonnet".to_string(),
                     "claude-3-haiku".to_string(),
                     "claude-3-opus".to_string(),
+                    "claude-sonnet-4".to_string(),
                 ],
                 max_tokens: 200000,
                 cost_per_1k_tokens: 0.003,
@@ -180,8 +181,10 @@ impl SmartRouter {
             ProviderCapabilities {
                 provider: AccountProvider::AnthropicOauth,
                 supported_models: vec![
-                    "gemini-pro".to_string(),
-                    "gemini-pro-vision".to_string(),
+                    "claude-3-sonnet".to_string(),
+                    "claude-3-haiku".to_string(),
+                    "claude-3-opus".to_string(),
+                    "claude-sonnet-4".to_string(),
                 ],
                 max_tokens: 32000,
                 cost_per_1k_tokens: 0.002,
@@ -281,8 +284,8 @@ impl SmartRouter {
             // 检查提供商能力
             if let Some(capabilities) = self.provider_capabilities.get(&account.provider) {
                 // 检查模型支持
-                if !capabilities.supported_models.contains(&features.model) &&
-                   !capabilities.supported_models.iter().any(|m| m.contains("pro")) {
+                let model_supported = capabilities.supported_models.iter().any(|supported_model| features.model.starts_with(supported_model));
+                if !model_supported {
                     continue;
                 }
 

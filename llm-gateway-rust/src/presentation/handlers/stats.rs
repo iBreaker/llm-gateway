@@ -193,9 +193,10 @@ pub async fn get_detailed_stats(
     let mut provider_stats = HashMap::new();
     for record in requests_by_provider {
         let provider_name = match record.provider.as_str() {
-            "anthropic_api" | "anthropic_oauth" => "Anthropic",
-            "claude_code" => "Claude Code",
-            "gemini_cli" => "Gemini CLI",
+            "anthropic_api" => "Anthropic API",
+            "anthropic_oauth" => "Anthropic OAuth", 
+            "gemini_oauth" => "Gemini OAuth",
+            "qwen_oauth" => "Qwen OAuth",
             _ => &record.provider,
         };
         provider_stats.insert(provider_name.to_string(), record.request_count.unwrap_or(0));
@@ -223,9 +224,10 @@ pub async fn get_detailed_stats(
     let mut provider_costs = HashMap::new();
     for record in cost_by_provider {
         let provider_name = match record.provider.as_str() {
-            "anthropic_api" | "anthropic_oauth" => "Anthropic",
-            "claude_code" => "Claude Code", 
-            "gemini_cli" => "Gemini CLI",
+            "anthropic_api" => "Anthropic API",
+            "anthropic_oauth" => "Anthropic OAuth",
+            "gemini_oauth" => "Gemini OAuth",
+            "qwen_oauth" => "Qwen OAuth",
             _ => &record.provider,
         };
         provider_costs.insert(provider_name.to_string(), record.total_cost.unwrap_or(0.0));

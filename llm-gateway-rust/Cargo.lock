@@ -1371,6 +1371,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64 0.21.7",
  "bcrypt",
  "bytes",
  "chrono",
@@ -1390,6 +1391,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
@@ -1397,6 +1399,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
