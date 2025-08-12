@@ -20,7 +20,7 @@ use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::middleware::ApiKeyInfo;
 use crate::business::services::{
-    IntelligentProxy, RequestFeatures, RequestPriority, RequestType, ProxyResponse,
+    IntelligentProxy, RequestFeatures, RequestPriority, RequestType,
     intelligent_proxy::{ProxyRequest as ServiceProxyRequest}
 };
 use crate::business::domain::User;
@@ -585,68 +585,3 @@ async fn record_usage_stats_from_streaming_response(
     Ok(())
 }
 
-/// 记录使用统计（详细版本）
-async fn record_usage_stats_detailed(
-    database: &Database,
-    api_key_info: &ApiKeyInfo,
-    response: &ProxyResponse,
-) -> AppResult<()> {
-    // 计算 tokens_per_second
-    let tokens_per_second = if response.latency_ms > 0 {
-        Some((response.token_usage.total_tokens as f64) / (response.latency_ms as f64 / 1000.0))
-    } else {
-        None
-    };
-
-    sqlx::query!(
-        r#"
-        INSERT INTO usage_records (
-            api_key_id, upstream_account_id, request_method, request_path, response_status,
-            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens,
-            cost_usd, latency_ms, first_token_latency_ms, queue_time_ms, retry_count,
-            model_name, request_type, upstream_provider, routing_strategy, confidence_score,
-            reasoning, cache_hit_rate, tokens_per_second, error_type, error_message, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
-        "#,
-        api_key_info.id,
-        None::<i64>, // TODO: 从响应中获取upstream_account_id
-        "POST",
-        "/v1/messages",
-        response.status as i32,
-        response.token_usage.input_tokens as i32,
-        response.token_usage.output_tokens as i32,
-        response.token_usage.cache_creation_tokens as i32,
-        response.token_usage.cache_read_tokens as i32,
-        response.token_usage.total_tokens as i32,
-        response.cost_usd,
-        response.latency_ms as i32,
-        response.first_token_latency_ms.map(|x| x as i32),
-        response.queue_time_ms as i32,
-        response.retry_count as i32,
-        response.model_name.as_deref(),
-        &response.request_type,
-        &response.upstream_provider,
-        &response.routing_info.strategy,
-        Some(sqlx::types::BigDecimal::from_f64(response.routing_info.confidence_score).unwrap_or_default()),
-        Some(&response.routing_info.reasoning),
-        response.cache_info.hit_rate.map(|r| sqlx::types::BigDecimal::from_f64(r).unwrap_or_default()),
-        tokens_per_second.map(|tps| sqlx::types::BigDecimal::from_f64(tps).unwrap_or_default()),
-        response.error_info.as_ref().map(|e| e.error_type.as_str()),
-        response.error_info.as_ref().map(|e| e.error_message.as_str())
-    )
-    .execute(database.pool())
-    .await
-    .map_err(|e| AppError::Database(e))?;
-
-    // 更新API Key最后使用时间
-    sqlx::query!(
-        "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
-        api_key_info.id
-    )
-    .execute(database.pool())
-    .await
-    .map_err(|e| AppError::Database(e))?;
-
-    Ok(())
-}

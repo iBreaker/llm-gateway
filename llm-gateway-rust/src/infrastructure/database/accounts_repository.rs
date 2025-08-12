@@ -4,7 +4,6 @@
 
 use sqlx::PgPool;
 use tracing::{debug, error, info, instrument};
-use chrono::Utc;
 use serde_json;
 
 use crate::business::domain::{UpstreamAccount, AccountProvider, AccountCredentials};

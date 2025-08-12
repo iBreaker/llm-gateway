@@ -10,7 +10,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::Claims;
 use crate::business::domain::{AccountProvider, AccountCredentials};

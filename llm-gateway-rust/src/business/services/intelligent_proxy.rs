@@ -432,68 +432,6 @@ impl IntelligentProxy {
     }
 
 
-    /// 解析实际Token使用量和成本
-    async fn parse_usage_and_cost(
-        &self, 
-        response_body: &[u8], 
-        account: &UpstreamAccount,
-        model_name: Option<&str>,
-        latency_ms: u32
-    ) -> (super::TokenUsage, f64) {
-        use super::token_parser::TokenParser;
-        
-        // 确定提供商名称
-        let provider_name = match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => "anthropic",
-        };
-
-        // 解析Token使用情况
-        let mut token_usage = TokenParser::parse_token_usage(response_body, provider_name, model_name);
-        
-        // 计算tokens_per_second
-        token_usage.tokens_per_second = TokenParser::calculate_tokens_per_second(
-            token_usage.total_tokens, 
-            latency_ms
-        );
-
-        // 计算详细成本（考虑不同类型Token的不同定价）
-        let cost_usd = self.calculate_detailed_cost(&token_usage, account, model_name);
-
-        (token_usage, cost_usd)
-    }
-
-    /// 计算详细成本（考虑缓存Token的不同定价）
-    fn calculate_detailed_cost(
-        &self,
-        token_usage: &super::TokenUsage,
-        account: &UpstreamAccount,
-        model_name: Option<&str>
-    ) -> f64 {
-        // 基础定价（每1K tokens）
-        let (input_price, output_price) = match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => {
-                // Claude 3.5 Sonnet定价示例
-                match model_name {
-                    Some(model) if model.contains("haiku") => (0.00025, 0.00125),    // Haiku
-                    Some(model) if model.contains("sonnet") => (0.003, 0.015),      // Sonnet
-                    Some(model) if model.contains("opus") => (0.015, 0.075),        // Opus
-                    _ => (0.003, 0.015), // 默认Sonnet定价
-                }
-            }
-        };
-
-        // 计算各部分成本
-        let input_cost = (token_usage.input_tokens as f64 / 1000.0) * input_price;
-        let output_cost = (token_usage.output_tokens as f64 / 1000.0) * output_price;
-        
-        // 缓存Token定价：创建缓存125%，读取缓存10%
-        let cache_creation_cost = (token_usage.cache_creation_tokens as f64 / 1000.0) * input_price * 1.25;
-        let cache_read_cost = (token_usage.cache_read_tokens as f64 / 1000.0) * input_price * 0.1;
-
-        input_cost + output_cost + cache_creation_cost + cache_read_cost
-    }
 
     /// 更新统计信息
     async fn update_stats(

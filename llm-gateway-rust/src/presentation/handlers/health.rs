@@ -14,7 +14,6 @@ use tracing::{info, warn, instrument};
 
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
-use crate::business::services::SharedSettingsService;
 
 /// 系统健康状态
 #[derive(Debug, Serialize)]
@@ -306,7 +305,7 @@ pub async fn batch_health_check(
     State(app_state): State<crate::presentation::routes::AppState>,
     Json(request): Json<BatchHealthCheckRequest>,
 ) -> AppResult<Json<BatchHealthCheckResponse>> {
-    let database = &app_state.database;
+    let _database = &app_state.database;
     info!("🔍 手动强制批量健康检查: {} 个账号", request.account_ids.len());
 
     if request.account_ids.len() > 50 {

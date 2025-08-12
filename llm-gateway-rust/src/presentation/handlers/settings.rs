@@ -9,9 +9,7 @@ use tracing::{info, warn, instrument};
 
 use crate::{
     auth::Claims,
-    infrastructure::database::Database,
     shared::error::{AppError, AppResult},
-    business::services::SharedSettingsService,
 };
 
 /// 系统设置响应

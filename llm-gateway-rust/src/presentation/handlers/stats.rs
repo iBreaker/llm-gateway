@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 use std::collections::HashMap;
 
-use crate::infrastructure::Database;
 use crate::shared::AppResult;
 use crate::auth::Claims;
 

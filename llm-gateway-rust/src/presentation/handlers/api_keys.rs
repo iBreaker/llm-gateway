@@ -10,11 +10,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult, types::PaginationParams};
 use crate::auth::Claims;
 use crate::shared::utils::{generate_api_key, sha256_hash};
-use crate::business::services::SharedSettingsService;
 
 /// 创建API Key请求
 #[derive(Debug, Deserialize)]

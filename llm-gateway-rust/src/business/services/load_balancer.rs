@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use rand::Rng;
 use tracing::{info, warn, instrument, debug};
 
-use crate::business::domain::{UpstreamAccount, AccountProvider, HealthStatus};
+use crate::business::domain::{UpstreamAccount, AccountProvider};
 use crate::shared::{AppError, AppResult};
 use crate::shared::constants::load_balancer::*;
 

@@ -10,10 +10,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::{password, Claims};
-use crate::business::services::SharedSettingsService;
 
 /// 用户信息
 #[derive(Debug, Serialize)]
