@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BarChart3, Link as LinkIcon, Key, TrendingUp, Users, Settings } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSystemSettings } from '@/contexts/SystemSettingsContext'
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -11,6 +12,7 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const { user, isLoading, logout } = useAuth()
+  const { settings } = useSystemSettings()
   const pathname = usePathname()
 
   console.log('🎨 MainLayout: 渲染开始', { pathname, isLoading, user: !!user })
@@ -44,7 +46,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex justify-between items-center h-14">
             <h1 className="text-lg font-semibold text-zinc-900">
-              LLM Gateway
+              {settings?.systemName || 'LLM Gateway'}
             </h1>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-zinc-600">

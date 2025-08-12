@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { SystemSettingsProvider } from '@/contexts/SystemSettingsContext'
 import MainLayout from '@/components/layout/MainLayout'
+import DynamicTitle from '@/components/layout/DynamicTitle'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -20,9 +22,12 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body className={inter.className}>
         <AuthProvider>
-          <MainLayout>
-            {children}
-          </MainLayout>
+          <SystemSettingsProvider>
+            <DynamicTitle />
+            <MainLayout>
+              {children}
+            </MainLayout>
+          </SystemSettingsProvider>
         </AuthProvider>
       </body>
     </html>
