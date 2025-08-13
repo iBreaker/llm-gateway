@@ -224,7 +224,12 @@ impl RequestBuilder for AnthropicRequestBuilder {
         for (i, item) in new_system.iter().enumerate() {
             if let Some(obj) = item.as_object() {
                 if let Some(text) = obj.get("text").and_then(|v| v.as_str()) {
-                    let preview = if text.len() > 50 { &text[..50] } else { text };
+                    // 安全的Unicode字符边界截取
+                    let preview = if text.chars().count() > 50 {
+                        text.chars().take(50).collect::<String>()
+                    } else {
+                        text.to_string()
+                    };
                     info!("🔍 [{}] [AnthropicRequestBuilder] system[{}]: {}...", request_id, i, preview);
                 }
             }
