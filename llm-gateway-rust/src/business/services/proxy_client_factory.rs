@@ -54,15 +54,12 @@ impl ProxyClientFactory {
 
         let mut reqwest_proxy = match proxy_config.proxy_type {
             ProxyType::Http => {
-                Proxy::http(&proxy_url)
+                // HTTP代理可以处理HTTP和HTTPS流量（通过CONNECT隧道）
+                Proxy::all(&proxy_url)
                     .map_err(|e| AppError::Business(format!("创建HTTP代理失败: {}", e)))?
             },
-            ProxyType::Https => {
-                Proxy::https(&proxy_url)
-                    .map_err(|e| AppError::Business(format!("创建HTTPS代理失败: {}", e)))?
-            },
             ProxyType::Socks5 => {
-                // reqwest支持SOCKS5代理
+                // SOCKS5代理支持所有TCP/UDP协议
                 Proxy::all(&proxy_url)
                     .map_err(|e| AppError::Business(format!("创建SOCKS5代理失败: {}", e)))?
             },

@@ -718,7 +718,7 @@ async fn load_system_proxy_config(database: &Database) -> AppResult<SystemProxyC
     for row in proxy_rows {
         let proxy_type = match row.proxy_type.as_str() {
             "http" => ProxyType::Http,
-            "https" => ProxyType::Https,
+            "https" => ProxyType::Http, // https 类型映射到 http 代理
             "socks5" => ProxyType::Socks5,
             _ => continue, // 跳过无效类型
         };

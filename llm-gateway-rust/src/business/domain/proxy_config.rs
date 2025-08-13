@@ -9,10 +9,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProxyType {
-    /// HTTP代理
+    /// HTTP代理（支持HTTP和HTTPS流量）
     Http,
-    /// HTTPS代理  
-    Https,
     /// SOCKS5代理
     Socks5,
 }
@@ -21,7 +19,6 @@ impl ProxyType {
     pub fn as_str(&self) -> &'static str {
         match self {
             ProxyType::Http => "http",
-            ProxyType::Https => "https", 
             ProxyType::Socks5 => "socks5",
         }
     }
@@ -29,7 +26,6 @@ impl ProxyType {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "http" => Some(ProxyType::Http),
-            "https" => Some(ProxyType::Https),
             "socks5" => Some(ProxyType::Socks5),
             _ => None,
         }
@@ -106,19 +102,6 @@ impl ProxyConfig {
         }
     }
     
-    /// 创建HTTPS代理配置
-    pub fn https(id: String, name: String, host: String, port: u16) -> Self {
-        Self {
-            id,
-            name,
-            proxy_type: ProxyType::Https,
-            host,
-            port,
-            auth: None,
-            enabled: true,
-            extra_config: HashMap::new(),
-        }
-    }
     
     /// 创建SOCKS5代理配置
     pub fn socks5(id: String, name: String, host: String, port: u16) -> Self {

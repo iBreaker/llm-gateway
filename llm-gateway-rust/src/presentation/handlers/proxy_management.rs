@@ -87,7 +87,7 @@ pub async fn list_proxies(
     for row in proxy_rows {
         let proxy_type = match row.proxy_type.as_str() {
             "http" => ProxyType::Http,
-            "https" => ProxyType::Https,
+            "https" => ProxyType::Http, // https 类型映射到 http 代理
             "socks5" => ProxyType::Socks5,
             _ => continue, // 跳过无效类型
         };
@@ -144,7 +144,7 @@ pub async fn create_proxy(
     // 验证代理类型
     let proxy_type = match request.proxy_type.as_str() {
         "http" => ProxyType::Http,
-        "https" => ProxyType::Https,
+        "https" => ProxyType::Http, // https 类型映射到 http 代理
         "socks5" => ProxyType::Socks5,
         _ => return Err(AppError::Validation("不支持的代理类型".to_string())),
     };
@@ -261,7 +261,7 @@ pub async fn update_proxy(
     // 构造响应
     let proxy_type_enum = match new_proxy_type.as_str() {
         "http" => ProxyType::Http,
-        "https" => ProxyType::Https,
+        "https" => ProxyType::Http, // https 类型映射到 http 代理
         "socks5" => ProxyType::Socks5,
         _ => ProxyType::Http, // 不应该到达这里
     };

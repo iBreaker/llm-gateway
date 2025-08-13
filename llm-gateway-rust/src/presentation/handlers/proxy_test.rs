@@ -42,7 +42,7 @@ pub async fn test_proxy_connection(
     // 构建代理配置
     let proxy_type = match request.proxy_type.as_str() {
         "http" => ProxyType::Http,
-        "https" => ProxyType::Https, 
+        "https" => ProxyType::Http, // https 类型映射到 http 代理 
         "socks5" => ProxyType::Socks5,
         _ => return Err(AppError::Validation("不支持的代理类型".to_string())),
     };
