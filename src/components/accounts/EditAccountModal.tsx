@@ -4,15 +4,8 @@ import { useState, useEffect } from 'react'
 import { X, Eye, EyeOff } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import { UpstreamAccount, UpdateAccountData, AccountProxyConfig } from '@/types/accounts'
-
-interface ProxyConfig {
-  id: string;
-  name: string;
-  proxy_type: 'http' | 'https' | 'socks5';
-  host: string;
-  port: number;
-  enabled: boolean;
-}
+import { ProxyConfig, SystemProxyConfig } from '@/types/proxy'
+import { apiClient } from '@/utils/api'
 
 interface EditAccountModalProps {
   account: UpstreamAccount
@@ -48,28 +41,17 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
 
   const loadAvailableProxies = async () => {
     try {
-      // TODO: 实际的API调用
-      const mockProxies: ProxyConfig[] = [
-        {
-          id: 'corp-http',
-          name: '企业HTTP代理',
-          proxy_type: 'http',
-          host: '10.0.0.100',
-          port: 8080,
-          enabled: true
-        },
-        {
-          id: 'secure-https',
-          name: '安全HTTPS代理',
-          proxy_type: 'https',
-          host: 'secure.proxy.com',
-          port: 3128,
-          enabled: true
-        }
-      ]
-      setAvailableProxies(mockProxies)
+      const data = await apiClient.get<SystemProxyConfig>('/api/proxies')
+      
+      // 将后端返回的代理配置转换为数组格式，只保留启用的代理
+      const proxies: ProxyConfig[] = Object.values(data.proxies || {})
+        .filter((proxy: ProxyConfig) => proxy.enabled)
+      
+      setAvailableProxies(proxies)
     } catch (error) {
       console.error('加载代理配置失败:', error)
+      // 失败时设置为空数组
+      setAvailableProxies([])
     }
   }
 
@@ -381,7 +363,7 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
                     <option value="">使用系统默认代理</option>
                     {availableProxies.filter(proxy => proxy.enabled).map(proxy => (
                       <option key={proxy.id} value={proxy.id}>
-                        {proxy.name} ({proxy.proxy_type.toUpperCase()} - {proxy.host}:{proxy.port})
+                        {proxy.name} ({proxy.proxyType.toUpperCase()} - {proxy.host}:{proxy.port})
                       </option>
                     ))}
                   </select>
