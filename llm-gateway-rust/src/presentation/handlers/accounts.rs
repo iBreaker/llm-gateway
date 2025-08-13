@@ -108,12 +108,19 @@ pub async fn create_account(
 
     // 创建账号
     let domain_credentials = request.credentials.to_domain();
+    
+    // 处理代理配置
+    let proxy_config_json = request.proxy_config
+        .as_ref()
+        .map(|config| serde_json::to_value(config).unwrap_or(serde_json::Value::Null));
+    
     let upstream_account = database.accounts.create(
         user_id,
         &provider_config,
         &request.name,
         &domain_credentials,
         base_url.as_deref(),
+        proxy_config_json.as_ref(),
     ).await?;
 
     // 获取新创建账号的统计数据
@@ -187,6 +194,11 @@ pub async fn update_account(
             .map_err(|e| AppError::Validation(e))?;
     }
 
+    // 处理代理配置
+    let proxy_config_json = request.proxy_config
+        .as_ref()
+        .map(|config| serde_json::to_value(config).unwrap_or(serde_json::Value::Null));
+
     // 执行更新
     let updated_account = database.accounts.update(
         account_id,
@@ -194,6 +206,7 @@ pub async fn update_account(
         Some(&request.name),
         Some(request.is_active),
         request.credentials.as_ref().map(|c| c.to_domain()).as_ref(),
+        proxy_config_json.as_ref(),
     ).await?;
 
     if let Some(upstream_account) = updated_account {

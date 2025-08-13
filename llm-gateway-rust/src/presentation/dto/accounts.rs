@@ -45,6 +45,9 @@ pub struct CreateAccountRequest {
     pub auth_method: String,        // api_key, oauth
     #[serde(flatten)]
     pub credentials: AccountCredentials,
+    // 代理配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_config: Option<AccountProxyConfigRequest>,
 }
 
 /// 更新账号请求
@@ -54,6 +57,9 @@ pub struct UpdateAccountRequest {
     pub is_active: bool,
     #[serde(flatten)]
     pub credentials: Option<AccountCredentials>,
+    // 代理配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_config: Option<AccountProxyConfigRequest>,
 }
 
 /// 账号凭据（根据认证方式的不同字段）
@@ -327,4 +333,12 @@ mod tests {
         assert!(anthropic.supported_auth_methods.contains(&"api_key".to_string()));
         assert!(anthropic.supported_auth_methods.contains(&"oauth".to_string()));
     }
+}
+
+/// 账号代理配置请求
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AccountProxyConfigRequest {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_id: Option<String>,
 }

@@ -182,6 +182,7 @@ pub async fn exchange_anthropic_code(
         &account_name,
         &account_credentials,
         None, // base_url
+        None, // proxy_config
     ).await?;
 
     info!("✅ Anthropic OAuth账号创建成功: ID {}, Name: {}", created_account.id, created_account.account_name);

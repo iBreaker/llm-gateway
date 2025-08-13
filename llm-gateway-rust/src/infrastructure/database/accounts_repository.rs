@@ -186,6 +186,7 @@ impl AccountsRepository {
         name: &str,
         credentials: &AccountCredentials,
         base_url: Option<&str>,
+        proxy_config: Option<&serde_json::Value>,
     ) -> AppResult<UpstreamAccount> {
         info!("创建上游账号: {} (提供商: {:?}, 用户: {})", name, provider_config, user_id);
 
@@ -203,9 +204,10 @@ impl AccountsRepository {
                 auth_method,
                 name, 
                 credentials, 
+                proxy_config,
                 is_active
             ) 
-            VALUES ($1, $2, $3, $4, $5, true)
+            VALUES ($1, $2, $3, $4, $5, $6, true)
             RETURNING 
                 id,
                 user_id,
@@ -223,7 +225,8 @@ impl AccountsRepository {
             provider_config.service_provider().as_str(),
             provider_config.auth_method().as_str(),
             name,
-            credentials_json
+            credentials_json,
+            proxy_config
         )
         .fetch_one(&self.pool)
         .await
@@ -270,6 +273,7 @@ impl AccountsRepository {
         name: Option<&str>,
         is_active: Option<bool>,
         credentials: Option<&AccountCredentials>,
+        proxy_config: Option<&serde_json::Value>,
     ) -> AppResult<Option<UpstreamAccount>> {
         info!("更新上游账号: ID {} (用户: {})", account_id, user_id);
 
@@ -292,17 +296,26 @@ impl AccountsRepository {
         } else {
             serde_json::to_value(&existing.as_ref().unwrap().credentials).unwrap()
         };
+        
+        let update_proxy_config = if let Some(proxy_cfg) = proxy_config {
+            Some(proxy_cfg.clone())
+        } else {
+            existing.as_ref().unwrap().proxy_config.as_ref().map(|cfg| {
+                serde_json::to_value(cfg).unwrap_or(serde_json::Value::Null)
+            })
+        };
 
         // 执行更新
         let result = sqlx::query!(
             r#"
             UPDATE upstream_accounts 
-            SET name = $1, is_active = $2, credentials = $3
-            WHERE id = $4 AND user_id = $5
+            SET name = $1, is_active = $2, credentials = $3, proxy_config = $4
+            WHERE id = $5 AND user_id = $6
             "#,
             update_name,
             update_is_active,
             update_credentials,
+            update_proxy_config,
             account_id,
             user_id
         )
