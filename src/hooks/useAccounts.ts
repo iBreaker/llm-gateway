@@ -9,11 +9,29 @@ export function useAccounts() {
   const loadAccounts = async () => {
     try {
       setIsLoading(true)
+      
+      // 测试toCamelCase转换
+      console.log('🔍 测试snake_case转换:')
+      const testData = {
+        account_type: 'ANTHROPIC_API',
+        is_active: true,
+        created_at: '2025-01-01',
+        last_health_check: '2025-01-02',
+        request_count: 100,
+        success_rate: 95.5
+      }
+      console.log('原始数据:', testData)
+      const { toCamelCase } = await import('@/utils/api')
+      console.log('转换后:', toCamelCase(testData))
+      
       const response = await apiClient.get<{accounts: UpstreamAccount[], total: number}>('/api/accounts')
       console.log('🔍 账号列表API响应:', response)
+      console.log('🔍 accounts数组:', response.accounts)
+      console.log('🔍 accounts数组长度:', response.accounts?.length)
+      
       setAccounts(response.accounts || [])
     } catch (error) {
-      console.error('获取账号列表失败:', error)
+      console.error('❌ 获取账号列表失败:', error)
       setAccounts([]) // 出错时设置为空数组
     } finally {
       setIsLoading(false)

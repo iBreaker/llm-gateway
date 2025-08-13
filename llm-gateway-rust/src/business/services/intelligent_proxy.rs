@@ -397,14 +397,9 @@ impl IntelligentProxy {
                         info!("🔍 [认证] OAuth token没有设置过期时间");
                     }
                     
-                    // 关键修复：根据token格式选择认证方式
-                    if access_token.starts_with("sk-ant-") {
-                        info!("🔍 [认证] OAuth token是sk-ant-*格式，使用 x-api-key 认证");
-                        req_builder = req_builder.header("x-api-key", access_token);
-                    } else {
-                        info!("🔍 [认证] OAuth token非sk-ant-*格式，使用 Authorization Bearer 认证");
-                        req_builder = req_builder.header("Authorization", format!("Bearer {}", access_token));
-                    }
+                    // 关键修复：OAuth token 总是使用 Bearer 认证（基于relay项目实现）
+                    info!("🔍 [认证] OAuth token 使用 Authorization Bearer 认证（OAuth标准）");
+                    req_builder = req_builder.header("Authorization", format!("Bearer {}", access_token));
                 } else {
                     error!("❌ [认证] Anthropic OAuth账号缺少access_token");
                     return Err(AppError::Business("Anthropic OAuth账号缺少access_token".to_string()));

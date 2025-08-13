@@ -74,10 +74,9 @@ pub async fn generate_anthropic_auth_url(
     // 处理可选的请求体，如果为空则使用默认值
     let request = request.map(|Json(req)| req).unwrap_or_default();
 
-    // 生成标准OAuth参数（包含完整权限：API key创建、用户资料、推理）
+    // 生成Setup Token OAuth参数（推理权限，1年有效期）- 基于relay项目建议
     let provider = AnthropicOAuthProvider::new();
-    let oauth_params = provider.generate_auth_params(None).await
-        .map_err(|e| AppError::Business(format!("生成OAuth参数失败: {}", e)))?;
+    let oauth_params = provider.generate_setup_token_params();
         
     // 生成session ID并存储OAuth参数到内存中
     let session_id = uuid::Uuid::new_v4().to_string();
@@ -147,9 +146,9 @@ pub async fn exchange_anthropic_code(
 
     info!("🔍 解析得到的授权码长度: {}", auth_code.len());
 
-    // 使用Anthropic提供商交换标准OAuth token，使用会话中存储的参数
+    // 使用Anthropic提供商交换Setup Token，使用会话中存储的参数
     let provider = AnthropicOAuthProvider::new();
-    let token_response = provider.exchange_code_for_tokens(
+    let token_response = provider.exchange_setup_token_code(
         &auth_code,
         &oauth_params.code_verifier,
         &oauth_params.state,

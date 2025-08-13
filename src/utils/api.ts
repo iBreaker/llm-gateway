@@ -110,7 +110,13 @@ export class ApiClient {
     const data = await response.json()
     
     // 处理响应：将snake_case转换为camelCase
-    return toCamelCase(data)
+    const transformedData = toCamelCase(data)
+    
+    // 添加调试日志
+    console.log('🔍 API响应原始数据:', data)
+    console.log('🔍 API响应转换后数据:', transformedData)
+    
+    return transformedData
   }
 
   // 便捷方法
