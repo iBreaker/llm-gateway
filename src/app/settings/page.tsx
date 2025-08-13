@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Save, CheckCircle, AlertCircle, Info, Settings, Shield, Database, Zap, Bell, RefreshCw, Globe } from 'lucide-react'
 import { apiClient } from '../../utils/api'
 import ProxySettingsTab from '../../components/settings/ProxySettingsTab'
@@ -50,6 +51,9 @@ interface SystemInfo {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [settings, setSettings] = useState<SystemSettings>({
     // 基础设置（使用camelCase）
     systemName: 'LLM Gateway',
@@ -86,6 +90,17 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ type: null, message: '' })
   const [error, setError] = useState('')
+
+  // 初始化activeTab从URL参数
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab')
+    if (tabFromUrl) {
+      const validTabs = ['basic', 'security', 'limits', 'cache', 'proxy', 'notifications', 'system']
+      if (validTabs.includes(tabFromUrl)) {
+        setActiveTab(tabFromUrl)
+      }
+    }
+  }, [searchParams])
 
   useEffect(() => {
     loadData()
@@ -133,6 +148,23 @@ export default function SettingsPage() {
       [key]: value
     }))
     setSaveStatus({ type: null, message: '' })
+  }
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId)
+    // 更新URL参数
+    const params = new URLSearchParams(searchParams.toString())
+    
+    if (tabId === 'basic') {
+      // 默认tab不需要在URL中显示
+      params.delete('tab')
+    } else {
+      params.set('tab', tabId)
+    }
+    
+    const queryString = params.toString()
+    const newUrl = queryString ? `/settings?${queryString}` : '/settings'
+    router.push(newUrl, { scroll: false })
   }
 
   const handleSave = async () => {
@@ -221,7 +253,7 @@ export default function SettingsPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === tab.id
                     ? 'border-zinc-900 text-zinc-900'
