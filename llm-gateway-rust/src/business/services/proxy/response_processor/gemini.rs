@@ -21,7 +21,7 @@ impl ResponseProcessor for GeminiResponseProcessor {
         response_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
         account: &UpstreamAccount,
         request_id: &str,
-    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>> {
+    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send>> {
         let request_id_clone = request_id.to_string();
         let account_id = account.id;
         
@@ -63,7 +63,7 @@ impl ResponseProcessor for GeminiResponseProcessor {
                         .unwrap_or(0) as u32;
                     let total_tokens = usage.get("totalTokenCount")
                         .and_then(|v| v.as_u64())
-                        .unwrap_or(prompt_tokens + candidates_tokens) as u32;
+                        .unwrap_or((prompt_tokens + candidates_tokens) as u64) as u32;
                     
                     info!("🔍 [GeminiResponseProcessor] Token使用统计 (账号: {}): 提示={}, 候选={}, 总计={}", 
                           account.id, prompt_tokens, candidates_tokens, total_tokens);

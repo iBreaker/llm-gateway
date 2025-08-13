@@ -74,7 +74,7 @@ impl ProxyMetrics {
         stats.total_cost_usd += cost_usd;
 
         // 按提供商统计
-        let provider_key = format!("{:?}", routing_decision.selected_account.provider);
+        let provider_key = format!("{:?}", routing_decision.selected_account.provider_config);
         *stats.requests_by_provider.entry(provider_key).or_insert(0) += 1;
 
         // 按策略统计

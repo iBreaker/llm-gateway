@@ -21,7 +21,7 @@ impl ResponseProcessor for QwenResponseProcessor {
         response_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
         account: &UpstreamAccount,
         request_id: &str,
-    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>> {
+    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send>> {
         let request_id_clone = request_id.to_string();
         let account_id = account.id;
         
@@ -64,7 +64,7 @@ impl ResponseProcessor for QwenResponseProcessor {
                         .unwrap_or(0) as u32;
                     let total_tokens = usage.get("total_tokens")
                         .and_then(|v| v.as_u64())
-                        .unwrap_or(input_tokens + output_tokens) as u32;
+                        .unwrap_or((input_tokens + output_tokens) as u64) as u32;
                     
                     info!("🔍 [QwenResponseProcessor] Token使用统计 (账号: {}): 输入={}, 输出={}, 总计={}", 
                           account.id, input_tokens, output_tokens, total_tokens);

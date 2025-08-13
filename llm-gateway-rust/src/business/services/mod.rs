@@ -18,6 +18,9 @@ pub mod smart_router;
 pub mod intelligent_proxy;
 pub mod settings_service;
 pub mod rate_limit_service;
+
+// 新的代理架构模块
+pub mod proxy;
 use crate::shared::{error::AppResult, types::*};
 use crate::business::domain::*;
 

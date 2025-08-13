@@ -21,7 +21,7 @@ impl ResponseProcessor for AnthropicResponseProcessor {
         response_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
         account: &UpstreamAccount,
         request_id: &str,
-    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>> {
+    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send>> {
         let request_id_clone = request_id.to_string();
         let account_id = account.id;
         

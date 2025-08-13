@@ -37,7 +37,7 @@ pub struct ProxyRequest {
 pub struct ProxyResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
-    pub body: Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>>,
+    pub body: Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send>>,
     pub latency_ms: u64,
     pub token_usage: TokenUsage,
     pub cost_usd: f64,
@@ -211,8 +211,21 @@ impl ProxyCoordinator {
 
         // 添加认证头（使用认证策略）
         let auth_headers = auth_strategy.get_auth_headers(account).await?;
+        let mut auth_headers_count = 0;
         for (key, value) in auth_headers {
             req_builder = req_builder.header(&key, &value);
+            auth_headers_count += 1;
+            // 只打印认证头的类型，不打印完整值
+            if key.to_lowercase() == "authorization" {
+                let preview = if value.len() > 20 {
+                    format!("{}...{}", &value[..10], &value[value.len()-6..])
+                } else {
+                    value.clone()
+                };
+                info!("🔍 [{}] [上游请求] 添加认证头部: '{}': '{}'", request.request_id, key, preview);
+            } else {
+                info!("🔍 [{}] [上游请求] 添加认证头部: '{}': '{}'", request.request_id, key, value);
+            }
         }
 
         // 转发客户端请求头（使用请求构建器过滤）
@@ -227,15 +240,37 @@ impl ProxyCoordinator {
         
         // 添加提供商特定头部
         let provider_headers = request_builder.add_provider_headers(account);
+        let mut provider_headers_count = 0;
         for (key, value) in provider_headers {
             req_builder = req_builder.header(&key, &value);
+            provider_headers_count += 1;
+            info!("🔍 [{}] [上游请求] 添加提供商头部: '{}': '{}'", request.request_id, key, value);
         }
         
-        info!("🔍 [{}] [上游请求] 共转发 {} 个请求头部", request.request_id, forwarded_headers_count);
+        info!("🔍 [{}] [上游请求] 共转发 {} 个客户端头部 + {} 个提供商头部", request.request_id, forwarded_headers_count, provider_headers_count);
 
-        // 添加请求体
+        // 转换并添加请求体
         if let Some(body) = &request.body {
-            req_builder = req_builder.body(body.clone());
+            info!("🔍 [{}] [上游请求] 开始调用请求体转换", request.request_id);
+            // 使用请求构建器转换请求体
+            let transformed_body = match request_builder.transform_request_body(
+                body, 
+                account, 
+                &request.request_id
+            ) {
+                Ok(transformed) => {
+                    info!("🔍 [{}] [上游请求] 请求体转换成功，大小: {} -> {} bytes", 
+                          request.request_id, body.len(), transformed.len());
+                    transformed
+                },
+                Err(e) => {
+                    error!("🔍 [{}] [上游请求] 请求体转换失败: {}", request.request_id, e);
+                    return Err(e);
+                }
+            };
+            req_builder = req_builder.body(transformed_body);
+        } else {
+            info!("🔍 [{}] [上游请求] 无请求体", request.request_id);
         }
         
         // 执行上游请求（保持原有日志逻辑）

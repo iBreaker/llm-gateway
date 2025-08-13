@@ -20,10 +20,11 @@ use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
 use crate::auth::middleware::{ApiKeyInfo, UpstreamApiKey};
 use crate::business::services::{
-    IntelligentProxy, RequestFeatures, RequestPriority, RequestType,
-    intelligent_proxy::{ProxyRequest as ServiceProxyRequest}
+    RequestFeatures, RequestPriority, RequestType,
 };
+use crate::business::services::proxy::coordinator::{ProxyCoordinator, ProxyRequest as ServiceProxyRequest};
 use crate::business::domain::{User, ProviderConfig, AccountCredentials};
+use crate::business::services::{RoutingDecision, TokenUsage as ServiceTokenUsage};
 
 
 /// 代理消息请求（Claude格式）
@@ -103,6 +104,17 @@ pub struct ModelInfo {
     pub max_tokens: u32,
     pub cost_per_1k_tokens: f64,
     pub capabilities: Vec<String>,
+}
+
+/// 使用统计数据（用于记录到数据库）
+#[derive(Debug, Clone)]
+pub struct UsageStatsData {
+    pub upstream_account_id: i64,
+    pub status: u16,
+    pub token_usage: crate::business::services::proxy::traits::TokenUsage,
+    pub cost_usd: f64,
+    pub latency_ms: u64,
+    pub routing_decision: RoutingDecision,
 }
 
 
@@ -223,8 +235,8 @@ pub async fn proxy_messages(
         request_id: request_id.clone(),
     };
 
-    // 创建智能代理服务
-    let proxy_service = IntelligentProxy::new();
+    // 创建新架构的代理协调器
+    let proxy_service = ProxyCoordinator::new();
 
     // 执行智能代理
     match proxy_service.proxy_request(service_request, &available_accounts).await {
@@ -232,7 +244,15 @@ pub async fn proxy_messages(
             // 记录使用统计（简化版本）
             // TODO: 需要转换ServiceProxyResponse到新的ProxyResponse格式
             // 记录使用统计（从流式响应中提取信息）
-            record_usage_stats_from_streaming_response(&database, &api_key_info, &service_response).await?;
+            let usage_data = UsageStatsData {
+                upstream_account_id: service_response.upstream_account_id,
+                status: service_response.status,
+                token_usage: service_response.token_usage.clone(),
+                cost_usd: service_response.cost_usd,
+                latency_ms: service_response.latency_ms,
+                routing_decision: service_response.routing_decision.clone(),
+            };
+            record_usage_stats_from_data(&database, &api_key_info, &usage_data).await?;
             
             info!("✅ 代理请求成功: 延迟 {}ms", service_response.latency_ms);
             
@@ -596,15 +616,15 @@ async fn record_failure_stats(
 }
 
 
-/// 记录使用统计（从流式响应）
-async fn record_usage_stats_from_streaming_response(
+/// 记录使用统计（从数据结构）
+async fn record_usage_stats_from_data(
     database: &Database,
     api_key_info: &ApiKeyInfo,
-    response: &crate::business::services::intelligent_proxy::ProxyResponse,
+    data: &UsageStatsData,
 ) -> AppResult<()> {
     // 计算 tokens_per_second
-    let tokens_per_second = if response.latency_ms > 0 {
-        Some((response.token_usage.total_tokens as f64) / (response.latency_ms as f64 / 1000.0))
+    let tokens_per_second = if data.latency_ms > 0 {
+        Some((data.token_usage.total_tokens as f64) / (data.latency_ms as f64 / 1000.0))
     } else {
         None
     };
@@ -621,26 +641,26 @@ async fn record_usage_stats_from_streaming_response(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
         "#,
         api_key_info.id,
-        Some(response.upstream_account_id),
+        Some(data.upstream_account_id),
         "POST",
         "/v1/messages",
-        response.status as i32,
-        response.token_usage.input_tokens as i32,
-        response.token_usage.output_tokens as i32,
-        response.token_usage.cache_creation_tokens as i32,
-        response.token_usage.cache_read_tokens as i32,
-        response.token_usage.total_tokens as i32,
-        response.cost_usd,
-        response.latency_ms as i32,
+        data.status as i32,
+        data.token_usage.input_tokens as i32,
+        data.token_usage.output_tokens as i32,
+        data.token_usage.cache_creation_tokens as i32,
+        data.token_usage.cache_read_tokens as i32,
+        data.token_usage.total_tokens as i32,
+        data.cost_usd,
+        data.latency_ms as i32,
         None::<i32>, // first_token_latency_ms - 流式响应中暂不可用
         0i32, // queue_time_ms - 暂不可用
         0i32, // retry_count - 暂不可用
         None::<String>, // model_name - 需要从请求中解析
         "chat", // request_type
-        response.routing_decision.selected_account.provider_config.service_provider().as_str(),
-        response.routing_decision.strategy_used.as_str(),
-        Some(sqlx::types::BigDecimal::from_f64(response.routing_decision.confidence_score).unwrap_or_default()),
-        Some(&response.routing_decision.reasoning),
+        data.routing_decision.selected_account.provider_config.service_provider().as_str(),
+        data.routing_decision.strategy_used.as_str(),
+        Some(sqlx::types::BigDecimal::from_f64(data.routing_decision.confidence_score).unwrap_or_default()),
+        Some(&data.routing_decision.reasoning),
         None::<sqlx::types::BigDecimal>, // cache_hit_rate - 暂不可用
         tokens_per_second.map(|tps| sqlx::types::BigDecimal::from_f64(tps).unwrap_or_default()),
         None::<String>, // error_type - 成功请求

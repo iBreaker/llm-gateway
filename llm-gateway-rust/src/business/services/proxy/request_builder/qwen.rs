@@ -70,6 +70,16 @@ impl RequestBuilder for QwenRequestBuilder {
         headers
     }
     
+    fn transform_request_body(&self, 
+        body: &[u8], 
+        _account: &UpstreamAccount,
+        request_id: &str
+    ) -> AppResult<Vec<u8>> {
+        // Qwen 暂时不需要复杂的body转换，直接转发
+        info!("🔍 [{}] [QwenRequestBuilder] 直接转发请求体 (无需转换)", request_id);
+        Ok(body.to_vec())
+    }
+    
     fn supported_config(&self) -> ProviderConfig {
         ProviderConfig::qwen_oauth()
     }

@@ -39,6 +39,13 @@ pub trait RequestBuilder: Send + Sync {
     /// 添加提供商特定的头部
     fn add_provider_headers(&self, account: &UpstreamAccount) -> HashMap<String, String>;
     
+    /// 转换请求体 (注入身份信息、调整参数等)
+    fn transform_request_body(&self, 
+        body: &[u8], 
+        account: &UpstreamAccount,
+        request_id: &str
+    ) -> AppResult<Vec<u8>>;
+    
     /// 获取支持的提供商配置
     fn supported_config(&self) -> ProviderConfig;
 }
@@ -52,7 +59,7 @@ pub trait ResponseProcessor: Send + Sync {
         response_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
         account: &UpstreamAccount,
         request_id: &str,
-    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send + Sync>>;
+    ) -> Pin<Box<dyn Stream<Item = AppResult<Bytes>> + Send>>;
     
     /// 解析Token使用情况
     async fn parse_token_usage(&self, 
