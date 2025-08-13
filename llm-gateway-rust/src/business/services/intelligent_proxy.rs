@@ -195,6 +195,7 @@ impl IntelligentProxy {
             let should_skip = key_lower == "authorization" 
                 || key_lower == "host" 
                 || key_lower == "connection"
+                || key_lower == "x-api-key"  // 过滤网关API密钥，避免与上游认证冲突
                 || (is_oauth && key_lower == "anthropic-beta"); // OAuth账号过滤客户端的beta头部
                 
             if !should_skip {
@@ -273,13 +274,35 @@ impl IntelligentProxy {
 
         // 对于SSE响应，保持流式特性
         let request_id_clone = request.request_id.clone();
+        let request_id_clone2 = request.request_id.clone();
+        
         let body_stream = response.bytes_stream()
             .map(move |result| {
                 result.map_err(|e| {
                     error!("❌ [{}] [上游响应] 读取流式响应体失败: {}", request_id_clone, e);
                     AppError::ExternalService(format!("读取流式响应体失败: {}", e))
                 })
-            });
+            })
+            .enumerate()  // 添加索引
+            .inspect(move |(chunk_idx, result)| {
+                match result {
+                    Ok(bytes) => {
+                        let chunk_count = chunk_idx + 1;
+                        let chunk_size = bytes.len();
+                        info!("🔍 [{}] [上游响应] 收到上游chunk #{}: {} bytes", request_id_clone2, chunk_count, chunk_size);
+                        
+                        // 记录前几个chunk的内容
+                        if chunk_count <= 3 && chunk_size <= 200 {
+                            let chunk_str = String::from_utf8_lossy(&bytes);
+                            info!("🔍 [{}] [上游响应] 上游Chunk #{} 内容: {}", request_id_clone2, chunk_count, chunk_str);
+                        }
+                    },
+                    Err(e) => {
+                        error!("❌ [{}] [上游响应] 上游chunk错误: {}", request_id_clone2, e);
+                    }
+                }
+            })
+            .map(|(_, result)| result);  // 移除索引，只保留结果
 
         info!("🔍 [{}] [上游响应] ✅ 流式响应体准备就绪", request.request_id);
 

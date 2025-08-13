@@ -274,11 +274,42 @@ pub async fn proxy_messages(
                         .map_err(|e| AppError::Internal(format!("构建流式响应失败: {}", e)))?
                 } else {
                     // 对于非SSE，我们需要收集流
-                    let body_bytes: Vec<u8> = service_response.body.collect::<Vec<_>>().await
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .flatten()
-                        .collect();
+                    let mut body_bytes = Vec::new();
+                    let mut stream = service_response.body;
+                    let mut chunk_count = 0;
+                    
+                    info!("🔍 [{}] [下游响应构建] 开始收集非SSE响应流", request_id);
+                    
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(bytes) => {
+                                chunk_count += 1;
+                                let chunk_size = bytes.len();
+                                body_bytes.extend_from_slice(&bytes);
+                                info!("🔍 [{}] [下游响应构建] 收到chunk #{}: {} bytes", request_id, chunk_count, chunk_size);
+                                
+                                // 记录前几个chunk的内容（如果不太大）
+                                if chunk_count <= 3 && chunk_size <= 200 {
+                                    let chunk_str = String::from_utf8_lossy(&bytes);
+                                    info!("🔍 [{}] [下游响应构建] Chunk #{} 内容: {}", request_id, chunk_count, chunk_str);
+                                }
+                            },
+                            Err(e) => {
+                                error!("❌ [{}] 收集响应流时出错: {}", request_id, e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    
+                    info!("🔍 [{}] [下游响应构建] 流收集完成: 总共 {} 个chunk, {} bytes", request_id, chunk_count, body_bytes.len());
+                    
+                    // 记录最终响应体内容（如果不太大）
+                    if body_bytes.len() <= 1000 {
+                        let body_str = String::from_utf8_lossy(&body_bytes);
+                        info!("🔍 [{}] [下游响应构建] 最终响应体内容: {}", request_id, body_str);
+                    } else {
+                        info!("🔍 [{}] [下游响应构建] 响应体太大，仅记录大小: {} bytes", request_id, body_bytes.len());
+                    }
                     
                     response_builder
                         .body(Body::from(body_bytes))
