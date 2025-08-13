@@ -63,10 +63,22 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
     
-    info!("🌐 服务器启动成功，监听端口: {}", port);
+    info!("🌐 服务器启动成功，监听端口: {} (HTTP/1.1)", port);
     info!("📖 API 文档: http://localhost:{}/health", port);
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    // 配置更稳健的 HTTP 服务器（兼容性优先）
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>()
+    )
+    // 配置TCP选项以提高兼容性
+    .tcp_nodelay(true)  // 禁用 Nagle 算法，减少延迟
+    .with_graceful_shutdown(async {
+        tokio::signal::ctrl_c().await.ok();
+        info!("🛑 接收到关闭信号，正在优雅关闭服务器...");
+    });
+
+    server.await?;
 
     Ok(())
 }

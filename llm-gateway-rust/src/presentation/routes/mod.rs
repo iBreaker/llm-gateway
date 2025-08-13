@@ -6,8 +6,13 @@ use axum::{
     middleware,
     routing::{delete, get, post, put},
     Router,
+    response::Response,
+    extract::Request,
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer, services::ServeDir};
+use axum::middleware::Next;
+use tower::{ServiceBuilder, Layer};
+use std::time::Duration;
 
 use crate::infrastructure::Database;
 use crate::presentation::handlers;
@@ -20,6 +25,39 @@ pub struct AppState {
     pub database: Database,
     pub settings_service: SharedSettingsService,
     pub rate_limit_service: SharedRateLimitService,
+}
+
+/// 连接管理中间件，专门解决 Node.js fetch 的连接问题
+async fn connection_middleware(req: Request, next: Next) -> Response {
+    use tracing::{info, warn};
+    
+    // 获取User-Agent来识别Node.js请求
+    let user_agent = req.headers()
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    let is_nodejs = user_agent.contains("Node.js") || user_agent.contains("undici");
+    
+    if is_nodejs {
+        info!("🔧 检测到Node.js请求，应用连接优化");
+    }
+    
+    let mut response = next.run(req).await;
+    
+    // 为Node.js请求添加特殊头部
+    if is_nodejs {
+        response.headers_mut().insert(
+            "Connection", 
+            "close".parse().unwrap()  // 强制关闭连接，避免keep-alive问题
+        );
+        response.headers_mut().insert(
+            "Cache-Control",
+            "no-cache".parse().unwrap()  // 禁用缓存避免连接复用问题
+        );
+    }
+    
+    response
 }
 
 /// 创建应用路由
@@ -148,7 +186,15 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
     let app = final_app
         // 全局中间件
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(middleware::from_fn(connection_middleware))  // 连接管理中间件
+        .layer(
+            CorsLayer::new()
+                .allow_origin(tower_http::cors::Any)
+                .allow_methods(tower_http::cors::Any) 
+                .allow_headers(tower_http::cors::Any)
+                .expose_headers(tower_http::cors::Any)
+                .allow_credentials(false)  // 明确禁用凭据，简化CORS
+        );
     
     Ok(app)
 }

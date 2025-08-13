@@ -57,13 +57,15 @@ pub struct ProxyCoordinator {
 impl ProxyCoordinator {
     /// 创建新的代理协调器（保持原有构造逻辑）
     pub fn new() -> Self {
-        // 为SSE长连接优化的HTTP客户端配置（完全保持原有配置）
+        // 为SSE长连接优化的HTTP客户端配置
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(300))  // 5分钟超时，适合长时间的流式响应
             .connect_timeout(Duration::from_secs(10))  // 连接超时10秒
             .pool_idle_timeout(Duration::from_secs(90))  // 连接池空闲超时
             .tcp_keepalive(Duration::from_secs(60))  // TCP保活，防止长连接被中断
-            // reqwest 默认启用gzip解压
+            // 重要：确保不发送Accept-Encoding头部，让服务器返回未压缩的响应
+            // 这样避免了gzip解压的复杂性和Node.js fetch的兼容性问题
+            .no_gzip()  // 禁用自动gzip处理，避免压缩响应问题
             .build()
             .expect("Failed to create HTTP client");
 
@@ -209,8 +211,8 @@ impl ProxyCoordinator {
             _ => return Err(AppError::Business(format!("不支持的HTTP方法: {}", request.method))),
         };
 
-        // 添加认证头（使用认证策略）
-        let auth_headers = auth_strategy.get_auth_headers(account).await?;
+        // 添加认证头（使用认证策略，支持客户端头部）
+        let auth_headers = auth_strategy.get_auth_headers_with_client(account, &request.headers).await?;
         let mut auth_headers_count = 0;
         for (key, value) in auth_headers {
             req_builder = req_builder.header(&key, &value);
@@ -298,7 +300,18 @@ impl ProxyCoordinator {
         
         let headers: HashMap<String, String> = response_headers
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .filter_map(|(k, v)| {
+                // 过滤掉content-encoding头部，因为reqwest已经自动解压了响应体
+                // 但保留了原始头部，这会导致客户端（如Node.js fetch）尝试重复解压
+                let key_lower = k.as_str().to_lowercase();
+                if key_lower == "content-encoding" {
+                    info!("🔍 [{}] [上游响应] 过滤content-encoding头部: {} = {}", 
+                          request.request_id, k, v.to_str().unwrap_or(""));
+                    None
+                } else {
+                    Some((k.to_string(), v.to_str().unwrap_or("").to_string()))
+                }
+            })
             .collect();
 
         // 检查是否是流式响应

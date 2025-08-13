@@ -56,7 +56,17 @@ export function useAccounts() {
   }
 
   const toggleAccount = async (id: number, isActive: boolean) => {
-    await apiClient.put(`/api/accounts/${id}/toggle`, { is_active: isActive })
+    // 找到对应的账号以获取其名称
+    const account = accounts.find(acc => acc.id === id)
+    if (!account) {
+      throw new Error('账号不存在')
+    }
+    
+    // 使用更新账号的API来切换状态
+    await apiClient.put(`/api/accounts/${id}`, { 
+      name: account.name, // 保持原有名称
+      is_active: isActive 
+    })
     await loadAccounts() // 刷新列表
   }
 

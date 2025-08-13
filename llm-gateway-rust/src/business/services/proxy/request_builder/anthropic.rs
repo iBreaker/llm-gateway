@@ -64,7 +64,9 @@ impl RequestBuilder for AnthropicRequestBuilder {
                 || key_lower == "host" 
                 || key_lower == "connection"
                 || key_lower == "content-length" // 过滤Content-Length，让reqwest自动计算
+                || key_lower == "accept-encoding" // 过滤Accept-Encoding避免压缩问题
                 || key_lower == "x-api-key" // 过滤掉内部系统的API Key
+                || key_lower == "anthropic-api-key" // 过滤掉客户端的Anthropic API Key
                 || (is_oauth && key_lower == "anthropic-beta"); // OAuth账号过滤客户端的beta头部
                 
             if !should_skip {

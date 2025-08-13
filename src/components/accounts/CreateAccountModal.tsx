@@ -15,11 +15,8 @@ interface CreateAccountModalProps {
 export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModalProps) {
   const [formData, setFormData] = useState<CreateAccountData>({
     name: '',
-    type: 'ANTHROPIC_API', // 使用provider作为type
-    provider: 'ANTHROPIC_API',
-    credentials: {},
-    priority: 1,
-    weight: 1
+    serviceProvider: 'anthropic',
+    authMethod: 'api_key',
   })
 
   // ESC键退出支持
@@ -37,10 +34,7 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
   const handleCredentialChange = (key: string, value: string) => {
     setFormData(prev => ({
       ...prev,
-      credentials: {
-        ...prev.credentials,
-        [key]: value
-      }
+      [key]: value
     }))
   }
 
@@ -50,8 +44,10 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
   }
 
   const renderCredentialFields = () => {
-    switch (formData.provider) {
-      case 'ANTHROPIC_API':
+    const providerAuthKey = `${formData.serviceProvider}_${formData.authMethod}`
+    
+    switch (providerAuthKey) {
+      case 'anthropic_api_key':
         return (
           <div className="space-y-4">
             <div>
@@ -60,8 +56,8 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
               </label>
               <input
                 type="password"
-                value={formData.credentials.session_key || ''}
-                onChange={(e) => handleCredentialChange('session_key', e.target.value)}
+                value={formData.apiKey || ''}
+                onChange={(e) => handleCredentialChange('apiKey', e.target.value)}
                 placeholder="sk-ant-api03-..."
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
                 required
@@ -73,29 +69,64 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
 
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">
-                Base URL
+                Base URL (可选)
               </label>
               <input
                 type="url"
-                value={formData.credentials.base_url || ''}
-                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                value={formData.baseUrl || ''}
+                onChange={(e) => handleCredentialChange('baseUrl', e.target.value)}
                 placeholder="https://api.anthropic.com/v1"
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
               />
               <p className="text-xs text-zinc-500 mt-1">
-                API 服务的基础 URL，留空使用默认值 https://api.anthropic.com/v1
+                API 服务的基础 URL，留空使用默认值
               </p>
             </div>
           </div>
         )
 
-      case 'ANTHROPIC_OAUTH':
+      case 'anthropic_oauth':
         return <OAuthFlow onSuccess={handleOAuthSuccess} onClose={onClose} />
+
+      case 'openai_api_key':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <input
+                type="password"
+                value={formData.apiKey || ''}
+                onChange={(e) => handleCredentialChange('apiKey', e.target.value)}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                required
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                从 OpenAI 获取的 API Key
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL (可选)
+              </label>
+              <input
+                type="url"
+                value={formData.baseUrl || ''}
+                onChange={(e) => handleCredentialChange('baseUrl', e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+            </div>
+          </div>
+        )
 
       default:
         return (
           <div className="text-sm text-zinc-500">
-            暂不支持此提供商的凭据配置
+            暂不支持 {formData.serviceProvider} + {formData.authMethod} 的组合配置
           </div>
         )
     }
@@ -115,7 +146,7 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">
                 账号名称
@@ -130,23 +161,52 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                提供商
-              </label>
-              <select
-                value={formData.provider}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  provider: e.target.value,
-                  type: e.target.value, // 同步更新type字段
-                  credentials: {} // 重置凭据
-                }))}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
-              >
-                <option value="ANTHROPIC_API">Anthropic API</option>
-                <option value="ANTHROPIC_OAUTH">Anthropic OAuth</option>
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  服务提供商
+                </label>
+                <select
+                  value={formData.serviceProvider}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    serviceProvider: e.target.value,
+                    apiKey: '', // 重置凭据
+                    baseUrl: ''
+                  }))}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                >
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="qwen">Qwen</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  认证方式
+                </label>
+                <select
+                  value={formData.authMethod}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    authMethod: e.target.value,
+                    // 重置认证相关字段
+                    apiKey: '',
+                    oauthAccessToken: '',
+                    oauthRefreshToken: '',
+                    oauthExpiresAt: undefined,
+                    oauthScopes: '',
+                    baseUrl: '',
+                    extraConfig: undefined
+                  }))}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                >
+                  <option value="api_key">API Key</option>
+                  <option value="oauth">OAuth</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -187,7 +247,7 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
             {renderCredentialFields()}
           </div>
 
-          {formData.provider !== 'ANTHROPIC_OAUTH' && (
+          {formData.serviceProvider !== 'anthropic' || formData.authMethod !== 'oauth' ? (
             <div className="flex justify-end gap-3 pt-4 border-t border-zinc-200">
               <button
                 type="button"
@@ -204,7 +264,7 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
                 {isLoading ? '创建中...' : '创建账号'}
               </button>
             </div>
-          )}
+          ) : null}
         </form>
       </div>
     </div>

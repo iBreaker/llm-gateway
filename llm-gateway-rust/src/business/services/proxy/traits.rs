@@ -17,6 +17,12 @@ pub trait AuthStrategy: Send + Sync {
     /// 获取认证头部
     async fn get_auth_headers(&self, account: &UpstreamAccount) -> AppResult<HashMap<String, String>>;
     
+    /// 获取认证头部（支持客户端头部）
+    async fn get_auth_headers_with_client(&self, account: &UpstreamAccount, client_headers: &HashMap<String, String>) -> AppResult<HashMap<String, String>> {
+        // 默认实现，忽略客户端头部
+        self.get_auth_headers(account).await
+    }
+    
     /// 验证认证信息是否有效
     async fn validate_credentials(&self, account: &UpstreamAccount) -> AppResult<bool>;
     

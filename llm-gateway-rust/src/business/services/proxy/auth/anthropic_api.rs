@@ -27,14 +27,9 @@ impl AuthStrategy for AnthropicApiAuth {
                   key.len(), 
                   if key.len() > 10 { &key[..10] } else { key });
             
-            // 对于Anthropic API，根据key的格式选择认证方式
-            if key.starts_with("sk-ant-") {
-                info!("🔍 [AnthropicApiAuth] 使用 x-api-key 认证方式");
-                headers.insert("x-api-key".to_string(), key.clone());
-            } else {
-                info!("🔍 [AnthropicApiAuth] 使用 Authorization Bearer 认证方式");
-                headers.insert("Authorization".to_string(), format!("Bearer {}", key));
-            }
+            // 对于Anthropic API，统一使用 x-api-key 认证方式
+            info!("🔍 [AnthropicApiAuth] 使用 x-api-key 认证方式");
+            headers.insert("x-api-key".to_string(), key.clone());
             
             info!("✅ [AnthropicApiAuth] 认证头部设置完成");
             Ok(headers)
@@ -42,6 +37,33 @@ impl AuthStrategy for AnthropicApiAuth {
             error!("❌ [AnthropicApiAuth] 缺少认证信息");
             Err(AppError::Business("Anthropic API账号缺少认证信息".to_string()))
         }
+    }
+    
+    async fn get_auth_headers_with_client(&self, account: &UpstreamAccount, client_headers: &HashMap<String, String>) -> AppResult<HashMap<String, String>> {
+        info!("🔍 [AnthropicApiAuth] 获取认证头部（支持客户端头部）, 账号ID: {}", account.id);
+        
+        let mut headers = HashMap::new();
+        
+        // 首先检查客户端是否提供了 anthropic-api-key
+        let client_api_key = client_headers.iter()
+            .find(|(k, _)| k.to_lowercase() == "anthropic-api-key")
+            .map(|(_, v)| v);
+        
+        if let Some(client_key) = client_api_key {
+            info!("🔍 [AnthropicApiAuth] 使用客户端提供的 anthropic-api-key");
+            info!("🔍 [AnthropicApiAuth] 客户端API密钥长度: {}, 前缀: {}", 
+                  client_key.len(), 
+                  if client_key.len() > 10 { &client_key[..10] } else { client_key });
+            
+            // 使用客户端提供的API密钥
+            headers.insert("x-api-key".to_string(), client_key.clone());
+            info!("✅ [AnthropicApiAuth] 使用客户端API密钥设置认证头部");
+            return Ok(headers);
+        }
+        
+        // 回退到账号配置的认证信息
+        info!("🔍 [AnthropicApiAuth] 客户端未提供API密钥，使用账号配置");
+        self.get_auth_headers(account).await
     }
     
     async fn validate_credentials(&self, account: &UpstreamAccount) -> AppResult<bool> {

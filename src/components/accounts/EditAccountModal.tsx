@@ -40,9 +40,8 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
   }
 
   const renderCredentialFields = () => {
-    switch (account.provider) {
-      case 'anthropic_api':
-      case 'ANTHROPIC_API':
+    switch (account.serviceProvider) {
+      case 'anthropic':
         return (
           <div className="space-y-4">
             <div>
@@ -89,7 +88,6 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
         )
 
       case 'anthropic_oauth':
-      case 'ANTHROPIC_OAUTH':
         return (
           <div className="bg-blue-50 border border-blue-200 rounded-sm p-4">
             <p className="text-sm text-blue-800">

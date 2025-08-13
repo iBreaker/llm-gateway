@@ -12,13 +12,20 @@ interface AccountListProps {
   onForceHealthCheck: (id: number) => void
 }
 
-// 提供商类型映射
-const providerTypeMap: Record<string, { color: string; text: string }> = {
-  anthropic_api: { color: 'bg-orange-100 text-orange-700', text: 'Anthropic API' },
-  anthropic_oauth: { color: 'bg-blue-100 text-blue-700', text: 'Anthropic OAuth' },
-  ANTHROPIC_API: { color: 'bg-orange-100 text-orange-700', text: 'Anthropic API' },
-  ANTHROPIC_OAUTH: { color: 'bg-blue-100 text-blue-700', text: 'Anthropic OAuth' },
+// 服务提供商映射
+const serviceProviderMap: Record<string, { color: string; text: string }> = {
+  anthropic: { color: 'bg-orange-100 text-orange-700', text: 'Anthropic' },
+  openai: { color: 'bg-green-100 text-green-700', text: 'OpenAI' },
+  gemini: { color: 'bg-blue-100 text-blue-700', text: 'Gemini' },
+  qwen: { color: 'bg-purple-100 text-purple-700', text: 'Qwen' },
 }
+
+// 认证方式映射
+const authMethodMap: Record<string, { color: string; text: string }> = {
+  api_key: { color: 'bg-gray-100 text-gray-700', text: 'API Key' },
+  oauth: { color: 'bg-blue-100 text-blue-700', text: 'OAuth' },
+}
+
 
 // 状态映射
 const statusMap: Record<string, { color: string; text: string; icon: any }> = {
@@ -64,7 +71,7 @@ export function AccountList({
               账号信息
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              类型
+              服务提供商/认证方式
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
               状态
@@ -80,9 +87,13 @@ export function AccountList({
         <tbody className="bg-white divide-y divide-zinc-200">
           {accounts.map((account) => {
             const statusInfo = statusMap[account.status] || statusMap.unknown
-            const providerInfo = providerTypeMap[account.provider] || { 
+            const serviceInfo = serviceProviderMap[account.serviceProvider] || { 
               color: 'bg-zinc-100 text-zinc-700', 
-              text: account.provider 
+              text: account.serviceProvider 
+            }
+            const authInfo = authMethodMap[account.authMethod] || {
+              color: 'bg-zinc-100 text-zinc-700',
+              text: account.authMethod
             }
             const StatusIcon = statusInfo.icon
 
@@ -98,16 +109,21 @@ export function AccountList({
                         {account.name}
                       </div>
                       <div className="text-sm text-zinc-500">
-                        ID: {account.id}
+                        ID: {account.id} • 创建于: {new Date(account.createdAt).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                 </td>
 
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${providerInfo.color}`}>
-                    {providerInfo.text}
-                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${serviceInfo.color}`}>
+                      {serviceInfo.text}
+                    </span>
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${authInfo.color}`}>
+                      {authInfo.text}
+                    </span>
+                  </div>
                 </td>
 
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -117,16 +133,16 @@ export function AccountList({
                       {statusInfo.text}
                     </span>
                   </div>
-                  {account.lastHealthCheck && (
-                    <div className="text-xs text-zinc-500 mt-1">
-                      最近检查: {new Date(account.lastHealthCheck).toLocaleString()}
-                    </div>
-                  )}
                 </td>
 
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">
                   <div>请求数: {account.requestCount}</div>
                   <div>成功率: {account.successRate.toFixed(1)}%</div>
+                  {account.oauthExpiresAt && (
+                    <div className="text-xs text-zinc-400 mt-1">
+                      OAuth过期: {new Date(account.oauthExpiresAt).toLocaleDateString()}
+                    </div>
+                  )}
                 </td>
 
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
