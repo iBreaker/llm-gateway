@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use rand::Rng;
 use tracing::{info, warn, instrument, debug};
 
-use crate::business::domain::{UpstreamAccount, AccountProvider};
+use crate::business::domain::UpstreamAccount;
 use crate::shared::{AppError, AppResult};
 use crate::shared::constants::load_balancer::*;
 
@@ -299,7 +299,7 @@ impl IntelligentLoadBalancer {
         info!(
             "🎯 智能负载均衡选择账号: {} (提供商: {:?}, 策略: {:?})", 
             selected.account_name,
-            selected.provider,
+            selected.provider_config,
             self.strategy
         );
 
@@ -452,9 +452,11 @@ impl IntelligentLoadBalancer {
                 }).unwrap_or(1.0);
 
                 // 提供商多样性评分（避免所有请求都打到同一个提供商）
-                let provider_diversity_score = match account.provider {
-                    AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => 1.0,
-                    AccountProvider::GeminiOauth | AccountProvider::QwenOauth => 1.0, // TODO: 实现
+                let provider_diversity_score = match account.provider_config.service_provider() {
+                    crate::business::domain::ServiceProvider::Anthropic => 1.0,
+                    crate::business::domain::ServiceProvider::OpenAI => 1.0,
+                    crate::business::domain::ServiceProvider::Gemini => 1.0,
+                    crate::business::domain::ServiceProvider::Qwen => 1.0,
                 };
 
                 // 综合评分：健康(25%) + 成功率(25%) + 响应时间(20%) + 负载(15%) + 多样性(15%)
@@ -565,14 +567,14 @@ impl IntelligentLoadBalancer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::business::domain::AccountCredentials;
+    use crate::business::domain::{AccountCredentials, ProviderConfig, ServiceProvider, AuthMethod};
     use chrono::Utc;
 
-    fn create_test_account(id: i64, provider: AccountProvider, health: HealthStatus) -> UpstreamAccount {
+    fn create_test_account(id: i64, provider_config: ProviderConfig) -> UpstreamAccount {
         UpstreamAccount {
             id,
             user_id: 1,
-            provider,
+            provider_config,
             account_name: format!("test_account_{}", id),
             credentials: AccountCredentials {
                 session_key: Some("test_key".to_string()),
@@ -582,9 +584,9 @@ mod tests {
                 base_url: None,
             },
             is_active: true,
-            health_status: health,
             created_at: Utc::now(),
-            last_health_check: Some(Utc::now()),
+            oauth_expires_at: None,
+            oauth_scopes: None,
         }
     }
 
@@ -592,8 +594,8 @@ mod tests {
     async fn test_round_robin_selection() {
         let balancer = IntelligentLoadBalancer::new(LoadBalancingStrategy::RoundRobin);
         let accounts = vec![
-            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Healthy),
+            create_test_account(1, ProviderConfig::anthropic_api()),
+            create_test_account(2, ProviderConfig::new(ServiceProvider::Anthropic, AuthMethod::OAuth)),
         ];
 
         let first = balancer.select_account(&accounts).await.unwrap();
@@ -609,8 +611,8 @@ mod tests {
     async fn test_health_based_selection() {
         let balancer = IntelligentLoadBalancer::new(LoadBalancingStrategy::HealthBased);
         let accounts = vec![
-            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Degraded),
+            create_test_account(1, ProviderConfig::anthropic_api()),
+            create_test_account(2, ProviderConfig::new(ServiceProvider::Anthropic, AuthMethod::OAuth)),
         ];
 
         let selected = balancer.select_account(&accounts).await.unwrap();
@@ -628,8 +630,8 @@ mod tests {
         }
 
         let accounts = vec![
-            create_test_account(1, AccountProvider::AnthropicApi, HealthStatus::Healthy),
-            create_test_account(2, AccountProvider::AnthropicOauth, HealthStatus::Healthy),
+            create_test_account(1, ProviderConfig::anthropic_api()),
+            create_test_account(2, ProviderConfig::new(ServiceProvider::Anthropic, AuthMethod::OAuth)),
         ];
 
         let selected = balancer.select_account(&accounts).await.unwrap();

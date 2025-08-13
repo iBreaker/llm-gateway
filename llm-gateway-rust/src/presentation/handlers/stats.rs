@@ -175,13 +175,13 @@ pub async fn get_detailed_stats(
     let requests_by_provider = sqlx::query!(
         r#"
         SELECT 
-            ua.provider,
+            ua.service_provider,
             COUNT(*) as request_count
         FROM usage_records ur
         JOIN upstream_accounts ua ON ur.upstream_account_id = ua.id
         WHERE ur.api_key_id = ANY($1::bigint[])
         AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
-        GROUP BY ua.provider
+        GROUP BY ua.service_provider
         "#,
         &api_key_ids,
         days as i32
@@ -192,12 +192,12 @@ pub async fn get_detailed_stats(
 
     let mut provider_stats = HashMap::new();
     for record in requests_by_provider {
-        let provider_name = match record.provider.as_str() {
-            "anthropic_api" => "Anthropic API",
-            "anthropic_oauth" => "Anthropic OAuth", 
-            "gemini_oauth" => "Gemini OAuth",
-            "qwen_oauth" => "Qwen OAuth",
-            _ => &record.provider,
+        let provider_name = match record.service_provider.as_str() {
+            "anthropic" => "Anthropic",
+            "openai" => "OpenAI", 
+            "gemini" => "Gemini",
+            "qwen" => "Qwen",
+            _ => &record.service_provider,
         };
         provider_stats.insert(provider_name.to_string(), record.request_count.unwrap_or(0));
     }
@@ -206,13 +206,13 @@ pub async fn get_detailed_stats(
     let cost_by_provider = sqlx::query!(
         r#"
         SELECT 
-            ua.provider,
+            ua.service_provider,
             COALESCE(SUM(ur.cost_usd), 0) as total_cost
         FROM usage_records ur
         JOIN upstream_accounts ua ON ur.upstream_account_id = ua.id
         WHERE ur.api_key_id = ANY($1::bigint[])
         AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
-        GROUP BY ua.provider
+        GROUP BY ua.service_provider
         "#,
         &api_key_ids,
         days as i32
@@ -223,12 +223,12 @@ pub async fn get_detailed_stats(
 
     let mut provider_costs = HashMap::new();
     for record in cost_by_provider {
-        let provider_name = match record.provider.as_str() {
-            "anthropic_api" => "Anthropic API",
-            "anthropic_oauth" => "Anthropic OAuth",
-            "gemini_oauth" => "Gemini OAuth",
-            "qwen_oauth" => "Qwen OAuth",
-            _ => &record.provider,
+        let provider_name = match record.service_provider.as_str() {
+            "anthropic" => "Anthropic",
+            "openai" => "OpenAI",
+            "gemini" => "Gemini",
+            "qwen" => "Qwen",
+            _ => &record.service_provider,
         };
         provider_costs.insert(provider_name.to_string(), record.total_cost.unwrap_or(0.0));
     }

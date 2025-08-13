@@ -188,7 +188,7 @@ impl IntelligentProxy {
         // 转发客户端请求头（过滤不应该转发的头部）
         info!("🔍 [{}] [上游请求] 开始转发客户端请求头", request.request_id);
         let mut forwarded_headers_count = 0;
-        let is_oauth = matches!(account.provider, crate::business::domain::AccountProvider::AnthropicOauth);
+        let is_oauth = account.provider_config.is_oauth();
         
         for (key, value) in &request.headers {
             let key_lower = key.to_lowercase();
@@ -317,16 +317,8 @@ impl IntelligentProxy {
         let base_url = if let Some(custom_base_url) = &account.credentials.base_url {
             custom_base_url.as_str()
         } else {
-            // 默认base_url
-            match account.provider {
-                crate::business::domain::AccountProvider::AnthropicApi => {
-                    "https://api.anthropic.com/v1"
-                }
-                crate::business::domain::AccountProvider::AnthropicOauth => {
-                    "https://api.anthropic.com"
-                }
-                _ => "https://api.unknown.com" // TODO: 实现其他提供商
-            }
+            // 使用提供商配置的默认base_url
+            account.provider_config.default_base_url()
         };
 
         // 直接使用请求路径，不做假设
@@ -353,10 +345,10 @@ impl IntelligentProxy {
         mut req_builder: reqwest::RequestBuilder,
         account: &UpstreamAccount,
     ) -> AppResult<reqwest::RequestBuilder> {
-        info!("🔍 [认证] 开始添加认证头部, 账号ID: {}, 提供商: {:?}", account.id, account.provider);
+        info!("🔍 [认证] 开始添加认证头部, 账号ID: {}, 提供商: {:?}", account.id, account.provider_config);
         
-        match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi => {
+        match (&account.provider_config.service, &account.provider_config.auth_method) {
+            (crate::business::domain::ServiceProvider::Anthropic, crate::business::domain::AuthMethod::ApiKey) => {
                 // AnthropicApi类型：使用session_key或access_token
                 let api_key = account.credentials.session_key.as_ref()
                     .or(account.credentials.access_token.as_ref());
@@ -379,7 +371,7 @@ impl IntelligentProxy {
                     return Err(AppError::Business("Anthropic API账号缺少认证信息".to_string()));
                 }
             }
-            crate::business::domain::AccountProvider::AnthropicOauth => {
+            (crate::business::domain::ServiceProvider::Anthropic, crate::business::domain::AuthMethod::OAuth) => {
                 // AnthropicOauth类型：专门使用OAuth access_token
                 if let Some(access_token) = &account.credentials.access_token {
                     info!("🔍 [认证] AnthropicOauth OAuth token长度: {}, 前缀: {}", 
@@ -416,7 +408,7 @@ impl IntelligentProxy {
                 }
             }
             _ => {
-                error!("❌ [认证] 不支持的提供商类型: {:?}", account.provider);
+                error!("❌ [认证] 不支持的提供商类型: {:?}", account.provider_config);
                 return Err(AppError::Business("不支持的提供商类型".to_string()));
             }
         }
@@ -451,7 +443,7 @@ impl IntelligentProxy {
         stats.total_cost_usd += cost_usd;
 
         // 按提供商统计
-        let provider_key = format!("{:?}", routing_decision.selected_account.provider);
+        let provider_key = format!("{:?}", routing_decision.selected_account.provider_config);
         *stats.requests_by_provider.entry(provider_key).or_insert(0) += 1;
 
         // 按策略统计

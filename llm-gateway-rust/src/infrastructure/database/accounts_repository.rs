@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, info, instrument};
 use serde_json;
 
-use crate::business::domain::{UpstreamAccount, AccountProvider, AccountCredentials};
+use crate::business::domain::{UpstreamAccount, ProviderConfig, AccountCredentials};
 use crate::shared::{AppError, AppResult};
 use crate::shared::types::{UserId, UpstreamAccountId};
 use crate::infrastructure::cache::{SimpleCache, AccountStats};
@@ -43,12 +43,15 @@ impl AccountsRepository {
             SELECT 
                 id,
                 user_id,
-                provider,
+                service_provider,
+                auth_method,
                 name,
                 credentials,
                 is_active,
                 created_at,
-                updated_at
+                updated_at,
+                oauth_expires_at,
+                oauth_scopes
             FROM upstream_accounts 
             WHERE user_id = $1 
             ORDER BY created_at DESC
@@ -67,8 +70,9 @@ impl AccountsRepository {
         let accounts: Vec<UpstreamAccount> = rows.into_iter()
             .map(|row| {
                 info!("🔍 处理记录: id={}, name={}", row.id, row.name);
-                let provider = AccountProvider::from_str(&row.provider)
-                    .unwrap_or(AccountProvider::AnthropicApi); // 默认值
+                
+                let provider_config = ProviderConfig::from_database_fields(&row.service_provider, &row.auth_method)
+                    .unwrap_or_else(|_| ProviderConfig::anthropic_api());
 
                 let credentials: AccountCredentials = serde_json::from_value(row.credentials)
                     .unwrap_or_else(|_| AccountCredentials {
@@ -82,18 +86,20 @@ impl AccountsRepository {
                 UpstreamAccount {
                     id: row.id,
                     user_id: row.user_id,
-                    provider,
+                    provider_config,
                     account_name: row.name,
                     credentials,
                     is_active: row.is_active,
                     created_at: row.created_at,
+                    oauth_expires_at: row.oauth_expires_at,
+                    oauth_scopes: row.oauth_scopes,
                 }
             })
             .collect();
 
         info!("🔍 最终返回 {} 个上游账号", accounts.len());
         for account in &accounts {
-            info!("🔍 账号详情: id={}, name={}, provider={:?}", account.id, account.account_name, account.provider);
+            info!("🔍 账号详情: id={}, name={}, provider={:?}", account.id, account.account_name, account.provider_config);
         }
         Ok(accounts)
     }
@@ -108,12 +114,15 @@ impl AccountsRepository {
             SELECT 
                 id,
                 user_id,
-                provider,
+                service_provider,
+                auth_method,
                 name,
                 credentials,
                 is_active,
                 created_at,
-                updated_at
+                updated_at,
+                oauth_expires_at,
+                oauth_scopes
             FROM upstream_accounts 
             WHERE id = $1 AND user_id = $2
             "#,
@@ -128,8 +137,8 @@ impl AccountsRepository {
         })?;
 
         let account = if let Some(row) = row {
-            let provider = AccountProvider::from_str(&row.provider)
-                .unwrap_or(AccountProvider::AnthropicApi);
+            let provider_config = ProviderConfig::from_database_fields(&row.service_provider, &row.auth_method)
+                .unwrap_or_else(|_| ProviderConfig::anthropic_api());
 
             let credentials: AccountCredentials = serde_json::from_value(row.credentials)
                 .unwrap_or_else(|_| AccountCredentials {
@@ -143,11 +152,13 @@ impl AccountsRepository {
             Some(UpstreamAccount {
                 id: row.id,
                 user_id: row.user_id,
-                provider,
+                provider_config,
                 account_name: row.name,
                 credentials,
                 is_active: row.is_active,
                 created_at: row.created_at,
+                oauth_expires_at: row.oauth_expires_at,
+                oauth_scopes: row.oauth_scopes,
             })
         } else {
             None
@@ -161,11 +172,12 @@ impl AccountsRepository {
     pub async fn create(
         &self,
         user_id: UserId,
-        provider: &AccountProvider,
+        provider_config: &ProviderConfig,
         name: &str,
         credentials: &AccountCredentials,
+        base_url: Option<&str>,
     ) -> AppResult<UpstreamAccount> {
-        info!("创建上游账号: {} (提供商: {}, 用户: {})", name, provider.as_str(), user_id);
+        info!("创建上游账号: {} (提供商: {:?}, 用户: {})", name, provider_config, user_id);
 
         let credentials_json = serde_json::to_value(credentials)
             .map_err(|e| {
@@ -177,24 +189,29 @@ impl AccountsRepository {
             r#"
             INSERT INTO upstream_accounts (
                 user_id, 
-                provider, 
+                service_provider, 
+                auth_method,
                 name, 
                 credentials, 
                 is_active
             ) 
-            VALUES ($1, $2, $3, $4, true)
+            VALUES ($1, $2, $3, $4, $5, true)
             RETURNING 
                 id,
                 user_id,
-                provider,
+                service_provider,
+                auth_method,
                 name,
                 credentials,
                 is_active,
                 created_at,
-                updated_at
+                updated_at,
+                oauth_expires_at,
+                oauth_scopes
             "#,
             user_id,
-            provider.as_str(),
+            provider_config.service_provider().as_str(),
+            provider_config.auth_method().as_str(),
             name,
             credentials_json
         )
@@ -205,8 +222,8 @@ impl AccountsRepository {
             AppError::Database(e)
         })?;
 
-        let provider = AccountProvider::from_str(&row.provider)
-            .unwrap_or(AccountProvider::AnthropicApi);
+        let provider_config = ProviderConfig::from_database_fields(&row.service_provider, &row.auth_method)
+            .unwrap_or_else(|_| ProviderConfig::anthropic_api());
 
         let credentials: AccountCredentials = serde_json::from_value(row.credentials)
             .unwrap_or_else(|_| AccountCredentials {
@@ -220,11 +237,13 @@ impl AccountsRepository {
         let account = UpstreamAccount {
             id: row.id,
             user_id: row.user_id,
-            provider,
+            provider_config,
             account_name: row.name,
             credentials,
             is_active: row.is_active,
             created_at: row.created_at,
+            oauth_expires_at: row.oauth_expires_at,
+            oauth_scopes: row.oauth_scopes,
         };
 
         info!("上游账号创建成功: ID {}", account.id);

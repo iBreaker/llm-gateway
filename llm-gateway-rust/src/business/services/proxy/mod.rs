@@ -17,3 +17,6 @@ pub use metrics::ProxyStats;
 
 // 重新导出原有的公共类型以保持向后兼容
 pub use coordinator::{ProxyRequest, ProxyResponse};
+
+// 类型别名保持向后兼容
+pub type IntelligentProxy = ProxyCoordinator;

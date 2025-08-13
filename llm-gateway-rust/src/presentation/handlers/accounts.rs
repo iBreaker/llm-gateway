@@ -7,52 +7,13 @@ use axum::{
     response::Json,
     Extension,
 };
-use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
 use crate::shared::{AppError, AppResult};
 use crate::auth::Claims;
-use crate::business::domain::{AccountProvider, AccountCredentials};
+use crate::presentation::dto::accounts::*;
 
-/// 上游账号信息
-#[derive(Debug, Serialize)]
-pub struct AccountInfo {
-    pub id: i64,
-    pub name: String,
-    pub account_type: String,
-    pub provider: String,
-    pub status: String,
-    pub is_active: bool,
-    pub created_at: String,
-    pub last_health_check: Option<String>,
-    pub request_count: i64,
-    pub success_rate: f64,
-}
-
-/// 账号列表响应
-#[derive(Debug, Serialize)]
-pub struct AccountsListResponse {
-    pub accounts: Vec<AccountInfo>,
-    pub total: i64,
-}
-
-/// 创建账号请求
-#[derive(Debug, Deserialize)]
-pub struct CreateAccountRequest {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub account_type: String,
-    pub provider: String,
-    pub credentials: serde_json::Value,
-}
-
-/// 更新账号请求
-#[derive(Debug, Deserialize)]
-pub struct UpdateAccountRequest {
-    pub name: String,
-    pub is_active: bool,
-    pub credentials: Option<serde_json::Value>,
-}
+// 使用 DTO 模块中定义的数据结构
 
 /// 获取账号列表
 #[instrument(skip(app_state))]
@@ -81,14 +42,9 @@ pub async fn list_accounts(
                 (0, 0.0)
             });
 
-        // 使用新的方法获取显示类型和提供商名称
-        let account_type = match account.provider {
-            AccountProvider::AnthropicApi => "anthropic_api",
-            AccountProvider::AnthropicOauth => "anthropic_oauth",
-            _ => "unknown", // TODO: 实现其他提供商
-        };
-
-        let provider = account.provider.provider_name();
+        // 使用新架构：service_provider + auth_method
+        let service_provider = account.provider_config.service_provider().to_string();
+        let auth_method = account.provider_config.auth_method().to_string();
 
         // 使用实时健康状态检查而不是存储的状态
         let real_time_status = account.check_real_time_health().await;
@@ -96,14 +52,15 @@ pub async fn list_accounts(
         accounts.push(AccountInfo {
             id: account.id,
             name: account.account_name,
-            account_type: account_type.to_string(),
-            provider: provider.to_string(),
+            service_provider,
+            auth_method,
             status: real_time_status.as_str().to_string(),
             is_active: account.is_active,
             created_at: account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_health_check: None, // 不再使用数据库存储的健康检查时间
             request_count,
             success_rate,
+            oauth_expires_at: account.oauth_expires_at,
+            oauth_scopes: account.oauth_scopes,
         });
     }
 
@@ -128,43 +85,21 @@ pub async fn create_account(
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
 
-    // 解析账号提供商（基于前端发送的type字段）
-    let provider = match request.account_type.as_str() {
-        "anthropic_api" | "ANTHROPIC_API" => AccountProvider::AnthropicApi,
-        "anthropic_oauth" | "ANTHROPIC_OAUTH" => AccountProvider::AnthropicOauth,
-        _ => return Err(AppError::Validation(
-            format!("不支持的账号类型: {}", request.account_type)
-        )),
-    };
+    // 验证并转换为 ProviderConfig
+    let provider_config = request.validate_and_convert()
+        .map_err(|e| AppError::Validation(e))?;
 
-    // 解析凭据
-    let credentials = if let Some(creds_obj) = request.credentials.as_object() {
-        AccountCredentials {
-            session_key: creds_obj.get("session_key")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            access_token: creds_obj.get("access_token")
-                .or_else(|| creds_obj.get("api_key"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            refresh_token: creds_obj.get("refresh_token")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            expires_at: None,
-            base_url: creds_obj.get("base_url")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-        }
-    } else {
-        return Err(AppError::Validation("凭据格式无效".to_string()));
-    };
+    // 提取基础URL
+    let base_url = request.base_url();
 
     // 创建账号
+    let domain_credentials = request.credentials.to_domain();
     let upstream_account = database.accounts.create(
         user_id,
-        &provider,
+        &provider_config,
         &request.name,
-        &credentials,
+        &domain_credentials,
+        base_url.as_deref(),
     ).await?;
 
     // 获取新创建账号的统计数据
@@ -174,13 +109,8 @@ pub async fn create_account(
             (0, 0.0)
         });
 
-    let account_type = match upstream_account.provider {
-        AccountProvider::AnthropicApi => "anthropic_api",
-        AccountProvider::AnthropicOauth => "anthropic_oauth",
-        _ => "unknown", // TODO: 实现其他提供商
-    };
-
-    let provider_name = upstream_account.provider.provider_name();
+    let service_provider = upstream_account.provider_config.service_provider().to_string();
+    let auth_method = upstream_account.provider_config.auth_method().to_string();
 
     // 使用实时健康状态检查
     let real_time_status = upstream_account.check_real_time_health().await;
@@ -188,14 +118,15 @@ pub async fn create_account(
     let account = AccountInfo {
         id: upstream_account.id,
         name: upstream_account.account_name,
-        account_type: account_type.to_string(),
-        provider: provider_name.to_string(),
+        service_provider,
+        auth_method,
         status: real_time_status.as_str().to_string(),
         is_active: upstream_account.is_active,
         created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        last_health_check: None, // 不再使用数据库存储的健康检查时间
         request_count,
         success_rate,
+        oauth_expires_at: upstream_account.oauth_expires_at,
+        oauth_scopes: upstream_account.oauth_scopes,
     };
 
     info!("✅ 账号创建成功: {} (ID: {})", account.name, account.id);
@@ -218,31 +149,15 @@ pub async fn update_account(
     let user_id: i64 = claims.sub.parse()
         .map_err(|_| AppError::Validation("无效的用户ID".to_string()))?;
 
-    // 解析凭据（如果提供）
-    let credentials = if let Some(creds_value) = &request.credentials {
-        if let Some(creds_obj) = creds_value.as_object() {
-            Some(AccountCredentials {
-                session_key: creds_obj.get("session_key")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                access_token: creds_obj.get("access_token")
-                    .or_else(|| creds_obj.get("api_key"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                refresh_token: creds_obj.get("refresh_token")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                expires_at: None,
-                base_url: creds_obj.get("base_url")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-            })
-        } else {
-            return Err(AppError::Validation("凭据格式无效".to_string()));
-        }
-    } else {
-        None
-    };
+    // 首先获取现有账号信息以确定认证方式
+    let existing_account = database.accounts.get_by_id(account_id, user_id).await?
+        .ok_or_else(|| AppError::NotFound("账号不存在或无权限访问".to_string()))?;
+    
+    // 验证凭据（如果提供）
+    if let Some(ref _credentials) = request.credentials {
+        request.validate_credentials(existing_account.provider_config.auth_method())
+            .map_err(|e| AppError::Validation(e))?;
+    }
 
     // 执行更新
     let updated_account = database.accounts.update(
@@ -250,7 +165,7 @@ pub async fn update_account(
         user_id,
         Some(&request.name),
         Some(request.is_active),
-        credentials.as_ref(),
+        request.credentials.as_ref().map(|c| c.to_domain()).as_ref(),
     ).await?;
 
     if let Some(upstream_account) = updated_account {
@@ -261,13 +176,8 @@ pub async fn update_account(
                 (0, 0.0)
             });
 
-        let account_type = match upstream_account.provider {
-            AccountProvider::AnthropicApi => "anthropic_api",
-            AccountProvider::AnthropicOauth => "anthropic_oauth",
-            _ => "unknown", // TODO: 实现其他提供商
-        };
-
-        let provider_name = upstream_account.provider.provider_name();
+        let service_provider = upstream_account.provider_config.service_provider().to_string();
+        let auth_method = upstream_account.provider_config.auth_method().to_string();
 
         // 使用实时健康状态检查
         let real_time_status = upstream_account.check_real_time_health().await;
@@ -275,14 +185,15 @@ pub async fn update_account(
         let account = AccountInfo {
             id: upstream_account.id,
             name: upstream_account.account_name,
-            account_type: account_type.to_string(),
-            provider: provider_name.to_string(),
+            service_provider,
+            auth_method,
             status: real_time_status.as_str().to_string(),
             is_active: upstream_account.is_active,
             created_at: upstream_account.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_health_check: None, // 不再使用数据库存储的健康检查时间
             request_count,
             success_rate,
+            oauth_expires_at: upstream_account.oauth_expires_at,
+            oauth_scopes: upstream_account.oauth_scopes,
         };
 
         info!("✅ 账号更新成功: {} (ID: {})", account.name, account.id);
@@ -329,21 +240,32 @@ pub async fn health_check_account(
     State(_app_state): State<crate::presentation::routes::AppState>,
     Extension(claims): Extension<Claims>,
     Path(account_id): Path<i64>,
-) -> AppResult<Json<serde_json::Value>> {
+) -> AppResult<Json<HealthCheckResponse>> {
     info!("🏥 手动强制账号健康检查请求: ID {} (操作者: {})", account_id, claims.username);
 
     // 模拟健康检查
-    let health_status = serde_json::json!({
-        "id": account_id,
-        "status": "healthy",
-        "response_time": 150,
-        "last_check": "2025-08-05T13:26:00Z",
-        "success_rate": 98.5,
-        "message": "账号状态正常"
-    });
+    let health_status = HealthCheckResponse {
+        id: account_id,
+        status: "healthy".to_string(),
+        response_time_ms: Some(150),
+        last_check: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        success_rate: 98.5,
+        message: "账号状态正常".to_string(),
+    };
 
     info!("✅ 账号健康检查完成: ID {}", account_id);
 
     Ok(Json(health_status))
+}
+
+/// 获取支持的提供商列表
+#[instrument]
+pub async fn get_supported_providers() -> AppResult<Json<SupportedProvidersResponse>> {
+    info!("📋 获取支持的提供商列表");
+    
+    let response = SupportedProvidersResponse::new();
+    
+    info!("✅ 返回 {} 个支持的提供商", response.providers.len());
+    Ok(Json(response))
 }
 

@@ -8,7 +8,7 @@ use bytes::Bytes;
 use futures_util::Stream;
 use std::pin::Pin;
 
-use crate::business::domain::{UpstreamAccount, AccountProvider};
+use crate::business::domain::{UpstreamAccount, ServiceProvider, AuthMethod, ProviderConfig};
 use crate::shared::{AppError, AppResult};
 
 /// 认证策略接口
@@ -20,8 +20,8 @@ pub trait AuthStrategy: Send + Sync {
     /// 验证认证信息是否有效
     async fn validate_credentials(&self, account: &UpstreamAccount) -> AppResult<bool>;
     
-    /// 获取支持的提供商类型
-    fn supported_provider(&self) -> AccountProvider;
+    /// 获取支持的提供商配置
+    fn supported_config(&self) -> ProviderConfig;
 }
 
 /// 请求构建器接口
@@ -39,8 +39,8 @@ pub trait RequestBuilder: Send + Sync {
     /// 添加提供商特定的头部
     fn add_provider_headers(&self, account: &UpstreamAccount) -> HashMap<String, String>;
     
-    /// 获取支持的提供商类型
-    fn supported_provider(&self) -> AccountProvider;
+    /// 获取支持的提供商配置
+    fn supported_config(&self) -> ProviderConfig;
 }
 
 /// 响应处理器接口
@@ -63,8 +63,8 @@ pub trait ResponseProcessor: Send + Sync {
     /// 计算请求成本
     fn calculate_cost(&self, token_usage: &TokenUsage, account: &UpstreamAccount) -> f64;
     
-    /// 获取支持的提供商类型
-    fn supported_provider(&self) -> AccountProvider;
+    /// 获取支持的提供商配置
+    fn supported_config(&self) -> ProviderConfig;
 }
 
 /// Token使用统计
@@ -94,14 +94,14 @@ impl Default for TokenUsage {
 /// 提供商工厂接口
 pub trait ProviderFactory: Send + Sync {
     /// 创建认证策略
-    fn create_auth_strategy(&self, provider: &AccountProvider) -> Option<Box<dyn AuthStrategy>>;
+    fn create_auth_strategy(&self, config: &ProviderConfig) -> Option<Box<dyn AuthStrategy>>;
     
     /// 创建请求构建器
-    fn create_request_builder(&self, provider: &AccountProvider) -> Option<Box<dyn RequestBuilder>>;
+    fn create_request_builder(&self, config: &ProviderConfig) -> Option<Box<dyn RequestBuilder>>;
     
     /// 创建响应处理器
-    fn create_response_processor(&self, provider: &AccountProvider) -> Option<Box<dyn ResponseProcessor>>;
+    fn create_response_processor(&self, config: &ProviderConfig) -> Option<Box<dyn ResponseProcessor>>;
     
-    /// 获取支持的提供商列表
-    fn supported_providers(&self) -> Vec<AccountProvider>;
+    /// 获取支持的提供商配置列表
+    fn supported_configs(&self) -> Vec<ProviderConfig>;
 }

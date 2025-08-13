@@ -97,9 +97,9 @@ pub async fn get_settings(
 
     // 查询所有设置
     let settings_rows = sqlx::query!(
-        "SELECT key, value, description, category, value_type 
+        "SELECT key, value, description, value_type 
          FROM system_settings 
-         ORDER BY category, key"
+         ORDER BY key"
     )
     .fetch_all(database.pool())
     .await
@@ -288,7 +288,7 @@ pub async fn get_setting(
     info!("🔍 获取单个设置: {} (用户: {})", key, claims.username);
 
     let setting_row = sqlx::query!(
-        "SELECT key, value, description, category, value_type 
+        "SELECT key, value, description, value_type 
          FROM system_settings 
          WHERE key = $1",
         key
@@ -302,7 +302,7 @@ pub async fn get_setting(
             key: row.key,
             value: row.value,
             description: row.description,
-            category: row.category,
+            category: "general".to_string(), // 默认分类
             value_type: row.value_type,
         },
         None => {

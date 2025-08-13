@@ -6,6 +6,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::shared::types::{UserId, ApiKeyId, UpstreamAccountId};
 
+pub mod provider;
+pub mod legacy_compat;
+
+pub use provider::{ServiceProvider, AuthMethod, ProviderConfig};
+pub use legacy_compat::AccountProvider;
+
 /// 用户领域模型
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -77,11 +83,14 @@ impl ApiKey {
 pub struct UpstreamAccount {
     pub id: UpstreamAccountId,
     pub user_id: UserId,
-    pub provider: AccountProvider,
+    pub provider_config: ProviderConfig,
     pub account_name: String,
     pub credentials: AccountCredentials,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
+    // OAuth 相关字段
+    pub oauth_expires_at: Option<i64>,
+    pub oauth_scopes: Option<String>,
 }
 
 impl UpstreamAccount {
@@ -107,24 +116,36 @@ impl UpstreamAccount {
 
     /// 执行实际的健康检查
     async fn perform_health_check(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // 这里应该根据提供商类型实现具体的健康检查逻辑
-        match self.provider {
-            AccountProvider::AnthropicApi => {
-                // 对于 API Key 类型，可以尝试简单的 API 调用
+        // 这里应该根据提供商配置实现具体的健康检查逻辑
+        match (&self.provider_config.service, &self.provider_config.auth_method) {
+            (ServiceProvider::Anthropic, AuthMethod::ApiKey) => {
+                // Anthropic API Key 健康检查
                 self.check_anthropic_api_health().await
             },
-            AccountProvider::AnthropicOauth => {
-                // 对于 OAuth 类型，检查 token 有效性
+            (ServiceProvider::Anthropic, AuthMethod::OAuth) => {
+                // Anthropic OAuth 健康检查
                 self.check_anthropic_oauth_health().await
             },
-            AccountProvider::GeminiOauth => {
-                // Gemini OAuth 健康检查（待实现）
+            (ServiceProvider::OpenAI, AuthMethod::ApiKey) => {
+                // OpenAI API Key 健康检查
+                self.check_openai_api_health().await
+            },
+            (ServiceProvider::Gemini, AuthMethod::ApiKey) => {
+                // Gemini API Key 健康检查
+                self.check_gemini_api_health().await
+            },
+            (ServiceProvider::Gemini, AuthMethod::OAuth) => {
+                // Gemini OAuth 健康检查
                 self.check_gemini_oauth_health().await
             },
-            AccountProvider::QwenOauth => {
-                // Qwen OAuth 健康检查（待实现）
+            (ServiceProvider::Qwen, AuthMethod::OAuth) => {
+                // Qwen OAuth 健康检查
                 self.check_qwen_oauth_health().await
             },
+            _ => {
+                // 不支持的配置组合
+                Err("不支持的提供商配置组合".into())
+            }
         }
     }
 
@@ -153,23 +174,51 @@ impl UpstreamAccount {
         }
     }
 
-    /// 检查 Gemini OAuth 健康状态（待实现）
-    async fn check_gemini_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // TODO: 实现 Gemini OAuth 健康检查
-        if self.credentials.access_token.is_some() {
+    /// 检查 OpenAI API 健康状态
+    async fn check_openai_api_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查 OpenAI API Key 凭据
+        if self.credentials.access_token.is_some() || self.credentials.session_key.is_some() {
             Ok(())
         } else {
-            Err("Gemini OAuth 功能尚未实现".into())
+            Err("缺少 OpenAI API Key".into())
         }
     }
 
-    /// 检查 Qwen OAuth 健康状态（待实现）
-    async fn check_qwen_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // TODO: 实现 Qwen OAuth 健康检查
-        if self.credentials.access_token.is_some() {
+    /// 检查 Gemini API 健康状态
+    async fn check_gemini_api_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查 Gemini API Key 凭据
+        if self.credentials.access_token.is_some() || self.credentials.session_key.is_some() {
             Ok(())
         } else {
-            Err("Qwen OAuth 功能尚未实现".into())
+            Err("缺少 Gemini API Key".into())
+        }
+    }
+
+    /// 检查 Gemini OAuth 健康状态
+    async fn check_gemini_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查 Gemini OAuth token
+        if self.credentials.is_valid() && self.credentials.access_token.is_some() {
+            if self.credentials.needs_refresh() && self.credentials.refresh_token.is_none() {
+                Err("Gemini OAuth token 即将过期且无法刷新".into())
+            } else {
+                Ok(())
+            }
+        } else {
+            Err("Gemini OAuth token 无效或过期".into())
+        }
+    }
+
+    /// 检查 Qwen OAuth 健康状态
+    async fn check_qwen_oauth_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查 Qwen OAuth token
+        if self.credentials.is_valid() && self.credentials.access_token.is_some() {
+            if self.credentials.needs_refresh() && self.credentials.refresh_token.is_none() {
+                Err("Qwen OAuth token 即将过期且无法刷新".into())
+            } else {
+                Ok(())
+            }
+        } else {
+            Err("Qwen OAuth token 无效或过期".into())
         }
     }
 
@@ -185,76 +234,6 @@ impl UpstreamAccount {
     }
 }
 
-/// 账号提供商
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AccountProvider {
-    AnthropicApi,     // Anthropic API Key 方式
-    AnthropicOauth,   // Anthropic OAuth 方式
-    GeminiOauth,      // Gemini OAuth 方式（待实现）
-    QwenOauth,        // Qwen OAuth 方式（待实现）
-}
-
-impl AccountProvider {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AccountProvider::AnthropicApi => "anthropic_api",
-            AccountProvider::AnthropicOauth => "anthropic_oauth",
-            AccountProvider::GeminiOauth => "gemini_oauth",
-            AccountProvider::QwenOauth => "qwen_oauth",
-        }
-    }
-
-    /// 从字符串解析AccountProvider
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "anthropic_api" => Some(AccountProvider::AnthropicApi),
-            "anthropic_oauth" => Some(AccountProvider::AnthropicOauth),
-            "gemini_oauth" => Some(AccountProvider::GeminiOauth),
-            "qwen_oauth" => Some(AccountProvider::QwenOauth),
-            _ => None,
-        }
-    }
-
-    /// 获取显示名称
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            AccountProvider::AnthropicApi => "Anthropic API",
-            AccountProvider::AnthropicOauth => "Anthropic OAuth",
-            AccountProvider::GeminiOauth => "Gemini OAuth",
-            AccountProvider::QwenOauth => "Qwen OAuth",
-        }
-    }
-
-    /// 获取提供商名称
-    pub fn provider_name(&self) -> &'static str {
-        match self {
-            AccountProvider::AnthropicApi | AccountProvider::AnthropicOauth => "Anthropic",
-            AccountProvider::GeminiOauth => "Google Gemini",
-            AccountProvider::QwenOauth => "Alibaba Qwen",
-        }
-    }
-
-    /// 判断是否为 OAuth 类型
-    pub fn is_oauth(&self) -> bool {
-        match self {
-            AccountProvider::AnthropicOauth | 
-            AccountProvider::GeminiOauth | 
-            AccountProvider::QwenOauth => true,
-            AccountProvider::AnthropicApi => false,
-        }
-    }
-
-    /// 获取支持的认证方式
-    pub fn auth_methods(&self) -> Vec<&'static str> {
-        match self {
-            AccountProvider::AnthropicApi => vec!["api_key"],
-            AccountProvider::AnthropicOauth => vec!["oauth"],
-            AccountProvider::GeminiOauth => vec!["oauth"],
-            AccountProvider::QwenOauth => vec!["oauth"],
-        }
-    }
-}
 
 /// 账号凭据
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -128,7 +128,7 @@ pub struct CreateApiKeyRequest {
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateUpstreamAccountRequest {
     pub user_id: UserId,
-    pub provider: AccountProvider,
+    pub provider: ProviderConfig,
     pub account_name: String,
     pub credentials: AccountCredentials,
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
 
-use crate::business::domain::{UpstreamAccount, AccountProvider, User};
+use crate::business::domain::{UpstreamAccount, ServiceProvider, User};
 use crate::business::services::load_balancer::{IntelligentLoadBalancer, LoadBalancingStrategy};
 use crate::shared::{AppError, AppResult};
 
@@ -59,7 +59,7 @@ pub enum RequestType {
 pub struct UserPreferences {
     pub user_id: i64,
     /// 偏好的提供商
-    pub preferred_providers: Vec<AccountProvider>,
+    pub preferred_providers: Vec<ServiceProvider>,
     /// 最大可接受延迟（毫秒）
     pub max_acceptable_latency_ms: u64,
     /// 成本敏感度 (0.0-1.0)
@@ -74,7 +74,7 @@ impl Default for UserPreferences {
     fn default() -> Self {
         Self {
             user_id: 0,
-            preferred_providers: vec![AccountProvider::AnthropicApi, AccountProvider::AnthropicOauth],
+            preferred_providers: vec![ServiceProvider::Anthropic],
             max_acceptable_latency_ms: 10000, // 10秒
             cost_sensitivity: 0.5,
             quality_preference: 0.8,
@@ -96,13 +96,13 @@ pub struct RoutingDecision {
 pub struct SmartRouter {
     load_balancers: HashMap<LoadBalancingStrategy, Arc<IntelligentLoadBalancer>>,
     user_preferences: Arc<RwLock<HashMap<i64, UserPreferences>>>,
-    provider_capabilities: HashMap<AccountProvider, ProviderCapabilities>,
+    provider_capabilities: HashMap<ServiceProvider, ProviderCapabilities>,
 }
 
 /// 提供商能力特征
 #[derive(Debug, Clone)]
 pub struct ProviderCapabilities {
-    pub provider: AccountProvider,
+    pub provider: ServiceProvider,
     /// 支持的模型列表
     pub supported_models: Vec<String>,
     /// 最大token数
@@ -155,9 +155,9 @@ impl SmartRouter {
         // 初始化提供商能力
         let mut provider_capabilities = HashMap::new();
         provider_capabilities.insert(
-            AccountProvider::AnthropicApi,
+            ServiceProvider::Anthropic,
             ProviderCapabilities {
-                provider: AccountProvider::AnthropicApi,
+                provider: ServiceProvider::Anthropic,
                 supported_models: vec![
                     "claude-3-sonnet".to_string(),
                     "claude-3-haiku".to_string(),
@@ -177,24 +177,60 @@ impl SmartRouter {
             }
         );
         provider_capabilities.insert(
-            AccountProvider::AnthropicOauth,
+            ServiceProvider::OpenAI,
             ProviderCapabilities {
-                provider: AccountProvider::AnthropicOauth,
+                provider: ServiceProvider::OpenAI,
                 supported_models: vec![
-                    "claude-3-sonnet".to_string(),
-                    "claude-3-haiku".to_string(),
-                    "claude-3-opus".to_string(),
-                    "claude-sonnet-4".to_string(),
+                    "gpt-4".to_string(),
+                    "gpt-3.5-turbo".to_string(),
+                    "gpt-4-turbo".to_string(),
                 ],
-                max_tokens: 32000,
-                cost_per_1k_tokens: 0.002,
+                max_tokens: 128000,
+                cost_per_1k_tokens: 0.01,
                 quality_score: 0.85,
                 specialties: vec![
                     RequestType::Chat,
+                    RequestType::CodeGeneration,
                     RequestType::Summarization,
+                ],
+                supports_streaming: true,
+            }
+        );
+        provider_capabilities.insert(
+            ServiceProvider::Gemini,
+            ProviderCapabilities {
+                provider: ServiceProvider::Gemini,
+                supported_models: vec![
+                    "gemini-pro".to_string(),
+                    "gemini-pro-vision".to_string(),
+                ],
+                max_tokens: 30720,
+                cost_per_1k_tokens: 0.0025,
+                quality_score: 0.8,
+                specialties: vec![
+                    RequestType::Chat,
+                    RequestType::Analysis,
                     RequestType::Translation,
                 ],
                 supports_streaming: true,
+            }
+        );
+        provider_capabilities.insert(
+            ServiceProvider::Qwen,
+            ProviderCapabilities {
+                provider: ServiceProvider::Qwen,
+                supported_models: vec![
+                    "qwen-turbo".to_string(),
+                    "qwen-plus".to_string(),
+                ],
+                max_tokens: 8192,
+                cost_per_1k_tokens: 0.001,
+                quality_score: 0.75,
+                specialties: vec![
+                    RequestType::Chat,
+                    RequestType::Translation,
+                ],
+                supports_streaming: false,
             }
         );
 
@@ -277,12 +313,12 @@ impl SmartRouter {
             }
 
             // 检查提供商是否在用户偏好中
-            if !user_prefs.preferred_providers.contains(&account.provider) {
+            if !user_prefs.preferred_providers.contains(account.provider_config.service_provider()) {
                 continue;
             }
 
             // 检查提供商能力
-            if let Some(capabilities) = self.provider_capabilities.get(&account.provider) {
+            if let Some(capabilities) = self.provider_capabilities.get(account.provider_config.service_provider()) {
                 // 检查模型支持
                 let model_supported = capabilities.supported_models.iter().any(|supported_model| features.model.starts_with(supported_model));
                 if !model_supported {
@@ -311,7 +347,7 @@ impl SmartRouter {
         if suitable.is_empty() {
             for account in accounts {
                 if account.is_active && 
-                   user_prefs.preferred_providers.contains(&account.provider) {
+                   user_prefs.preferred_providers.contains(account.provider_config.service_provider()) {
                     suitable.push(account.clone());
                 }
             }
@@ -380,7 +416,7 @@ impl SmartRouter {
         let mut confidence: f64 = 0.5; // 基础置信度
 
         // 提供商能力匹配度
-        if let Some(capabilities) = self.provider_capabilities.get(&account.provider) {
+        if let Some(capabilities) = self.provider_capabilities.get(account.provider_config.service_provider()) {
             if capabilities.specialties.contains(&features.request_type) {
                 confidence += 0.2;
             }
@@ -393,7 +429,7 @@ impl SmartRouter {
         }
 
         // 用户偏好匹配度
-        if user_prefs.preferred_providers.contains(&account.provider) {
+        if user_prefs.preferred_providers.contains(account.provider_config.service_provider()) {
             confidence += 0.1;
         }
 
@@ -418,7 +454,7 @@ impl SmartRouter {
         let mut reasons = Vec::new();
 
         reasons.push(format!("策略: {:?}", strategy));
-        reasons.push(format!("提供商: {:?}", account.provider));
+        reasons.push(format!("提供商: {:?}", account.provider_config));
         reasons.push(format!("账号状态: {}", if account.is_active { "活跃" } else { "非活跃" }));
         reasons.push(format!("请求类型: {:?}", features.request_type));
         reasons.push(format!("优先级: {:?}", features.priority));
@@ -504,7 +540,7 @@ impl Default for SmartRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::business::domain::{AccountCredentials, HealthStatus};
+    use crate::business::domain::{AccountCredentials, ProviderConfig, ServiceProvider, AuthMethod};
     use chrono::Utc;
 
     fn create_test_user(id: i64) -> User {
@@ -518,11 +554,11 @@ mod tests {
         }
     }
 
-    fn create_test_account(id: i64, provider: AccountProvider) -> UpstreamAccount {
+    fn create_test_account(id: i64, provider_config: ProviderConfig) -> UpstreamAccount {
         UpstreamAccount {
             id,
             user_id: 1,
-            provider,
+            provider_config,
             account_name: format!("test_account_{}", id),
             credentials: AccountCredentials {
                 session_key: Some("test_key".to_string()),
@@ -532,9 +568,9 @@ mod tests {
                 base_url: None,
             },
             is_active: true,
-            health_status: HealthStatus::Healthy,
             created_at: Utc::now(),
-            last_health_check: Some(Utc::now()),
+            oauth_expires_at: None,
+            oauth_scopes: None,
         }
     }
 
@@ -546,13 +582,13 @@ mod tests {
         // 设置用户偏好
         let mut prefs = UserPreferences::default();
         prefs.user_id = 1;
-        prefs.preferred_providers = vec![AccountProvider::AnthropicApi];
+        prefs.preferred_providers = vec![ServiceProvider::Anthropic];
         prefs.smart_routing_enabled = true;
         router.set_user_preferences(prefs).await;
 
         let accounts = vec![
-            create_test_account(1, AccountProvider::AnthropicApi),
-            create_test_account(2, AccountProvider::AnthropicOauth),
+            create_test_account(1, ProviderConfig::anthropic_api()),
+            create_test_account(2, ProviderConfig::new(ServiceProvider::OpenAI, AuthMethod::ApiKey)),
         ];
 
         let features = RequestFeatures {
@@ -567,7 +603,7 @@ mod tests {
         let decision = router.route_request(&user, &accounts, &features).await.unwrap();
         
         // 应该选择Claude账号（用户偏好）
-        assert_eq!(decision.selected_account.provider, AccountProvider::AnthropicApi);
+        assert_eq!(decision.selected_account.provider_config.service_provider(), &ServiceProvider::Anthropic);
         assert!(decision.confidence_score > 0.5);
     }
 
@@ -575,7 +611,7 @@ mod tests {
     async fn test_priority_based_strategy_selection() {
         let router = SmartRouter::new();
         let user = create_test_user(1);
-        let accounts = vec![create_test_account(1, AccountProvider::AnthropicApi)];
+        let accounts = vec![create_test_account(1, ProviderConfig::anthropic_api())];
 
         // 测试关键优先级
         let critical_features = RequestFeatures {

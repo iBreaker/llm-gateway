@@ -8,7 +8,7 @@ use axum::{
     Extension,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{info, error, instrument};
+use tracing::{info, instrument};
 use std::sync::Arc;
 use std::collections::HashMap;
 use uuid;
@@ -16,9 +16,8 @@ use tokio::sync::Mutex;
 
 use crate::shared::{AppError, AppResult};
 use crate::auth::Claims;
-use crate::auth::oauth::{OAuthManager, OAuthProviderType, ProxyConfig, OAuthSessionManager};
+use crate::auth::oauth::ProxyConfig;
 use crate::auth::oauth::providers::anthropic::AnthropicOAuthProvider;
-use crate::auth::oauth::OAuthProviderTrait;
 use crate::auth::oauth::types::OAuthParams;
 
 // 简单的内存会话存储
@@ -72,7 +71,7 @@ pub async fn generate_anthropic_auth_url(
     info!("🔗 生成Anthropic OAuth授权URL请求 (操作者: {})", claims.username);
 
     // 处理可选的请求体，如果为空则使用默认值
-    let request = request.map(|Json(req)| req).unwrap_or_default();
+    let _request = request.map(|Json(req)| req).unwrap_or_default();
 
     // 生成Setup Token OAuth参数（推理权限，1年有效期）- 基于relay项目建议
     let provider = AnthropicOAuthProvider::new();
@@ -171,14 +170,18 @@ pub async fn exchange_anthropic_code(
     };
 
     let account_name = format!("Anthropic OAuth - {}", chrono::Utc::now().format("%m/%d %H:%M"));
-    let provider = crate::business::domain::AccountProvider::AnthropicOauth;
+    let provider_config = crate::business::domain::ProviderConfig::new(
+        crate::business::domain::ServiceProvider::Anthropic,
+        crate::business::domain::AuthMethod::OAuth
+    );
 
     let database = &app_state.database;
     let created_account = database.accounts.create(
         user_id,
-        &provider,
+        &provider_config,
         &account_name,
         &account_credentials,
+        None, // base_url
     ).await?;
 
     info!("✅ Anthropic OAuth账号创建成功: ID {}, Name: {}", created_account.id, created_account.account_name);

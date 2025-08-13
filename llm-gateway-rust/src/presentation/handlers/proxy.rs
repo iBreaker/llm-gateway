@@ -23,6 +23,7 @@ use crate::business::services::{
     IntelligentProxy, RequestFeatures, RequestPriority, RequestType,
     intelligent_proxy::{ProxyRequest as ServiceProxyRequest}
 };
+use crate::business::domain::{User, ProviderConfig, AccountCredentials};
 
 
 /// 代理消息请求（Claude格式）
@@ -104,7 +105,6 @@ pub struct ModelInfo {
     pub capabilities: Vec<String>,
 }
 
-use crate::business::domain::{AccountCredentials, AccountProvider, User};
 
 /// 代理消息请求（主要入口）
 #[axum::debug_handler]
@@ -124,7 +124,7 @@ pub async fn proxy_messages(
         let temp_account = crate::business::domain::UpstreamAccount {
             id: -1,
             user_id: -1, // Indicates a stateless session
-            provider: AccountProvider::AnthropicApi,
+            provider_config: ProviderConfig::anthropic_api(),
             account_name: "Stateless Anthropic Key".to_string(),
             credentials: AccountCredentials {
                 session_key: None,
@@ -135,6 +135,8 @@ pub async fn proxy_messages(
             },
             is_active: true,
             created_at: chrono::Utc::now(),
+            oauth_expires_at: None,
+            oauth_scopes: None,
         };
         let dummy_user = User {
             id: -1,
@@ -187,7 +189,7 @@ pub async fn proxy_messages(
     
     for (i, account) in available_accounts.iter().enumerate() {
         info!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}", 
-              i + 1, account.id, account.account_name, account.provider, account.is_active);
+              i + 1, account.id, account.account_name, account.provider_config, account.is_active);
     }
 
     if available_accounts.is_empty() {
@@ -318,9 +320,8 @@ pub async fn list_models(
 
     // 根据可用账号添加支持的模型
     for account in accounts {
-        match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => {
+        match account.provider_config.service_provider() {
+            crate::business::domain::ServiceProvider::Anthropic => {
                 models.extend(vec![
                     ModelInfo {
                         id: "claude-3-sonnet-20240229".to_string(),
@@ -392,18 +393,17 @@ async fn get_available_upstream_accounts(
     
     let accounts = sqlx::query!(
         r#"
-        SELECT id, user_id, provider, name, credentials, is_active, 
-               COALESCE(last_health_check, created_at) as last_health_check,
+        SELECT id, user_id, service_provider, auth_method, name, credentials, is_active, 
                created_at,
+               oauth_expires_at,
+               oauth_scopes,
                CASE
-                   WHEN error_count > 5 THEN 'unhealthy'
-                   WHEN response_time_ms > 5000 THEN 'degraded'
-                   WHEN last_health_check > NOW() - INTERVAL '10 minutes' THEN 'healthy'
-                   ELSE 'unknown'
+                   WHEN NOT is_active THEN 'inactive'
+                   ELSE 'healthy'
                END as health_status
         FROM upstream_accounts 
         WHERE user_id = $1
-        ORDER BY last_health_check DESC
+        ORDER BY created_at DESC
         "#,
         user_id
     )
@@ -415,14 +415,14 @@ async fn get_available_upstream_accounts(
 
     let mut result = Vec::new();
     for (i, row) in accounts.into_iter().enumerate() {
-        info!("🔍 处理第 {} 条记录: provider={}, name={}", i + 1, row.provider, row.name);
-        let provider = match crate::business::domain::AccountProvider::from_str(&row.provider) {
-            Some(p) => {
-                info!("🔍 成功解析 provider: {:?}", p);
-                p
+        info!("🔍 处理第 {} 条记录: service_provider={}, auth_method={}, name={}", i + 1, row.service_provider, row.auth_method, row.name);
+        let provider_config = match ProviderConfig::from_database_fields(&row.service_provider, &row.auth_method) {
+            Ok(config) => {
+                info!("🔍 成功解析 provider_config: {:?}", config);
+                config
             },
-            None => {
-                info!("🔍 无法解析 provider: {}, 跳过此记录", row.provider);
+            Err(e) => {
+                info!("🔍 无法解析 provider_config: {}, 跳过此记录", e);
                 continue;
             },
         };
@@ -442,11 +442,13 @@ async fn get_available_upstream_accounts(
         result.push(crate::business::domain::UpstreamAccount {
             id: row.id,
             user_id: row.user_id,
-            provider,
+            provider_config,
             account_name: row.name,
             credentials: account_credentials,
             is_active: row.is_active,
             created_at: row.created_at,
+            oauth_expires_at: row.oauth_expires_at,
+            oauth_scopes: row.oauth_scopes,
         });
     }
 
@@ -604,7 +606,7 @@ async fn record_usage_stats_from_streaming_response(
         0i32, // retry_count - 暂不可用
         None::<String>, // model_name - 需要从请求中解析
         "chat", // request_type
-        response.routing_decision.selected_account.provider.as_str(),
+        response.routing_decision.selected_account.provider_config.service_provider().as_str(),
         response.routing_decision.strategy_used.as_str(),
         Some(sqlx::types::BigDecimal::from_f64(response.routing_decision.confidence_score).unwrap_or_default()),
         Some(&response.routing_decision.reasoning),

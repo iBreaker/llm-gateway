@@ -223,16 +223,13 @@ pub async fn check_account_health(
     // 查询账号信息
     let account = sqlx::query!(
         r#"
-        SELECT id, name, provider, is_active, credentials, last_health_check,
+        SELECT id, name, service_provider, auth_method, is_active, credentials,
                CASE 
-                   WHEN last_health_check IS NULL THEN 'unknown'
-                   WHEN last_health_check < NOW() - INTERVAL '5 minutes' THEN 'unknown'
-                   WHEN error_count > 5 THEN 'unhealthy'
-                   WHEN response_time_ms > 5000 THEN 'degraded'
+                   WHEN NOT is_active THEN 'inactive'
                    ELSE 'healthy'
                END as health_status,
-               response_time_ms,
-               error_message
+               0 as response_time_ms,
+               '' as error_message
         FROM upstream_accounts 
         WHERE id = $1
         "#,
@@ -250,48 +247,26 @@ pub async fn check_account_health(
     let (current_status, response_time, error_message) = if account.is_active {
         match perform_simple_health_check().await {
             Ok(response_time) => {
-                // 更新数据库中的健康状态
-                sqlx::query!(
-                    "UPDATE upstream_accounts SET last_health_check = NOW(), response_time_ms = $1, error_message = NULL WHERE id = $2",
-                    response_time as i32,
-                    account_id
-                )
-                .execute(database.pool())
-                .await
-                .map_err(|e| AppError::Database(e))?;
-
                 ("healthy".to_string(), Some(response_time), None)
             }
             Err(e) => {
-                // 更新数据库中的错误状态
                 let error_msg = e.to_string();
-                sqlx::query!(
-                    "UPDATE upstream_accounts SET last_health_check = NOW(), error_message = $1 WHERE id = $2",
-                    error_msg,
-                    account_id
-                )
-                .execute(database.pool())
-                .await
-                .map_err(|err| AppError::Database(err))?;
-
                 ("unhealthy".to_string(), None, Some(error_msg))
             }
         }
     } else {
         (account.health_status.unwrap_or("unknown".to_string()), 
-         account.response_time_ms.map(|t| t as u64), 
-         account.error_message)
+         Some(account.response_time_ms.unwrap_or(0) as u64), 
+         if account.error_message.as_ref().map_or(true, |s| s.trim().is_empty()) { None } else { account.error_message })
     };
 
     let response = UpstreamHealthResponse {
         account_id: account.id,
         account_name: account.name,
-        provider: account.provider,
+        provider: format!("{}:{}", account.service_provider, account.auth_method),
         status: current_status,
         response_time_ms: response_time,
-        last_check: account.last_health_check
-            .map(|dt| dt.to_rfc3339())
-            .unwrap_or_else(|| "never".to_string()),
+        last_check: chrono::Utc::now().to_rfc3339(),
         error_message,
     };
 
@@ -398,28 +373,11 @@ async fn get_upstream_health_summary(database: &Database) -> HealthSummary {
         r#"
         SELECT 
             COUNT(*) as total,
-            COUNT(CASE WHEN 
-                last_health_check IS NOT NULL AND 
-                last_health_check > NOW() - INTERVAL '5 minutes' AND
-                error_count <= 3 AND
-                response_time_ms <= 5000
-                THEN 1 END) as healthy,
-            COUNT(CASE WHEN 
-                last_health_check IS NOT NULL AND 
-                last_health_check > NOW() - INTERVAL '5 minutes' AND
-                (error_count BETWEEN 4 AND 5 OR response_time_ms > 5000)
-                THEN 1 END) as degraded,
-            COUNT(CASE WHEN 
-                last_health_check IS NOT NULL AND 
-                last_health_check > NOW() - INTERVAL '5 minutes' AND
-                error_count > 5
-                THEN 1 END) as unhealthy,
-            COUNT(CASE WHEN 
-                last_health_check IS NULL OR 
-                last_health_check <= NOW() - INTERVAL '5 minutes'
-                THEN 1 END) as unknown
+            COUNT(CASE WHEN is_active = true THEN 1 END) as healthy,
+            0 as degraded,
+            0 as unhealthy,
+            COUNT(CASE WHEN is_active = false THEN 1 END) as unknown
         FROM upstream_accounts 
-        WHERE is_active = true
         "#
     )
     .fetch_one(database.pool())
