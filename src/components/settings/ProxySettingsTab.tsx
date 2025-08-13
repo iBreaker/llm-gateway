@@ -105,7 +105,7 @@ export default function ProxySettingsTab() {
       const isNew = !proxy.id;
       const proxyData = {
         name: proxy.name,
-        proxyType: proxy.proxy_type,
+        proxyType: proxy.proxy_type || 'http',
         host: proxy.host,
         port: proxy.port,
         enabled: proxy.enabled,
@@ -166,7 +166,7 @@ export default function ProxySettingsTab() {
       }
 
       const result = await apiClient.post<ProxyTestResult>('/api/proxy/test', {
-        proxyType: proxy.proxy_type,
+        proxyType: proxy.proxy_type || 'http',
         host: proxy.host,
         port: proxy.port,
         username: proxy.auth?.username,
@@ -296,11 +296,11 @@ export default function ProxySettingsTab() {
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      proxy.proxy_type === 'http' ? 'bg-blue-100 text-blue-800' :
-                      proxy.proxy_type === 'https' ? 'bg-green-100 text-green-800' :
+                      (proxy.proxy_type || '').toLowerCase() === 'http' ? 'bg-blue-100 text-blue-800' :
+                      (proxy.proxy_type || '').toLowerCase() === 'https' ? 'bg-green-100 text-green-800' :
                       'bg-purple-100 text-purple-800'
                     }`}>
-                      {proxy.proxy_type.toUpperCase()}
+                      {proxy.proxy_type?.toUpperCase() || 'UNKNOWN'}
                     </span>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-zinc-900">
