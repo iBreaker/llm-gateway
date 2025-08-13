@@ -8,6 +8,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use llm_gateway_rust::{Config, Database, create_routes};
 use llm_gateway_rust::business::services::{SettingsService, SharedSettingsService, RateLimitService, SharedRateLimitService};
+use llm_gateway_rust::business::services::proxy_manager::SystemProxyManager;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -51,8 +52,13 @@ async fn main() -> anyhow::Result<()> {
     let rate_limit_service: SharedRateLimitService = Arc::new(RateLimitService::new(settings_service.clone()));
     info!("✅ 速率限制服务初始化成功");
 
+    // 初始化代理管理器
+    let proxy_manager = Arc::new(SystemProxyManager::new(database.proxies.clone()));
+    proxy_manager.initialize_from_database().await?;
+    info!("✅ 代理管理器初始化成功");
+
     // 创建路由
-    let app = create_routes(database, settings_service, rate_limit_service).await?;
+    let app = create_routes(database, settings_service, rate_limit_service, proxy_manager).await?;
     info!("✅ 路由创建成功");
 
     // 启动服务器

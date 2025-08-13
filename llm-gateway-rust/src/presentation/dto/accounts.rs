@@ -271,6 +271,7 @@ mod tests {
                 base_url: None,
                 extra_config: None,
             },
+            proxy_config: None,
         };
 
         let config = request.validate_and_convert().unwrap();
@@ -293,6 +294,7 @@ mod tests {
                 base_url: None,
                 extra_config: None,
             },
+            proxy_config: None,
         };
 
         let config = request.validate_and_convert().unwrap();
@@ -315,6 +317,7 @@ mod tests {
                 base_url: None,
                 extra_config: None,
             },
+            proxy_config: None,
         };
 
         let result = request.validate_and_convert();

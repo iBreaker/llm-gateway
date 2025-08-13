@@ -8,26 +8,48 @@ use tracing::{info, error, debug};
 
 use crate::business::domain::{SystemProxyConfig, ProxyConfig};
 use crate::business::services::proxy_client_factory::ProxyClientFactory;
+use crate::infrastructure::database::ProxyRepository;
 use crate::shared::{AppError, AppResult};
 
 /// 系统代理管理服务
 pub struct SystemProxyManager {
     config: Arc<RwLock<SystemProxyConfig>>,
+    proxy_repo: ProxyRepository,
 }
 
 impl SystemProxyManager {
     /// 创建新的系统代理管理器
-    pub fn new() -> Self {
+    pub fn new(proxy_repo: ProxyRepository) -> Self {
         Self {
             config: Arc::new(RwLock::new(SystemProxyConfig::new())),
+            proxy_repo,
         }
     }
 
     /// 从配置创建系统代理管理器
-    pub fn new_with_config(config: SystemProxyConfig) -> Self {
+    pub fn new_with_config(config: SystemProxyConfig, proxy_repo: ProxyRepository) -> Self {
         Self {
             config: Arc::new(RwLock::new(config)),
+            proxy_repo,
         }
+    }
+
+    /// 从数据库初始化代理配置
+    pub async fn initialize_from_database(&self) -> AppResult<()> {
+        info!("🔄 从数据库初始化代理配置");
+        
+        let db_proxies = self.proxy_repo.list_all().await?;
+        let mut config = self.config.write().await;
+        
+        for proxy in db_proxies {
+            info!("📥 加载代理配置: {} ({})", proxy.name, proxy.id);
+            if let Err(e) = config.add_proxy(proxy) {
+                error!("⚠️  加载代理配置失败: {}", e);
+            }
+        }
+        
+        info!("✅ 代理配置初始化完成，共加载 {} 个代理", config.proxies.len());
+        Ok(())
     }
 
     /// 获取配置的只读引用
@@ -82,6 +104,11 @@ impl SystemProxyManager {
     pub async fn get_proxy(&self, proxy_id: &str) -> Option<ProxyConfig> {
         let config = self.config.read().await;
         config.get_proxy(proxy_id).cloned()
+    }
+
+    /// 从数据库获取代理配置（绕过内存缓存）
+    pub async fn get_proxy_from_db(&self, proxy_id: &str) -> AppResult<Option<ProxyConfig>> {
+        self.proxy_repo.get_by_id(proxy_id).await
     }
 
     /// 获取所有代理配置
@@ -228,11 +255,7 @@ impl SystemProxyManager {
     }
 }
 
-impl Default for SystemProxyManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// 注意: 移除了 Default 实现，因为现在需要 ProxyRepository 参数
 
 /// 代理统计信息
 #[derive(Debug, Clone)]

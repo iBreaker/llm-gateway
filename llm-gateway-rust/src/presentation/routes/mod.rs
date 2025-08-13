@@ -18,6 +18,8 @@ use crate::infrastructure::Database;
 use crate::presentation::handlers;
 use crate::auth::middleware::{auth_middleware, api_key_middleware};
 use crate::business::services::{SharedSettingsService, SharedRateLimitService};
+use crate::business::services::proxy_manager::SystemProxyManager;
+use std::sync::Arc;
 
 /// 应用状态
 #[derive(Clone)]
@@ -25,6 +27,7 @@ pub struct AppState {
     pub database: Database,
     pub settings_service: SharedSettingsService,
     pub rate_limit_service: SharedRateLimitService,
+    pub proxy_manager: Arc<SystemProxyManager>,
 }
 
 /// 连接管理中间件，专门解决 Node.js fetch 的连接问题
@@ -61,7 +64,7 @@ async fn connection_middleware(req: Request, next: Next) -> Response {
 }
 
 /// 创建应用路由
-pub async fn create_routes(mut database: Database, settings_service: SharedSettingsService, rate_limit_service: SharedRateLimitService) -> anyhow::Result<Router> {
+pub async fn create_routes(mut database: Database, settings_service: SharedSettingsService, rate_limit_service: SharedRateLimitService, proxy_manager: Arc<SystemProxyManager>) -> anyhow::Result<Router> {
     // 为缓存管理器设置设置服务引用，以便动态使用系统设置中的缓存配置
     database.set_cache_settings_service(settings_service.clone());
     
@@ -69,6 +72,7 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
         database: database.clone(),
         settings_service: settings_service.clone(),
         rate_limit_service: rate_limit_service.clone(),
+        proxy_manager: proxy_manager.clone(),
     };
     // 认证相关路由（公开）
     let auth_routes = Router::new()

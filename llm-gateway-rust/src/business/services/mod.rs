@@ -23,6 +23,7 @@ pub mod rate_limit_service;
 pub mod proxy;
 pub mod proxy_client_factory;
 pub mod proxy_manager;
+pub mod upstream_proxy_service;
 use crate::shared::{error::AppResult, types::*};
 use crate::business::domain::*;
 
@@ -32,6 +33,7 @@ pub use smart_router::{SmartRouter, RequestFeatures, RequestPriority, RequestTyp
 pub use intelligent_proxy::{IntelligentProxy, ProxyStats};
 pub use settings_service::{SettingsService, SharedSettingsService};
 pub use rate_limit_service::{RateLimitService, SharedRateLimitService, RateLimitResult};
+pub use upstream_proxy_service::{UpstreamProxyService, AccountProxySummary};
 
 /// 认证服务接口
 pub trait AuthService: Send + Sync {

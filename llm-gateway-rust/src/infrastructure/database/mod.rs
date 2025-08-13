@@ -1,5 +1,6 @@
 pub mod connection;
 pub mod accounts_repository;
+pub mod proxy_repository;
 
 use std::time::Duration;
 use sqlx::{PgPool, Row};
@@ -7,6 +8,7 @@ use crate::infrastructure::config::{Config, DatabaseConfig};
 use crate::infrastructure::cache::{CacheConfig as CacheManagerConfig, CacheManager, SimpleCache};
 use connection::{DatabaseConnection, DatabaseConnectionError, PoolStats};
 pub use accounts_repository::AccountsRepository;
+pub use proxy_repository::ProxyRepository;
 
 /// 数据库错误类型
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +29,7 @@ pub enum DatabaseError {
 pub struct Database {
     connection_manager: DatabaseConnection,
     pub accounts: AccountsRepository,
+    pub proxies: ProxyRepository,
     pub cache_manager: Option<CacheManager>,
 }
 
@@ -54,7 +57,9 @@ impl Database {
             AccountsRepository::new(connection_manager.pool().clone())
         };
 
-        Ok(Database { connection_manager, accounts, cache_manager })
+        let proxies = ProxyRepository::new(connection_manager.pool().clone());
+
+        Ok(Database { connection_manager, accounts, proxies, cache_manager })
     }
 
     /// 传统方式创建数据库实例（向后兼容）
@@ -71,8 +76,9 @@ impl Database {
 
         let connection_manager = DatabaseConnection::new(database_url, default_config).await?;
         let accounts = AccountsRepository::new(connection_manager.pool().clone());
+        let proxies = ProxyRepository::new(connection_manager.pool().clone());
 
-        Ok(Database { connection_manager, accounts, cache_manager: None })
+        Ok(Database { connection_manager, accounts, proxies, cache_manager: None })
     }
 
     /// 获取数据库连接池

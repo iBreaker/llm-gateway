@@ -237,8 +237,8 @@ pub async fn proxy_messages(
         request_id: request_id.clone(),
     };
 
-    // 加载系统代理配置
-    let system_proxy_config = load_system_proxy_config(&database).await?;
+    // 获取系统代理配置（使用已初始化的 proxy_manager）
+    let system_proxy_config = app_state.proxy_manager.get_config().await;
     
     // 创建新架构的代理协调器（使用实际的代理配置）
     let proxy_service = ProxyCoordinator::new_with_system_proxy_config(Arc::new(system_proxy_config));
@@ -449,7 +449,7 @@ async fn get_available_upstream_accounts(
     
     let accounts = sqlx::query!(
         r#"
-        SELECT id, user_id, service_provider, auth_method, name, credentials, is_active, 
+        SELECT id, user_id, service_provider, auth_method, name, credentials, proxy_config_id, is_active, 
                created_at,
                oauth_expires_at,
                oauth_scopes,
@@ -495,6 +495,13 @@ async fn get_available_upstream_accounts(
             base_url: credentials.get("base_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
         };
 
+        // 构建代理配置
+        let proxy_config = if let Some(proxy_config_id) = &row.proxy_config_id {
+            Some(crate::business::domain::AccountProxyConfig::enable_with_proxy(proxy_config_id.clone()))
+        } else {
+            None
+        };
+
         result.push(crate::business::domain::UpstreamAccount {
             id: row.id,
             user_id: row.user_id,
@@ -505,7 +512,7 @@ async fn get_available_upstream_accounts(
             created_at: row.created_at,
             oauth_expires_at: row.oauth_expires_at,
             oauth_scopes: row.oauth_scopes,
-            proxy_config: None, // 默认无代理配置
+            proxy_config,
         });
     }
 

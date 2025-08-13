@@ -47,7 +47,7 @@ impl AccountsRepository {
                 auth_method,
                 name,
                 credentials,
-                proxy_config,
+                proxy_config_id,
                 is_active,
                 created_at,
                 updated_at,
@@ -84,8 +84,10 @@ impl AccountsRepository {
                         base_url: None,
                     });
 
-                let proxy_config = row.proxy_config
-                    .and_then(|json| serde_json::from_value(json).ok());
+                // 暂时将 proxy_config_id 存储为简单的 AccountProxyConfig
+                let proxy_config = row.proxy_config_id.map(|proxy_id| {
+                    crate::business::domain::AccountProxyConfig::enable_with_proxy(proxy_id)
+                });
 
                 UpstreamAccount {
                     id: row.id,
@@ -123,7 +125,7 @@ impl AccountsRepository {
                 auth_method,
                 name,
                 credentials,
-                proxy_config,
+                proxy_config_id,
                 is_active,
                 created_at,
                 updated_at,
@@ -155,8 +157,10 @@ impl AccountsRepository {
                     base_url: None,
                 });
 
-            let proxy_config = row.proxy_config
-                .and_then(|json| serde_json::from_value(json).ok());
+            // 暂时将 proxy_config_id 存储为简单的 AccountProxyConfig
+            let proxy_config = row.proxy_config_id.map(|proxy_id| {
+                crate::business::domain::AccountProxyConfig::enable_with_proxy(proxy_id)
+            });
 
             Some(UpstreamAccount {
                 id: row.id,
@@ -186,7 +190,7 @@ impl AccountsRepository {
         name: &str,
         credentials: &AccountCredentials,
         base_url: Option<&str>,
-        proxy_config: Option<&serde_json::Value>,
+        proxy_config_id: Option<&str>,
     ) -> AppResult<UpstreamAccount> {
         info!("创建上游账号: {} (提供商: {:?}, 用户: {})", name, provider_config, user_id);
 
@@ -204,7 +208,7 @@ impl AccountsRepository {
                 auth_method,
                 name, 
                 credentials, 
-                proxy_config,
+                proxy_config_id,
                 is_active
             ) 
             VALUES ($1, $2, $3, $4, $5, $6, true)
@@ -215,6 +219,7 @@ impl AccountsRepository {
                 auth_method,
                 name,
                 credentials,
+                proxy_config_id,
                 is_active,
                 created_at,
                 updated_at,
@@ -226,7 +231,7 @@ impl AccountsRepository {
             provider_config.auth_method().as_str(),
             name,
             credentials_json,
-            proxy_config
+            proxy_config_id
         )
         .fetch_one(&self.pool)
         .await
@@ -247,6 +252,11 @@ impl AccountsRepository {
                 base_url: None,
             });
 
+        // 处理代理配置，使用从数据库返回的数据
+        let proxy_config_result = row.proxy_config_id.map(|proxy_id| {
+            crate::business::domain::AccountProxyConfig::enable_with_proxy(proxy_id)
+        });
+
         let account = UpstreamAccount {
             id: row.id,
             user_id: row.user_id,
@@ -257,7 +267,7 @@ impl AccountsRepository {
             created_at: row.created_at,
             oauth_expires_at: row.oauth_expires_at,
             oauth_scopes: row.oauth_scopes,
-            proxy_config: None, // 默认无代理配置
+            proxy_config: proxy_config_result,
         };
 
         info!("上游账号创建成功: ID {}", account.id);
@@ -273,7 +283,7 @@ impl AccountsRepository {
         name: Option<&str>,
         is_active: Option<bool>,
         credentials: Option<&AccountCredentials>,
-        proxy_config: Option<&serde_json::Value>,
+        proxy_config_id: Option<&str>,
     ) -> AppResult<Option<UpstreamAccount>> {
         info!("更新上游账号: ID {} (用户: {})", account_id, user_id);
 
@@ -297,11 +307,11 @@ impl AccountsRepository {
             serde_json::to_value(&existing.as_ref().unwrap().credentials).unwrap()
         };
         
-        let update_proxy_config = if let Some(proxy_cfg) = proxy_config {
-            Some(proxy_cfg.clone())
+        let update_proxy_config_id = if let Some(proxy_id) = proxy_config_id {
+            Some(proxy_id.to_string())
         } else {
-            existing.as_ref().unwrap().proxy_config.as_ref().map(|cfg| {
-                serde_json::to_value(cfg).unwrap_or(serde_json::Value::Null)
+            existing.as_ref().unwrap().proxy_config.as_ref().and_then(|cfg| {
+                cfg.proxy_id.clone()
             })
         };
 
@@ -309,13 +319,13 @@ impl AccountsRepository {
         let result = sqlx::query!(
             r#"
             UPDATE upstream_accounts 
-            SET name = $1, is_active = $2, credentials = $3, proxy_config = $4
+            SET name = $1, is_active = $2, credentials = $3, proxy_config_id = $4
             WHERE id = $5 AND user_id = $6
             "#,
             update_name,
             update_is_active,
             update_credentials,
-            update_proxy_config,
+            update_proxy_config_id,
             account_id,
             user_id
         )
