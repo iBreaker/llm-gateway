@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Link as LinkIcon, Key, TrendingUp, Users, Settings, Globe } from 'lucide-react'
+import { BarChart3, Link as LinkIcon, Key, TrendingUp, Users, Settings } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSystemSettings } from '@/contexts/SystemSettingsContext'
 
@@ -145,21 +145,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
                     pathname === '/users' ? 'text-zinc-600' : 'text-zinc-400'
                   }`} />
                   用户管理
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/proxy-settings"
-                  className={`flex items-center px-3 py-2 text-sm font-medium rounded-sm transition-colors ${
-                    pathname === '/proxy-settings'
-                      ? 'bg-zinc-100 text-zinc-900'
-                      : 'text-zinc-700 hover:bg-zinc-50'
-                  }`}
-                >
-                  <Globe className={`w-4 h-4 mr-3 ${
-                    pathname === '/proxy-settings' ? 'text-zinc-600' : 'text-zinc-400'
-                  }`} />
-                  代理设置
                 </Link>
               </li>
               <li>

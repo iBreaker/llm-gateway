@@ -131,6 +131,17 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
         .route("/api/settings", put(handlers::settings::update_settings))
         .route("/api/settings/:key", get(handlers::settings::get_setting))
         
+        // 代理测试
+        .route("/api/proxy/test", post(handlers::proxy_test::test_proxy_connection))
+        
+        // 代理管理
+        .route("/api/proxies", get(handlers::proxy_management::list_proxies))
+        .route("/api/proxies", post(handlers::proxy_management::create_proxy))
+        .route("/api/proxies/:id", put(handlers::proxy_management::update_proxy))
+        .route("/api/proxies/:id", delete(handlers::proxy_management::delete_proxy))
+        .route("/api/proxies/default", post(handlers::proxy_management::set_default_proxy))
+        .route("/api/proxies/global", post(handlers::proxy_management::toggle_global_proxy))
+        
         .with_state(app_state.clone())
         .route_layer(middleware::from_fn_with_state(
             app_state.clone(),

@@ -49,6 +49,18 @@ pub async fn list_accounts(
         // 使用实时健康状态检查而不是存储的状态
         let real_time_status = account.check_real_time_health().await;
 
+        // 创建过滤后的凭据信息（不包含敏感数据）
+        let filtered_credentials = serde_json::json!({
+            "base_url": account.credentials.base_url,
+            "expires_at": account.credentials.expires_at,
+            // 不返回敏感的access_token和session_key
+        });
+
+        // 将代理配置转换为JSON
+        let proxy_config_json = account.proxy_config
+            .as_ref()
+            .map(|config| serde_json::to_value(config).unwrap_or(serde_json::Value::Null));
+
         accounts.push(AccountInfo {
             id: account.id,
             name: account.account_name,
@@ -61,6 +73,8 @@ pub async fn list_accounts(
             success_rate,
             oauth_expires_at: account.oauth_expires_at,
             oauth_scopes: account.oauth_scopes,
+            credentials: Some(filtered_credentials),
+            proxy_config: proxy_config_json,
         });
     }
 
@@ -115,6 +129,18 @@ pub async fn create_account(
     // 使用实时健康状态检查
     let real_time_status = upstream_account.check_real_time_health().await;
 
+    // 创建过滤后的凭据信息（不包含敏感数据）
+    let filtered_credentials = serde_json::json!({
+        "base_url": upstream_account.credentials.base_url,
+        "expires_at": upstream_account.credentials.expires_at,
+        // 不返回敏感的access_token和session_key
+    });
+
+    // 将代理配置转换为JSON
+    let proxy_config_json = upstream_account.proxy_config
+        .as_ref()
+        .map(|config| serde_json::to_value(config).unwrap_or(serde_json::Value::Null));
+
     let account = AccountInfo {
         id: upstream_account.id,
         name: upstream_account.account_name,
@@ -127,6 +153,8 @@ pub async fn create_account(
         success_rate,
         oauth_expires_at: upstream_account.oauth_expires_at,
         oauth_scopes: upstream_account.oauth_scopes,
+        credentials: Some(filtered_credentials),
+        proxy_config: proxy_config_json,
     };
 
     info!("✅ 账号创建成功: {} (ID: {})", account.name, account.id);
@@ -182,6 +210,16 @@ pub async fn update_account(
         // 使用实时健康状态检查
         let real_time_status = upstream_account.check_real_time_health().await;
 
+        // 创建过滤后的凭据信息（不包含敏感数据）
+        let filtered_credentials = serde_json::json!({
+            "base_url": upstream_account.credentials.base_url
+        });
+
+        // 将代理配置转换为JSON
+        let proxy_config_json = upstream_account.proxy_config
+            .as_ref()
+            .map(|config| serde_json::to_value(config).unwrap_or(serde_json::Value::Null));
+
         let account = AccountInfo {
             id: upstream_account.id,
             name: upstream_account.account_name,
@@ -194,6 +232,8 @@ pub async fn update_account(
             success_rate,
             oauth_expires_at: upstream_account.oauth_expires_at,
             oauth_scopes: upstream_account.oauth_scopes,
+            credentials: Some(filtered_credentials),
+            proxy_config: proxy_config_json,
         };
 
         info!("✅ 账号更新成功: {} (ID: {})", account.name, account.id);

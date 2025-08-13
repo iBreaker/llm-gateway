@@ -47,6 +47,7 @@ impl AccountsRepository {
                 auth_method,
                 name,
                 credentials,
+                proxy_config,
                 is_active,
                 created_at,
                 updated_at,
@@ -83,6 +84,9 @@ impl AccountsRepository {
                         base_url: None,
                     });
 
+                let proxy_config = row.proxy_config
+                    .and_then(|json| serde_json::from_value(json).ok());
+
                 UpstreamAccount {
                     id: row.id,
                     user_id: row.user_id,
@@ -93,7 +97,7 @@ impl AccountsRepository {
                     created_at: row.created_at,
                     oauth_expires_at: row.oauth_expires_at,
                     oauth_scopes: row.oauth_scopes,
-                    proxy_config: None, // 默认无代理配置
+                    proxy_config,
                 }
             })
             .collect();
@@ -119,6 +123,7 @@ impl AccountsRepository {
                 auth_method,
                 name,
                 credentials,
+                proxy_config,
                 is_active,
                 created_at,
                 updated_at,
@@ -150,6 +155,9 @@ impl AccountsRepository {
                     base_url: None,
                 });
 
+            let proxy_config = row.proxy_config
+                .and_then(|json| serde_json::from_value(json).ok());
+
             Some(UpstreamAccount {
                 id: row.id,
                 user_id: row.user_id,
@@ -160,7 +168,7 @@ impl AccountsRepository {
                 created_at: row.created_at,
                 oauth_expires_at: row.oauth_expires_at,
                 oauth_scopes: row.oauth_scopes,
-                proxy_config: None, // 默认无代理配置
+                proxy_config,
             })
         } else {
             None

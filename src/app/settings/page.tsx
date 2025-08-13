@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Save, CheckCircle, AlertCircle, Info, Settings, Shield, Database, Zap, Bell, RefreshCw } from 'lucide-react'
+import { Save, CheckCircle, AlertCircle, Info, Settings, Shield, Database, Zap, Bell, RefreshCw, Globe } from 'lucide-react'
 import { apiClient } from '../../utils/api'
+import ProxySettingsTab from '../../components/settings/ProxySettingsTab'
 
 interface SystemSettings {
   // 基础设置（使用camelCase，因为API客户端会转换）
@@ -161,6 +162,7 @@ export default function SettingsPage() {
     { id: 'security', name: '安全设置', icon: Shield },
     { id: 'limits', name: '限流配置', icon: Zap },
     { id: 'cache', name: '缓存配置', icon: Database },
+    { id: 'proxy', name: '代理设置', icon: Globe },
     { id: 'notifications', name: '通知设置', icon: Bell },
     { id: 'system', name: '系统信息', icon: Info }
   ]
@@ -446,6 +448,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'proxy' && (
+          <div className="p-6">
+            <ProxySettingsTab />
           </div>
         )}
 

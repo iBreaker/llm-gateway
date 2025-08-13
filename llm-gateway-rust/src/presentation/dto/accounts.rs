@@ -22,6 +22,12 @@ pub struct AccountInfo {
     pub oauth_expires_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_scopes: Option<String>,
+    // 凭据信息（敏感字段会被过滤）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<serde_json::Value>,
+    // 代理配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_config: Option<serde_json::Value>,
 }
 
 /// 账号列表响应

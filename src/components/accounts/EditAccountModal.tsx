@@ -3,7 +3,16 @@
 import { useState, useEffect } from 'react'
 import { X, Eye, EyeOff } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
-import { UpstreamAccount, UpdateAccountData } from '@/types/accounts'
+import { UpstreamAccount, UpdateAccountData, AccountProxyConfig } from '@/types/accounts'
+
+interface ProxyConfig {
+  id: string;
+  name: string;
+  proxy_type: 'http' | 'https' | 'socks5';
+  host: string;
+  port: number;
+  enabled: boolean;
+}
 
 interface EditAccountModalProps {
   account: UpstreamAccount
@@ -20,13 +29,69 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
   })
 
   const [showCredentials, setShowCredentials] = useState(false)
+  const [availableProxies, setAvailableProxies] = useState<ProxyConfig[]>([])
+  const [proxyEnabled, setProxyEnabled] = useState(false)
+  const [selectedProxyId, setSelectedProxyId] = useState<string>('')
+
+  // 初始化代理配置状态
+  useEffect(() => {
+    if (account.proxyConfig) {
+      setProxyEnabled(account.proxyConfig.enabled)
+      setSelectedProxyId(account.proxyConfig.proxyId || '')
+    }
+  }, [account])
+
+  // 加载可用的代理配置
+  useEffect(() => {
+    loadAvailableProxies()
+  }, [])
+
+  const loadAvailableProxies = async () => {
+    try {
+      // TODO: 实际的API调用
+      const mockProxies: ProxyConfig[] = [
+        {
+          id: 'corp-http',
+          name: '企业HTTP代理',
+          proxy_type: 'http',
+          host: '10.0.0.100',
+          port: 8080,
+          enabled: true
+        },
+        {
+          id: 'secure-https',
+          name: '安全HTTPS代理',
+          proxy_type: 'https',
+          host: 'secure.proxy.com',
+          port: 3128,
+          enabled: true
+        }
+      ]
+      setAvailableProxies(mockProxies)
+    } catch (error) {
+      console.error('加载代理配置失败:', error)
+    }
+  }
 
   // ESC键退出支持
   useEscapeKey(onClose)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await onSubmit(account.id, formData)
+    
+    // 包含代理配置的数据
+    const dataWithProxy = {
+      ...formData,
+      proxyConfig: proxyEnabled ? {
+        enabled: true,
+        proxyId: selectedProxyId || null
+      } : {
+        enabled: false,
+        proxyId: null
+      }
+    }
+    
+    await onSubmit(account.id, dataWithProxy)
   }
 
   const handleCredentialChange = (key: string, value: string) => {
@@ -71,7 +136,7 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
 
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">
-                Base URL
+                Base URL (可选)
               </label>
               <input
                 type="url"
@@ -81,7 +146,7 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
               />
               <p className="text-xs text-zinc-500 mt-1">
-                API 服务的基础 URL，留空使用默认值 https://api.anthropic.com/v1
+                API 服务的基础 URL，留空保持当前配置不变
               </p>
             </div>
           </div>
@@ -93,6 +158,144 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
             <p className="text-sm text-blue-800">
               OAuth 账号的凭据由系统自动管理，无需手动编辑。
             </p>
+          </div>
+        )
+
+      case 'openai':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showCredentials ? 'text' : 'password'}
+                  value={formData.credentials?.api_key || ''}
+                  onChange={(e) => handleCredentialChange('api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2 pr-10 border border-zinc-300 rounded-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCredentials(!showCredentials)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  {showCredentials ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                留空则保持原有凭据不变
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL (可选)
+              </label>
+              <input
+                type="url"
+                value={formData.credentials?.base_url || ''}
+                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                API 服务的基础 URL，留空保持当前配置不变
+              </p>
+            </div>
+          </div>
+        )
+
+      case 'gemini':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showCredentials ? 'text' : 'password'}
+                  value={formData.credentials?.api_key || ''}
+                  onChange={(e) => handleCredentialChange('api_key', e.target.value)}
+                  placeholder="AI..."
+                  className="w-full px-3 py-2 pr-10 border border-zinc-300 rounded-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCredentials(!showCredentials)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  {showCredentials ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                留空则保持原有凭据不变
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL (可选)
+              </label>
+              <input
+                type="url"
+                value={formData.credentials?.base_url || ''}
+                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                placeholder="https://generativelanguage.googleapis.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                API 服务的基础 URL，留空保持当前配置不变
+              </p>
+            </div>
+          </div>
+        )
+
+      case 'qwen':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showCredentials ? 'text' : 'password'}
+                  value={formData.credentials?.api_key || ''}
+                  onChange={(e) => handleCredentialChange('api_key', e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2 pr-10 border border-zinc-300 rounded-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCredentials(!showCredentials)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  {showCredentials ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                留空则保持原有凭据不变
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL (可选)
+              </label>
+              <input
+                type="url"
+                value={formData.credentials?.base_url || ''}
+                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                placeholder="https://dashscope.aliyuncs.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                API 服务的基础 URL，留空保持当前配置不变
+              </p>
+            </div>
           </div>
         )
 
@@ -145,6 +348,64 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
             <p className="text-xs text-zinc-500 mt-1">
               禁用后此账号将不会被用于请求处理
             </p>
+          </div>
+
+          {/* 代理配置 */}
+          <div className="border-t border-zinc-200 pt-4">
+            <h3 className="text-sm font-medium text-zinc-900 mb-3">代理设置</h3>
+            
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="proxy-enabled"
+                  checked={proxyEnabled}
+                  onChange={(e) => setProxyEnabled(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-zinc-300 rounded"
+                />
+                <label htmlFor="proxy-enabled" className="ml-2 text-sm text-zinc-700">
+                  为此账号启用代理
+                </label>
+              </div>
+
+              {proxyEnabled && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    选择代理
+                  </label>
+                  <select
+                    value={selectedProxyId}
+                    onChange={(e) => setSelectedProxyId(e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                  >
+                    <option value="">使用系统默认代理</option>
+                    {availableProxies.filter(proxy => proxy.enabled).map(proxy => (
+                      <option key={proxy.id} value={proxy.id}>
+                        {proxy.name} ({proxy.proxy_type.toUpperCase()} - {proxy.host}:{proxy.port})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {selectedProxyId ? 
+                      '使用指定的代理服务器进行连接' : 
+                      '使用系统默认代理，如果没有配置默认代理则直连'
+                    }
+                  </p>
+                  
+                  {availableProxies.length === 0 && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      暂无可用的代理配置，请先在代理设置页面添加代理
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!proxyEnabled && (
+                <p className="text-xs text-zinc-500">
+                  账号将使用直连模式，不通过代理服务器
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="border-t border-zinc-200 pt-4">

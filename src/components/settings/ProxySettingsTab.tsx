@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlusIcon, TrashIcon, PencilIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, PencilIcon, CheckCircleIcon, XCircleIcon, Globe } from 'lucide-react';
+import { apiClient } from '../../utils/api';
 
 interface ProxyConfig {
   id: string;
@@ -22,7 +23,14 @@ interface SystemProxyConfig {
   global_proxy_enabled: boolean;
 }
 
-export default function ProxySettingsPage() {
+interface ProxyTestResult {
+  success: boolean;
+  responseTimeMs?: number;
+  errorMessage?: string;
+  proxyIp?: string;
+}
+
+export default function ProxySettingsTab() {
   const [systemConfig, setSystemConfig] = useState<SystemProxyConfig>({
     proxies: {},
     global_proxy_enabled: false
@@ -40,12 +48,11 @@ export default function ProxySettingsPage() {
 
   const loadProxyConfig = async () => {
     try {
-      // TODO: 实际的API调用
-      // const response = await fetch('/api/proxy-settings');
-      // const config = await response.json();
-      // setSystemConfig(config);
-      
-      // 暂时使用模拟数据
+      const config = await apiClient.get<SystemProxyConfig>('/api/proxies');
+      setSystemConfig(config);
+    } catch (error) {
+      console.error('加载代理配置失败:', error);
+      // 使用模拟数据作为回退
       const mockConfig: SystemProxyConfig = {
         proxies: {
           'corp-http': {
@@ -73,8 +80,6 @@ export default function ProxySettingsPage() {
         global_proxy_enabled: true
       };
       setSystemConfig(mockConfig);
-    } catch (error) {
-      console.error('加载代理配置失败:', error);
     }
   };
 
@@ -97,21 +102,31 @@ export default function ProxySettingsPage() {
 
   const handleSaveProxy = async (proxy: ProxyConfig) => {
     try {
-      if (!proxy.id) {
-        proxy.id = `proxy-${Date.now()}`;
-      }
+      const isNew = !proxy.id;
+      const proxyData = {
+        name: proxy.name,
+        proxyType: proxy.proxy_type,
+        host: proxy.host,
+        port: proxy.port,
+        enabled: proxy.enabled,
+        auth: proxy.auth ? {
+          username: proxy.auth.username,
+          password: proxy.auth.password
+        } : undefined
+      };
       
-      // TODO: 实际的API调用
-      // await fetch('/api/proxy-settings', {
-      //   method: proxy.id in systemConfig.proxies ? 'PUT' : 'POST',
-      //   body: JSON.stringify(proxy)
-      // });
+      let savedProxy: ProxyConfig;
+      if (isNew) {
+        savedProxy = await apiClient.post<ProxyConfig>('/api/proxies', proxyData);
+      } else {
+        savedProxy = await apiClient.put<ProxyConfig>(`/api/proxies/${proxy.id}`, proxyData);
+      }
       
       setSystemConfig(prev => ({
         ...prev,
         proxies: {
           ...prev.proxies,
-          [proxy.id]: proxy
+          [savedProxy.id]: savedProxy
         }
       }));
       
@@ -126,8 +141,7 @@ export default function ProxySettingsPage() {
     if (!confirm('确定要删除这个代理配置吗？')) return;
     
     try {
-      // TODO: 实际的API调用
-      // await fetch(`/api/proxy-settings/${proxyId}`, { method: 'DELETE' });
+      await apiClient.delete(`/api/proxies/${proxyId}`);
       
       const newProxies = { ...systemConfig.proxies };
       delete newProxies[proxyId];
@@ -146,18 +160,27 @@ export default function ProxySettingsPage() {
     setTestingProxy(proxyId);
     
     try {
-      // TODO: 实际的API调用
-      // const response = await fetch(`/api/proxy-settings/${proxyId}/test`);
-      // const result = await response.json();
-      
-      // 模拟测试
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const isValid = Math.random() > 0.3; // 70%成功率
-      
+      const proxy = systemConfig.proxies[proxyId];
+      if (!proxy) {
+        throw new Error('代理配置不存在');
+      }
+
+      const result = await apiClient.post<ProxyTestResult>('/api/proxy/test', {
+        proxyType: proxy.proxy_type,
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.auth?.username,
+        password: proxy.auth?.password
+      });
+
       setTestResults(prev => ({
         ...prev,
-        [proxyId]: isValid
+        [proxyId]: result.success
       }));
+
+      if (result.success && result.proxyIp) {
+        console.log(`✅ 代理测试成功，IP: ${result.proxyIp}, 响应时间: ${result.responseTimeMs}ms`);
+      }
     } catch (error) {
       console.error('测试代理失败:', error);
       setTestResults(prev => ({
@@ -171,7 +194,8 @@ export default function ProxySettingsPage() {
 
   const handleSetDefault = async (proxyId: string) => {
     try {
-      // TODO: 实际的API调用
+      await apiClient.post('/api/proxies/default', { proxyId });
+      
       setSystemConfig(prev => ({
         ...prev,
         default_proxy_id: proxyId
@@ -183,10 +207,13 @@ export default function ProxySettingsPage() {
 
   const handleToggleGlobalProxy = async () => {
     try {
-      // TODO: 实际的API调用
+      const newState = !systemConfig.global_proxy_enabled;
+      
+      await apiClient.post('/api/proxies/global', newState);
+      
       setSystemConfig(prev => ({
         ...prev,
-        global_proxy_enabled: !prev.global_proxy_enabled
+        global_proxy_enabled: newState
       }));
     } catch (error) {
       console.error('切换全局代理状态失败:', error);
@@ -196,24 +223,20 @@ export default function ProxySettingsPage() {
   const proxies = Object.values(systemConfig.proxies);
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">代理设置</h1>
-        <p className="text-gray-600 mt-2">
-          配置系统级代理设置，支持HTTP、HTTPS和SOCKS5代理
-        </p>
-      </div>
-
+    <div className="space-y-6">
       {/* 全局代理开关 */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="px-6 py-4 border-b">
-          <h2 className="text-xl font-semibold">全局设置</h2>
+      <div className="bg-white rounded-lg border border-zinc-200">
+        <div className="px-4 py-3 border-b border-zinc-200">
+          <h3 className="text-lg font-medium flex items-center gap-2">
+            <Globe className="h-5 w-5 text-zinc-600" />
+            代理设置
+          </h3>
         </div>
-        <div className="p-6">
+        <div className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-medium">启用全局代理</h3>
-              <p className="text-gray-600">启用后，所有上游请求将使用配置的代理</p>
+              <h4 className="text-sm font-medium text-zinc-900">启用全局代理</h4>
+              <p className="text-sm text-zinc-600">启用后，所有上游请求将使用配置的代理</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -222,56 +245,56 @@ export default function ProxySettingsPage() {
                 onChange={handleToggleGlobalProxy}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>
       </div>
 
       {/* 代理列表 */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold">代理配置</h2>
+      <div className="bg-white rounded-lg border border-zinc-200">
+        <div className="px-4 py-3 border-b border-zinc-200 flex justify-between items-center">
+          <h3 className="text-lg font-medium">代理服务器</h3>
           <button
             onClick={handleAddProxy}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center gap-2"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm flex items-center gap-2"
           >
-            <PlusIcon className="h-5 w-5" />
+            <PlusIcon className="h-4 w-4" />
             添加代理
           </button>
         </div>
         
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-zinc-200">
+            <thead className="bg-zinc-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   名称
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   类型
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   地址
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   状态
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   默认
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                   操作
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-zinc-200">
               {proxies.map((proxy) => (
                 <tr key={proxy.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{proxy.name}</div>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-zinc-900">{proxy.name}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                       proxy.proxy_type === 'http' ? 'bg-blue-100 text-blue-800' :
                       proxy.proxy_type === 'https' ? 'bg-green-100 text-green-800' :
@@ -280,10 +303,10 @@ export default function ProxySettingsPage() {
                       {proxy.proxy_type.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-zinc-900">
                     {proxy.host}:{proxy.port}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       {proxy.enabled ? (
                         <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
@@ -291,7 +314,7 @@ export default function ProxySettingsPage() {
                           启用
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-zinc-100 text-zinc-800 rounded-full">
                           <XCircleIcon className="h-3 w-3 mr-1" />
                           禁用
                         </span>
@@ -305,24 +328,24 @@ export default function ProxySettingsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     {systemConfig.default_proxy_id === proxy.id ? (
-                      <span className="text-blue-600 font-medium">默认</span>
+                      <span className="text-blue-600 font-medium text-sm">默认</span>
                     ) : (
                       <button
                         onClick={() => handleSetDefault(proxy.id)}
-                        className="text-gray-400 hover:text-blue-600"
+                        className="text-zinc-400 hover:text-blue-600 text-sm"
                       >
                         设为默认
                       </button>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleTestProxy(proxy.id)}
                         disabled={testingProxy === proxy.id}
-                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
+                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50 text-sm"
                       >
                         {testingProxy === proxy.id ? '测试中...' : '测试'}
                       </button>
@@ -344,8 +367,8 @@ export default function ProxySettingsPage() {
               ))}
               {proxies.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-暂无代理配置，点击&quot;添加代理&quot;开始配置
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                    暂无代理配置，点击添加代理开始配置
                   </td>
                 </tr>
               )}
@@ -403,23 +426,23 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">名称</label>
+            <label className="block text-sm font-medium text-zinc-700">名称</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="代理服务器名称"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">类型</label>
+            <label className="block text-sm font-medium text-zinc-700">类型</label>
             <select
               value={formData.proxy_type}
               onChange={(e) => setFormData(prev => ({ ...prev, proxy_type: e.target.value as any }))}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               <option value="http">HTTP</option>
               <option value="https">HTTPS</option>
@@ -429,23 +452,23 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">主机</label>
+              <label className="block text-sm font-medium text-zinc-700">主机</label>
               <input
                 type="text"
                 value={formData.host}
                 onChange={(e) => setFormData(prev => ({ ...prev, host: e.target.value }))}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                 placeholder="192.168.1.1"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">端口</label>
+              <label className="block text-sm font-medium text-zinc-700">端口</label>
               <input
                 type="number"
                 value={formData.port}
                 onChange={(e) => setFormData(prev => ({ ...prev, port: parseInt(e.target.value) || 8080 }))}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                 min="1"
                 max="65535"
                 required
@@ -458,9 +481,9 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
               type="checkbox"
               checked={formData.enabled}
               onChange={(e) => setFormData(prev => ({ ...prev, enabled: e.target.checked }))}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-zinc-300 rounded"
             />
-            <label className="ml-2 block text-sm text-gray-900">启用此代理</label>
+            <label className="ml-2 block text-sm text-zinc-900">启用此代理</label>
           </div>
 
           <div className="flex items-center">
@@ -468,15 +491,15 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
               type="checkbox"
               checked={showAuth}
               onChange={(e) => setShowAuth(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-zinc-300 rounded"
             />
-            <label className="ml-2 block text-sm text-gray-900">需要认证</label>
+            <label className="ml-2 block text-sm text-zinc-900">需要认证</label>
           </div>
 
           {showAuth && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">用户名</label>
+                <label className="block text-sm font-medium text-zinc-700">用户名</label>
                 <input
                   type="text"
                   value={formData.auth?.username || ''}
@@ -484,11 +507,11 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
                     ...prev,
                     auth: { ...prev.auth, username: e.target.value, password: prev.auth?.password || '' }
                   }))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">密码</label>
+                <label className="block text-sm font-medium text-zinc-700">密码</label>
                 <input
                   type="password"
                   value={formData.auth?.password || ''}
@@ -496,7 +519,7 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
                     ...prev,
                     auth: { ...prev.auth, username: prev.auth?.username || '', password: e.target.value }
                   }))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                 />
               </div>
             </div>
@@ -506,13 +529,13 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-300 rounded hover:bg-zinc-50"
             >
               取消
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700"
             >
               保存
             </button>

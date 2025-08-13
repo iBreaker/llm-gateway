@@ -6,6 +6,8 @@ pub mod auth;
 pub mod api_keys;
 pub mod health;
 pub mod proxy;
+pub mod proxy_test;
+pub mod proxy_management;
 pub mod users;
 pub mod accounts;
 pub mod stats;

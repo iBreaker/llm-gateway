@@ -10,6 +10,7 @@ export interface UpstreamAccount {
   successRate: number
   oauthExpiresAt?: number
   oauthScopes?: string
+  proxyConfig?: AccountProxyConfig  // 代理配置
 }
 
 export interface AccountProxyConfig {
@@ -38,6 +39,7 @@ export interface UpdateAccountData {
   name: string
   is_active: boolean
   credentials?: any
+  proxyConfig?: AccountProxyConfig  // 代理配置
 }
 
 export interface OAuthSession {
