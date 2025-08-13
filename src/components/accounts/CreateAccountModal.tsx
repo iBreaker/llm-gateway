@@ -1,10 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import { CreateAccountData } from '@/types/accounts'
 import { OAuthFlow } from './OAuthFlow'
+
+interface ProxyConfig {
+  id: string;
+  name: string;
+  proxy_type: 'http' | 'https' | 'socks5';
+  host: string;
+  port: number;
+  enabled: boolean;
+}
 
 interface CreateAccountModalProps {
   onClose: () => void
@@ -18,6 +27,47 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
     serviceProvider: 'anthropic',
     authMethod: 'api_key',
   })
+  
+  const [availableProxies, setAvailableProxies] = useState<ProxyConfig[]>([])
+  const [proxyEnabled, setProxyEnabled] = useState(false)
+  const [selectedProxyId, setSelectedProxyId] = useState<string>('')
+
+  // 加载可用的代理配置
+  useEffect(() => {
+    loadAvailableProxies()
+  }, [])
+
+  const loadAvailableProxies = async () => {
+    try {
+      // TODO: 实际的API调用
+      // const response = await fetch('/api/proxy-settings')
+      // const data = await response.json()
+      // setAvailableProxies(data.proxies || [])
+      
+      // 暂时使用模拟数据
+      const mockProxies: ProxyConfig[] = [
+        {
+          id: 'corp-http',
+          name: '企业HTTP代理',
+          proxy_type: 'http',
+          host: '10.0.0.100',
+          port: 8080,
+          enabled: true
+        },
+        {
+          id: 'secure-https',
+          name: '安全HTTPS代理',
+          proxy_type: 'https',
+          host: 'secure.proxy.com',
+          port: 3128,
+          enabled: true
+        }
+      ]
+      setAvailableProxies(mockProxies)
+    } catch (error) {
+      console.error('加载代理配置失败:', error)
+    }
+  }
 
   // ESC键退出支持
   useEscapeKey(onClose)
@@ -28,7 +78,20 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
       alert('请输入账号名称')
       return
     }
-    await onSubmit(formData)
+    
+    // 包含代理配置的数据
+    const dataWithProxy = {
+      ...formData,
+      proxyConfig: proxyEnabled ? {
+        enabled: true,
+        proxyId: selectedProxyId || null
+      } : {
+        enabled: false,
+        proxyId: null
+      }
+    }
+    
+    await onSubmit(dataWithProxy)
   }
 
   const handleCredentialChange = (key: string, value: string) => {
@@ -239,6 +302,64 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
               />
               <p className="text-xs text-zinc-500 mt-1">负载均衡权重</p>
+            </div>
+          </div>
+
+          {/* 代理配置 */}
+          <div className="border-t border-zinc-200 pt-4">
+            <h3 className="text-sm font-medium text-zinc-900 mb-3">代理设置</h3>
+            
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="proxy-enabled"
+                  checked={proxyEnabled}
+                  onChange={(e) => setProxyEnabled(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-zinc-300 rounded"
+                />
+                <label htmlFor="proxy-enabled" className="ml-2 text-sm text-zinc-700">
+                  为此账号启用代理
+                </label>
+              </div>
+
+              {proxyEnabled && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    选择代理
+                  </label>
+                  <select
+                    value={selectedProxyId}
+                    onChange={(e) => setSelectedProxyId(e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                  >
+                    <option value="">使用系统默认代理</option>
+                    {availableProxies.filter(proxy => proxy.enabled).map(proxy => (
+                      <option key={proxy.id} value={proxy.id}>
+                        {proxy.name} ({proxy.proxy_type.toUpperCase()} - {proxy.host}:{proxy.port})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {selectedProxyId ? 
+                      '使用指定的代理服务器进行连接' : 
+                      '使用系统默认代理，如果没有配置默认代理则直连'
+                    }
+                  </p>
+                  
+                  {availableProxies.length === 0 && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      暂无可用的代理配置，请先在代理设置页面添加代理
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!proxyEnabled && (
+                <p className="text-xs text-zinc-500">
+                  账号将使用直连模式，不通过代理服务器
+                </p>
+              )}
             </div>
           </div>
 

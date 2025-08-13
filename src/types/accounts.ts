@@ -12,6 +12,11 @@ export interface UpstreamAccount {
   oauthScopes?: string
 }
 
+export interface AccountProxyConfig {
+  enabled: boolean
+  proxyId?: string | null
+}
+
 export interface CreateAccountData {
   name: string
   serviceProvider: string
@@ -26,6 +31,7 @@ export interface CreateAccountData {
   oauthScopes?: string
   baseUrl?: string          // 可选的基础URL
   extraConfig?: any         // 额外配置
+  proxyConfig?: AccountProxyConfig // 代理配置
 }
 
 export interface UpdateAccountData {
