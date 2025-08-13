@@ -188,14 +188,26 @@ impl IntelligentProxy {
         // 转发客户端请求头（过滤不应该转发的头部）
         info!("🔍 [{}] [上游请求] 开始转发客户端请求头", request.request_id);
         let mut forwarded_headers_count = 0;
+        let is_oauth = matches!(account.provider, crate::business::domain::AccountProvider::AnthropicOauth);
+        
         for (key, value) in &request.headers {
             let key_lower = key.to_lowercase();
-            if key_lower != "authorization" && key_lower != "host" && key_lower != "connection" {
+            let should_skip = key_lower == "authorization" 
+                || key_lower == "host" 
+                || key_lower == "connection"
+                || (is_oauth && key_lower == "anthropic-beta"); // OAuth账号过滤客户端的beta头部
+                
+            if !should_skip {
                 req_builder = req_builder.header(key, value);
                 forwarded_headers_count += 1;
                 info!("🔍 [{}] [上游请求] 转发头部: '{}': '{}'", request.request_id, key, value);
             } else {
-                info!("🔍 [{}] [上游请求] 过滤头部: '{}'", request.request_id, key);
+                let reason = if key_lower == "anthropic-beta" && is_oauth {
+                    "OAuth账号使用专用beta头部"
+                } else {
+                    "安全过滤"
+                };
+                info!("🔍 [{}] [上游请求] 过滤头部: '{}' ({})", request.request_id, key, reason);
             }
         }
         info!("🔍 [{}] [上游请求] 共转发 {} 个请求头部", request.request_id, forwarded_headers_count);
@@ -400,6 +412,13 @@ impl IntelligentProxy {
                     // 关键修复：OAuth token 总是使用 Bearer 认证（基于relay项目实现）
                     info!("🔍 [认证] OAuth token 使用 Authorization Bearer 认证（OAuth标准）");
                     req_builder = req_builder.header("Authorization", format!("Bearer {}", access_token));
+                    
+                    // OAuth请求必须包含oauth-2025-04-20 beta标志
+                    info!("🔍 [认证] OAuth请求添加oauth-2025-04-20 beta标志");
+                    req_builder = req_builder.header(
+                        "anthropic-beta", 
+                        "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
+                    );
                 } else {
                     error!("❌ [认证] Anthropic OAuth账号缺少access_token");
                     return Err(AppError::Business("Anthropic OAuth账号缺少access_token".to_string()));
