@@ -21,6 +21,8 @@ pub mod rate_limit_service;
 
 // 新的代理架构模块
 pub mod proxy;
+pub mod proxy_client_factory;
+pub mod proxy_manager;
 use crate::shared::{error::AppResult, types::*};
 use crate::business::domain::*;
 

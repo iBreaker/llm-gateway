@@ -8,9 +8,11 @@ use crate::shared::types::{UserId, ApiKeyId, UpstreamAccountId};
 
 pub mod provider;
 pub mod legacy_compat;
+pub mod proxy_config;
 
 pub use provider::{ServiceProvider, AuthMethod, ProviderConfig};
 pub use legacy_compat::AccountProvider;
+pub use proxy_config::{ProxyType, ProxyConfig, ProxyAuth, SystemProxyConfig, AccountProxyConfig};
 
 /// 用户领域模型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +93,8 @@ pub struct UpstreamAccount {
     // OAuth 相关字段
     pub oauth_expires_at: Option<i64>,
     pub oauth_scopes: Option<String>,
+    // 代理配置
+    pub proxy_config: Option<AccountProxyConfig>,
 }
 
 impl UpstreamAccount {
@@ -230,6 +234,48 @@ impl UpstreamAccount {
             HealthStatus::Degraded => "降级".to_string(), 
             HealthStatus::Unhealthy => "异常".to_string(),
             HealthStatus::Unknown => "未知".to_string(),
+        }
+    }
+
+    /// 获取代理配置
+    pub fn get_proxy_config(&self) -> &Option<AccountProxyConfig> {
+        &self.proxy_config
+    }
+
+    /// 设置代理配置
+    pub fn set_proxy_config(&mut self, proxy_config: Option<AccountProxyConfig>) {
+        self.proxy_config = proxy_config;
+    }
+
+    /// 启用代理
+    pub fn enable_proxy(&mut self, proxy_id: Option<String>) {
+        self.proxy_config = Some(if let Some(id) = proxy_id {
+            AccountProxyConfig::enable_with_proxy(id)
+        } else {
+            AccountProxyConfig::enable_with_default()
+        });
+    }
+
+    /// 禁用代理
+    pub fn disable_proxy(&mut self) {
+        self.proxy_config = Some(AccountProxyConfig::disable());
+    }
+
+    /// 检查是否启用了代理
+    pub fn is_proxy_enabled(&self) -> bool {
+        if let Some(proxy_config) = &self.proxy_config {
+            proxy_config.enabled
+        } else {
+            false
+        }
+    }
+
+    /// 获取实际使用的代理配置
+    pub fn resolve_proxy_config<'a>(&self, system_config: &'a SystemProxyConfig) -> Option<&'a ProxyConfig> {
+        if let Some(account_proxy_config) = &self.proxy_config {
+            account_proxy_config.resolve_proxy(system_config)
+        } else {
+            None
         }
     }
 }

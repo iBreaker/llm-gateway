@@ -11,9 +11,10 @@ use tracing::{info, error, instrument};
 use futures_util::{Stream, StreamExt};
 use bytes::Bytes;
 
-use crate::business::domain::{UpstreamAccount, User};
+use crate::business::domain::{UpstreamAccount, User, SystemProxyConfig};
 use crate::business::services::{
-    SmartRouter, RequestFeatures, RoutingDecision, LoadBalancingStrategy
+    SmartRouter, RequestFeatures, RoutingDecision, LoadBalancingStrategy,
+    proxy_client_factory::ProxyClientFactory
 };
 use crate::shared::{AppError, AppResult};
 
@@ -50,31 +51,35 @@ pub struct ProxyCoordinator {
     smart_router: Arc<SmartRouter>,
     metrics: ProxyMetrics,
     provider_factory: Box<dyn ProviderFactory>,
-    // HTTP客户端（用于实际的上游请求）
-    http_client: reqwest::Client,
+    // 系统代理配置
+    system_proxy_config: Arc<SystemProxyConfig>,
 }
 
 impl ProxyCoordinator {
-    /// 创建新的代理协调器（保持原有构造逻辑）
+    /// 创建新的代理协调器（支持系统代理配置）
     pub fn new() -> Self {
-        // 为SSE长连接优化的HTTP客户端配置
-        let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(300))  // 5分钟超时，适合长时间的流式响应
-            .connect_timeout(Duration::from_secs(10))  // 连接超时10秒
-            .pool_idle_timeout(Duration::from_secs(90))  // 连接池空闲超时
-            .tcp_keepalive(Duration::from_secs(60))  // TCP保活，防止长连接被中断
-            // 重要：确保不发送Accept-Encoding头部，让服务器返回未压缩的响应
-            // 这样避免了gzip解压的复杂性和Node.js fetch的兼容性问题
-            .no_gzip()  // 禁用自动gzip处理，避免压缩响应问题
-            .build()
-            .expect("Failed to create HTTP client");
+        Self::new_with_system_proxy_config(Arc::new(SystemProxyConfig::new()))
+    }
 
+    /// 创建带有系统代理配置的代理协调器
+    pub fn new_with_system_proxy_config(system_proxy_config: Arc<SystemProxyConfig>) -> Self {
         Self {
             smart_router: Arc::new(SmartRouter::new()),
             metrics: ProxyMetrics::new(),
             provider_factory: Box::new(DefaultProviderFactory::default()),
-            http_client,
+            system_proxy_config,
         }
+    }
+
+    /// 更新系统代理配置
+    pub fn update_system_proxy_config(&mut self, config: Arc<SystemProxyConfig>) {
+        self.system_proxy_config = config;
+        info!("🔄 系统代理配置已更新");
+    }
+
+    /// 获取系统代理配置
+    pub fn get_system_proxy_config(&self) -> Arc<SystemProxyConfig> {
+        Arc::clone(&self.system_proxy_config)
     }
 
     /// 代理请求到最佳上游服务（保持原有完整逻辑）
@@ -200,14 +205,25 @@ impl ProxyCoordinator {
         
         info!("🔍 [{}] [上游请求构建] 目标URL: {}", request.request_id, upstream_url);
         info!("🔍 [{}] [上游请求构建] 方法: {}", request.request_id, request.method);
+
+        // 根据账号代理配置创建HTTP客户端
+        let proxy_config = account.resolve_proxy_config(&self.system_proxy_config);
+        let http_client = ProxyClientFactory::create_client(proxy_config)?;
+
+        if let Some(proxy) = proxy_config {
+            info!("🔍 [{}] [代理配置] 使用代理: {} ({}://{}:{})",
+                  request.request_id, proxy.name, proxy.proxy_type.as_str(), proxy.host, proxy.port);
+        } else {
+            info!("🔍 [{}] [代理配置] 使用直连模式", request.request_id);
+        }
         
         // 构建HTTP请求
         let mut req_builder = match request.method.as_str() {
-            "GET" => self.http_client.get(&upstream_url),
-            "POST" => self.http_client.post(&upstream_url),
-            "PUT" => self.http_client.put(&upstream_url),
-            "DELETE" => self.http_client.delete(&upstream_url),
-            "PATCH" => self.http_client.patch(&upstream_url),
+            "GET" => http_client.get(&upstream_url),
+            "POST" => http_client.post(&upstream_url),
+            "PUT" => http_client.put(&upstream_url),
+            "DELETE" => http_client.delete(&upstream_url),
+            "PATCH" => http_client.patch(&upstream_url),
             _ => return Err(AppError::Business(format!("不支持的HTTP方法: {}", request.method))),
         };
 

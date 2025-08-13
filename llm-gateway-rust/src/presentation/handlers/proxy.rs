@@ -149,6 +149,7 @@ pub async fn proxy_messages(
             created_at: chrono::Utc::now(),
             oauth_expires_at: None,
             oauth_scopes: None,
+            proxy_config: None, // 默认无代理配置
         };
         let dummy_user = User {
             id: -1,
@@ -500,6 +501,7 @@ async fn get_available_upstream_accounts(
             created_at: row.created_at,
             oauth_expires_at: row.oauth_expires_at,
             oauth_scopes: row.oauth_scopes,
+            proxy_config: None, // 默认无代理配置
         });
     }
 

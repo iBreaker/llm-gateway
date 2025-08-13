@@ -93,6 +93,7 @@ impl AccountsRepository {
                     created_at: row.created_at,
                     oauth_expires_at: row.oauth_expires_at,
                     oauth_scopes: row.oauth_scopes,
+                    proxy_config: None, // 默认无代理配置
                 }
             })
             .collect();
@@ -159,6 +160,7 @@ impl AccountsRepository {
                 created_at: row.created_at,
                 oauth_expires_at: row.oauth_expires_at,
                 oauth_scopes: row.oauth_scopes,
+                proxy_config: None, // 默认无代理配置
             })
         } else {
             None
@@ -244,6 +246,7 @@ impl AccountsRepository {
             created_at: row.created_at,
             oauth_expires_at: row.oauth_expires_at,
             oauth_scopes: row.oauth_scopes,
+            proxy_config: None, // 默认无代理配置
         };
 
         info!("上游账号创建成功: ID {}", account.id);
