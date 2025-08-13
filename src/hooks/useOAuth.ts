@@ -25,7 +25,7 @@ export function useOAuth() {
     }
   }
 
-  const exchangeAuthorizationCode = async (callbackUrl: string) => {
+  const exchangeAuthorizationCode = async (callbackUrl: string, proxyConfig?: { enabled: boolean; proxyId: string | null }) => {
     if (!oauthSession) {
       throw new Error('未找到OAuth会话信息')
     }
@@ -34,7 +34,8 @@ export function useOAuth() {
     try {
       const response = await apiClient.post('/api/oauth/anthropic/exchange-code', {
         sessionId: oauthSession.sessionId,
-        callbackUrl: callbackUrl.trim()
+        callbackUrl: callbackUrl.trim(),
+        proxyConfig: proxyConfig
       })
 
       console.log('✅ OAuth 授权码交换成功:', response)

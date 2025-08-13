@@ -50,6 +50,8 @@ pub struct ExchangeCodeRequest {
     pub authorization_code: Option<String>,
     #[serde(alias = "callbackUrl")]
     pub callback_url: Option<String>,
+    #[serde(alias = "proxyConfig")]
+    pub proxy_config: Option<crate::presentation::dto::accounts::AccountProxyConfigRequest>,
 }
 
 /// 交换OAuth授权码响应
@@ -175,6 +177,17 @@ pub async fn exchange_anthropic_code(
         crate::business::domain::AuthMethod::OAuth
     );
 
+    // 处理代理配置
+    let proxy_config_id = if let Some(config) = &request.proxy_config {
+        if config.enabled {
+            config.proxy_id.as_deref()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let database = &app_state.database;
     let created_account = database.accounts.create(
         user_id,
@@ -182,7 +195,7 @@ pub async fn exchange_anthropic_code(
         &account_name,
         &account_credentials,
         None, // base_url
-        None, // proxy_config
+        proxy_config_id, // proxy_config
     ).await?;
 
     info!("✅ Anthropic OAuth账号创建成功: ID {}, Name: {}", created_account.id, created_account.account_name);

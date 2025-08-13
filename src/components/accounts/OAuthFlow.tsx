@@ -7,9 +7,13 @@ import { useOAuth } from '@/hooks/useOAuth'
 interface OAuthFlowProps {
   onSuccess: () => void
   onClose: () => void
+  proxyConfig?: {
+    enabled: boolean
+    proxyId: string | null
+  }
 }
 
-export function OAuthFlow({ onSuccess, onClose }: OAuthFlowProps) {
+export function OAuthFlow({ onSuccess, onClose, proxyConfig }: OAuthFlowProps) {
   const {
     oauthSession,
     isGeneratingAuth,
@@ -38,7 +42,7 @@ export function OAuthFlow({ onSuccess, onClose }: OAuthFlowProps) {
     }
 
     try {
-      await exchangeAuthorizationCode(authorizationInput)
+      await exchangeAuthorizationCode(authorizationInput, proxyConfig)
       alert('Anthropic OAuth 账号添加成功！')
       onSuccess()
     } catch (error: any) {

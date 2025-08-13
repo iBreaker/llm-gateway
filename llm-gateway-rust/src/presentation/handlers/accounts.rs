@@ -196,10 +196,19 @@ pub async fn update_account(
     }
 
     // 处理代理配置 - 从代理请求中提取 proxy_id
-    let proxy_config_id = request.proxy_config
-        .as_ref()
-        .filter(|config| config.enabled)
-        .and_then(|config| config.proxy_id.as_deref());
+    let proxy_config_id = if let Some(config) = &request.proxy_config {
+        // 如果提供了代理配置，根据enabled状态决定proxy_id
+        if config.enabled {
+            config.proxy_id.as_deref()
+        } else {
+            // 明确禁用代理，设置为None
+            None
+        }
+    } else {
+        // 没有提供代理配置，不更新此字段，保持现有值
+        // 需要修改数据库层支持此逻辑
+        None
+    };
 
     // 执行更新
     let updated_account = database.accounts.update(

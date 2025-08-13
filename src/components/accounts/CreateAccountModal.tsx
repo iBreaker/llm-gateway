@@ -126,7 +126,17 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
         )
 
       case 'anthropic_oauth':
-        return <OAuthFlow onSuccess={handleOAuthSuccess} onClose={onClose} />
+        return <OAuthFlow 
+          onSuccess={handleOAuthSuccess} 
+          onClose={onClose}
+          proxyConfig={proxyEnabled ? {
+            enabled: true,
+            proxyId: selectedProxyId || null
+          } : {
+            enabled: false,
+            proxyId: null
+          }}
+        />
 
       case 'openai_api_key':
         return (

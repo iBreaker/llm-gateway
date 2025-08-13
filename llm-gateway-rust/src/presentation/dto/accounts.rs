@@ -5,6 +5,14 @@
 use serde::{Deserialize, Serialize};
 use crate::business::domain::{ServiceProvider, AuthMethod, ProviderConfig};
 
+/// 账号代理配置请求
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AccountProxyConfigRequest {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_id: Option<String>,
+}
+
 /// 上游账号信息（API响应）
 #[derive(Debug, Serialize)]
 pub struct AccountInfo {
@@ -336,12 +344,4 @@ mod tests {
         assert!(anthropic.supported_auth_methods.contains(&"api_key".to_string()));
         assert!(anthropic.supported_auth_methods.contains(&"oauth".to_string()));
     }
-}
-
-/// 账号代理配置请求
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct AccountProxyConfigRequest {
-    pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub proxy_id: Option<String>,
 }

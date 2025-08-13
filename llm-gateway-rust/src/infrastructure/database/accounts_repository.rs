@@ -307,13 +307,7 @@ impl AccountsRepository {
             serde_json::to_value(&existing.as_ref().unwrap().credentials).unwrap()
         };
         
-        let update_proxy_config_id = if let Some(proxy_id) = proxy_config_id {
-            Some(proxy_id.to_string())
-        } else {
-            existing.as_ref().unwrap().proxy_config.as_ref().and_then(|cfg| {
-                cfg.proxy_id.clone()
-            })
-        };
+        let update_proxy_config_id = proxy_config_id.map(|proxy_id| proxy_id.to_string());
 
         // 执行更新
         let result = sqlx::query!(
