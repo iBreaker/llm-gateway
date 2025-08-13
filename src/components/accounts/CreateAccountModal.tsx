@@ -15,7 +15,7 @@ interface CreateAccountModalProps {
 export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccountModalProps) {
   const [formData, setFormData] = useState<CreateAccountData>({
     name: '',
-    type: 'API',
+    type: 'ANTHROPIC_API', // 使用provider作为type
     provider: 'ANTHROPIC_API',
     credentials: {},
     priority: 1,
@@ -53,21 +53,39 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
     switch (formData.provider) {
       case 'ANTHROPIC_API':
         return (
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              API Key
-            </label>
-            <input
-              type="password"
-              value={formData.credentials.session_key || ''}
-              onChange={(e) => handleCredentialChange('session_key', e.target.value)}
-              placeholder="sk-ant-api03-..."
-              className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
-              required
-            />
-            <p className="text-xs text-zinc-500 mt-1">
-              从 Anthropic Console 获取的 API Key
-            </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <input
+                type="password"
+                value={formData.credentials.session_key || ''}
+                onChange={(e) => handleCredentialChange('session_key', e.target.value)}
+                placeholder="sk-ant-api03-..."
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+                required
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                从 Anthropic Console 获取的 API Key
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL
+              </label>
+              <input
+                type="url"
+                value={formData.credentials.base_url || ''}
+                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                placeholder="https://api.anthropic.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                API 服务的基础 URL，留空使用默认值 https://api.anthropic.com/v1
+              </p>
+            </div>
           </div>
         )
 
@@ -121,6 +139,7 @@ export function CreateAccountModal({ onClose, onSubmit, isLoading }: CreateAccou
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
                   provider: e.target.value,
+                  type: e.target.value, // 同步更新type字段
                   credentials: {} // 重置凭据
                 }))}
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"

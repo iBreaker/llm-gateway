@@ -319,7 +319,9 @@ impl IntelligentProxy {
         } else {
             // 默认base_url
             match account.provider {
-                crate::business::domain::AccountProvider::AnthropicApi | 
+                crate::business::domain::AccountProvider::AnthropicApi => {
+                    "https://api.anthropic.com/v1"
+                }
                 crate::business::domain::AccountProvider::AnthropicOauth => {
                     "https://api.anthropic.com"
                 }
@@ -327,19 +329,8 @@ impl IntelligentProxy {
             }
         };
 
-        // 路径转换逻辑
-        let converted_path = match account.provider {
-            crate::business::domain::AccountProvider::AnthropicApi |
-            crate::business::domain::AccountProvider::AnthropicOauth => {
-                // Claude API路径转换
-                if request.path.starts_with("/v1/messages") {
-                    "/v1/messages"
-                } else {
-                    &request.path
-                }
-            }
-            _ => &request.path // TODO: 实现其他提供商的路径转换
-        };
+        // 直接使用请求路径，不做假设
+        let converted_path = &request.path;
 
         // 保留查询参数（如?beta=true）
         let full_path = if request.path.contains('?') {

@@ -44,29 +44,47 @@ export function EditAccountModal({ account, onClose, onSubmit, isLoading }: Edit
       case 'anthropic_api':
       case 'ANTHROPIC_API':
         return (
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              API Key
-            </label>
-            <div className="relative">
-              <input
-                type={showCredentials ? 'text' : 'password'}
-                value={formData.credentials?.session_key || ''}
-                onChange={(e) => handleCredentialChange('session_key', e.target.value)}
-                placeholder="sk-ant-api03-..."
-                className="w-full px-3 py-2 pr-10 border border-zinc-300 rounded-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCredentials(!showCredentials)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
-              >
-                {showCredentials ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showCredentials ? 'text' : 'password'}
+                  value={formData.credentials?.session_key || ''}
+                  onChange={(e) => handleCredentialChange('session_key', e.target.value)}
+                  placeholder="sk-ant-api03-..."
+                  className="w-full px-3 py-2 pr-10 border border-zinc-300 rounded-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCredentials(!showCredentials)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  {showCredentials ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                留空则保持原有凭据不变
+              </p>
             </div>
-            <p className="text-xs text-zinc-500 mt-1">
-              留空则保持原有凭据不变
-            </p>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
+                Base URL
+              </label>
+              <input
+                type="url"
+                value={formData.credentials?.base_url || ''}
+                onChange={(e) => handleCredentialChange('base_url', e.target.value)}
+                placeholder="https://api.anthropic.com/v1"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                API 服务的基础 URL，留空使用默认值 https://api.anthropic.com/v1
+              </p>
+            </div>
           </div>
         )
 
