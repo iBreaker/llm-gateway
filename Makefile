@@ -1,11 +1,14 @@
 # LLM Gateway Makefile
 # 提供统一的开发和部署命令
 
-.PHONY: help dev build clean stop logs test lint typecheck release
+.PHONY: help init dev build clean stop logs test lint typecheck release
 
 # 默认目标
 help:
 	@echo "🦀 LLM Gateway - 可用命令:"
+	@echo ""
+	@echo "初始化命令:"
+	@echo "  make init     - 初始化项目环境 (安装依赖、设置数据库、运行迁移)"
 	@echo ""
 	@echo "开发命令:"
 	@echo "  make dev      - 启动完整开发环境 (前端 + Rust后端)"
@@ -23,6 +26,38 @@ help:
 	@echo "  make clean    - 清理构建文件"
 	@echo "  make logs     - 查看服务日志"
 
+# 项目初始化
+init:
+	@echo "🚀 初始化 LLM Gateway 项目环境..."
+	@echo ""
+	@echo "📦 安装 Node.js 依赖..."
+	@npm install
+	@echo ""
+	@echo "🦀 安装 Rust 工具链..."
+	@rustup component add clippy rustfmt
+	@echo ""
+	@echo "🔧 安装 SQLx CLI..."
+	@cargo install sqlx-cli --features postgres
+	@echo ""
+	@echo "🗃️  创建必要目录..."
+	@mkdir -p postgres/init logs
+	@chmod 755 postgres/init
+	@echo ""
+	@echo "🐳 启动数据库服务 (PostgreSQL + Redis)..."
+	@docker-compose up -d postgres redis
+	@echo "⏳ 等待数据库服务启动..."
+	@sleep 10
+	@echo ""
+	@echo "🗃️  运行数据库迁移..."
+	@export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cd llm-gateway-rust && sqlx migrate run
+	@echo ""
+	@echo "✅ 项目初始化完成!"
+	@echo ""
+	@echo "🎯 接下来您可以："
+	@echo "  make dev      - 启动开发环境"
+	@echo "  make health   - 检查服务健康状态"
+	@echo "  make help     - 查看所有可用命令"
+
 # 开发环境启动
 dev:
 	@echo "🛑 停止现有服务..."
@@ -33,10 +68,10 @@ dev:
 	@mkdir -p log
 	@echo "🚀 启动 LLM Gateway 开发环境..."
 	@echo "📦 构建 Rust 后端..."
-	@cd llm-gateway-rust && cargo build
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build
 	@echo "🦀 启动 Rust 后端服务 (端口 9527)..."
 	@mkdir -p logs && rm -f logs/*.log
-	@cd llm-gateway-rust && ./target/debug/llm-gateway-rust >> ../logs/rust-backend.log 2>&1 &
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && ./target/debug/llm-gateway-rust >> ../logs/rust-backend.log 2>&1 &
 	@sleep 2
 	@echo "🌐 启动 Next.js 前端服务 (端口 7439)..."
 	@npm run dev >> logs/next-frontend.log 2>&1 &
@@ -58,7 +93,7 @@ frontend:
 # 仅启动后端
 backend:
 	@echo "🦀 启动 Rust 后端服务..."
-	@cd llm-gateway-rust && cargo run
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo run
 
 # 停止所有服务
 stop:
@@ -74,13 +109,13 @@ build:
 	@echo "🔨 构建前端..."
 	@npm run build
 	@echo "🦀 构建 Rust 后端..."
-	@cd llm-gateway-rust && cargo build
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build
 
 # 生产版本构建
 release:
 	@echo "🚀 构建生产版本..."
 	@echo "🦀 构建 Rust 后端..."
-	@cd llm-gateway-rust && cargo build --release
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build --release
 	@echo "🌐 构建 Next.js 前端..."
 	@cp next.config.prod.js next.config.js.backup
 	@mv next.config.js next.config.dev.js 
@@ -97,7 +132,7 @@ test:
 	@echo "🧪 运行前端测试..."
 	@npm run test:ci || true
 	@echo "🦀 运行 Rust 测试..."
-	@cd llm-gateway-rust && cargo test
+	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo test
 
 # 代码检查
 lint:
