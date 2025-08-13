@@ -14,6 +14,7 @@ use num_traits::cast::FromPrimitive;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{info, error, instrument};
 
 use crate::infrastructure::Database;
@@ -23,7 +24,7 @@ use crate::business::services::{
     RequestFeatures, RequestPriority, RequestType,
 };
 use crate::business::services::proxy::coordinator::{ProxyCoordinator, ProxyRequest as ServiceProxyRequest};
-use crate::business::domain::{User, ProviderConfig, AccountCredentials};
+use crate::business::domain::{User, ProviderConfig, AccountCredentials, SystemProxyConfig};
 use crate::business::services::{RoutingDecision, TokenUsage as ServiceTokenUsage};
 
 
@@ -236,8 +237,11 @@ pub async fn proxy_messages(
         request_id: request_id.clone(),
     };
 
-    // 创建新架构的代理协调器
-    let proxy_service = ProxyCoordinator::new();
+    // 加载系统代理配置
+    let system_proxy_config = load_system_proxy_config(&database).await?;
+    
+    // 创建新架构的代理协调器（使用实际的代理配置）
+    let proxy_service = ProxyCoordinator::new_with_system_proxy_config(Arc::new(system_proxy_config));
 
     // 执行智能代理
     match proxy_service.proxy_request(service_request, &available_accounts).await {
@@ -682,5 +686,77 @@ async fn record_usage_stats_from_data(
     .map_err(|e| AppError::Database(e))?;
 
     Ok(())
+}
+
+/// 从数据库加载系统代理配置
+async fn load_system_proxy_config(database: &Database) -> AppResult<SystemProxyConfig> {
+    use crate::business::domain::proxy_config::{ProxyConfig, ProxyType, ProxyAuth};
+    
+    // 获取所有代理配置
+    let proxy_rows = sqlx::query!(
+        r#"
+        SELECT id, name, proxy_type, host, port, enabled, auth_username, auth_password, extra_config
+        FROM proxy_configs
+        WHERE enabled = true
+        ORDER BY created_at DESC
+        "#
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    // 获取系统代理全局配置
+    let system_config_row = sqlx::query!(
+        "SELECT default_proxy_id, global_proxy_enabled FROM system_proxy_config WHERE id = 1"
+    )
+    .fetch_optional(database.pool())
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    let mut proxies = HashMap::new();
+
+    for row in proxy_rows {
+        let proxy_type = match row.proxy_type.as_str() {
+            "http" => ProxyType::Http,
+            "https" => ProxyType::Https,
+            "socks5" => ProxyType::Socks5,
+            _ => continue, // 跳过无效类型
+        };
+
+        let auth = if let (Some(username), Some(password)) = (row.auth_username, row.auth_password) {
+            Some(ProxyAuth { username, password })
+        } else {
+            None
+        };
+
+        let extra_config: HashMap<String, String> = row.extra_config
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default();
+
+        let proxy_config = ProxyConfig {
+            id: row.id.clone(),
+            name: row.name,
+            proxy_type,
+            host: row.host,
+            port: row.port as u16,
+            auth,
+            enabled: row.enabled,
+            extra_config,
+        };
+
+        proxies.insert(row.id, proxy_config);
+    }
+
+    let (default_proxy_id, global_proxy_enabled) = if let Some(row) = system_config_row {
+        (row.default_proxy_id, row.global_proxy_enabled)
+    } else {
+        (None, false)
+    };
+
+    Ok(SystemProxyConfig {
+        proxies,
+        default_proxy_id,
+        global_proxy_enabled,
+    })
 }
 
