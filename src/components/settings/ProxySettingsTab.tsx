@@ -7,7 +7,7 @@ import { apiClient } from '../../utils/api';
 interface ProxyConfig {
   id: string;
   name: string;
-  proxy_type: 'http' | 'https' | 'socks5';
+  proxyType: 'http' | 'socks5';
   host: string;
   port: number;
   enabled: boolean;
@@ -19,8 +19,8 @@ interface ProxyConfig {
 
 interface SystemProxyConfig {
   proxies: Record<string, ProxyConfig>;
-  default_proxy_id?: string;
-  global_proxy_enabled: boolean;
+  defaultProxyId?: string;
+  globalProxyEnabled: boolean;
 }
 
 interface ProxyTestResult {
@@ -33,7 +33,7 @@ interface ProxyTestResult {
 export default function ProxySettingsTab() {
   const [systemConfig, setSystemConfig] = useState<SystemProxyConfig>({
     proxies: {},
-    global_proxy_enabled: false
+    globalProxyEnabled: false
   });
   
   const [showAddModal, setShowAddModal] = useState(false);
@@ -49,6 +49,7 @@ export default function ProxySettingsTab() {
   const loadProxyConfig = async () => {
     try {
       const config = await apiClient.get<SystemProxyConfig>('/api/proxies');
+      console.log('🔍 加载的代理配置:', JSON.stringify(config, null, 2));
       setSystemConfig(config);
     } catch (error) {
       console.error('加载代理配置失败:', error);
@@ -58,17 +59,17 @@ export default function ProxySettingsTab() {
           'corp-http': {
             id: 'corp-http',
             name: '企业HTTP代理',
-            proxy_type: 'http',
+            proxyType: 'http',
             host: '10.0.0.100',
             port: 8080,
             enabled: true
           },
-          'secure-https': {
-            id: 'secure-https', 
-            name: '安全HTTPS代理',
-            proxy_type: 'https',
-            host: 'secure.proxy.com',
-            port: 3128,
+          'secure-socks5': {
+            id: 'secure-socks5', 
+            name: '安全SOCKS5代理',
+            proxyType: 'socks5',
+            host: 'socks.proxy.com',
+            port: 1080,
             enabled: true,
             auth: {
               username: 'admin',
@@ -76,8 +77,8 @@ export default function ProxySettingsTab() {
             }
           }
         },
-        default_proxy_id: 'corp-http',
-        global_proxy_enabled: true
+        defaultProxyId: 'corp-http',
+        globalProxyEnabled: true
       };
       setSystemConfig(mockConfig);
     }
@@ -87,7 +88,7 @@ export default function ProxySettingsTab() {
     setEditingProxy({
       id: '',
       name: '',
-      proxy_type: 'http',
+      proxyType: 'http',
       host: '',
       port: 8080,
       enabled: true
@@ -105,7 +106,7 @@ export default function ProxySettingsTab() {
       const isNew = !proxy.id;
       const proxyData = {
         name: proxy.name,
-        proxyType: proxy.proxy_type || 'http',
+        proxyType: proxy.proxyType || 'http',
         host: proxy.host,
         port: proxy.port,
         enabled: proxy.enabled,
@@ -149,7 +150,7 @@ export default function ProxySettingsTab() {
       setSystemConfig(prev => ({
         ...prev,
         proxies: newProxies,
-        default_proxy_id: prev.default_proxy_id === proxyId ? undefined : prev.default_proxy_id
+        defaultProxyId: prev.defaultProxyId === proxyId ? undefined : prev.defaultProxyId
       }));
     } catch (error) {
       console.error('删除代理配置失败:', error);
@@ -166,7 +167,7 @@ export default function ProxySettingsTab() {
       }
 
       const result = await apiClient.post<ProxyTestResult>('/api/proxy/test', {
-        proxyType: proxy.proxy_type || 'http',
+        proxyType: proxy.proxyType || 'http',
         host: proxy.host,
         port: proxy.port,
         username: proxy.auth?.username,
@@ -198,7 +199,7 @@ export default function ProxySettingsTab() {
       
       setSystemConfig(prev => ({
         ...prev,
-        default_proxy_id: proxyId
+        defaultProxyId: proxyId
       }));
     } catch (error) {
       console.error('设置默认代理失败:', error);
@@ -207,13 +208,13 @@ export default function ProxySettingsTab() {
 
   const handleToggleGlobalProxy = async () => {
     try {
-      const newState = !systemConfig.global_proxy_enabled;
+      const newState = !systemConfig.globalProxyEnabled;
       
       await apiClient.post('/api/proxies/global', newState);
       
       setSystemConfig(prev => ({
         ...prev,
-        global_proxy_enabled: newState
+        globalProxyEnabled: newState
       }));
     } catch (error) {
       console.error('切换全局代理状态失败:', error);
@@ -241,7 +242,7 @@ export default function ProxySettingsTab() {
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={systemConfig.global_proxy_enabled}
+                checked={systemConfig.globalProxyEnabled}
                 onChange={handleToggleGlobalProxy}
                 className="sr-only peer"
               />
@@ -289,18 +290,19 @@ export default function ProxySettingsTab() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-zinc-200">
-              {proxies.map((proxy) => (
+              {proxies.map((proxy) => {
+                console.log('🔍 代理项数据:', proxy.name, proxy.proxyType, typeof proxy.proxyType);
+                return (
                 <tr key={proxy.id}>
                   <td className="px-4 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-zinc-900">{proxy.name}</div>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      (proxy.proxy_type || '').toLowerCase() === 'http' ? 'bg-blue-100 text-blue-800' :
-                      (proxy.proxy_type || '').toLowerCase() === 'https' ? 'bg-green-100 text-green-800' :
+                      (proxy.proxyType || '').toLowerCase() === 'http' ? 'bg-blue-100 text-blue-800' :
                       'bg-purple-100 text-purple-800'
                     }`}>
-                      {proxy.proxy_type?.toUpperCase() || 'UNKNOWN'}
+                      {proxy.proxyType?.toUpperCase() || 'UNKNOWN'}
                     </span>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-zinc-900">
@@ -329,7 +331,7 @@ export default function ProxySettingsTab() {
                     </div>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap">
-                    {systemConfig.default_proxy_id === proxy.id ? (
+                    {systemConfig.defaultProxyId === proxy.id ? (
                       <span className="text-blue-600 font-medium text-sm">默认</span>
                     ) : (
                       <button
@@ -364,7 +366,8 @@ export default function ProxySettingsTab() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {proxies.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-zinc-500 text-sm">
@@ -440,12 +443,11 @@ function ProxyModal({ proxy, onSave, onCancel }: ProxyModalProps) {
           <div>
             <label className="block text-sm font-medium text-zinc-700">类型</label>
             <select
-              value={formData.proxy_type}
-              onChange={(e) => setFormData(prev => ({ ...prev, proxy_type: e.target.value as any }))}
+              value={formData.proxyType}
+              onChange={(e) => setFormData(prev => ({ ...prev, proxyType: e.target.value as any }))}
               className="mt-1 block w-full rounded border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
-              <option value="http">HTTP</option>
-              <option value="https">HTTPS</option>
+              <option value="http">HTTP（支持HTTP和HTTPS）</option>
               <option value="socks5">SOCKS5</option>
             </select>
           </div>

@@ -49,7 +49,7 @@ init:
 	@sleep 10
 	@echo ""
 	@echo "🗃️  运行数据库迁移..."
-	@export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cd llm-gateway-rust && sqlx migrate run
+	@cd llm-gateway-rust && sqlx migrate run
 	@echo ""
 	@echo "✅ 项目初始化完成!"
 	@echo ""
@@ -68,10 +68,10 @@ dev:
 	@mkdir -p log
 	@echo "🚀 启动 LLM Gateway 开发环境..."
 	@echo "📦 构建 Rust 后端..."
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build
+	@cd llm-gateway-rust && cargo build
 	@echo "🦀 启动 Rust 后端服务 (端口 9527)..."
 	@mkdir -p logs && rm -f logs/*.log
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && ./target/debug/llm-gateway-rust >> ../logs/rust-backend.log 2>&1 &
+	@cd llm-gateway-rust && ./target/debug/llm-gateway-rust >> ../logs/rust-backend.log 2>&1 &
 	@sleep 2
 	@echo "🌐 启动 Next.js 前端服务 (端口 7439)..."
 	@npm run dev >> logs/next-frontend.log 2>&1 &
@@ -93,7 +93,7 @@ frontend:
 # 仅启动后端
 backend:
 	@echo "🦀 启动 Rust 后端服务..."
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo run
+	@cd llm-gateway-rust && cargo run
 
 # 停止所有服务
 stop:
@@ -109,13 +109,13 @@ build:
 	@echo "🔨 构建前端..."
 	@npm run build
 	@echo "🦀 构建 Rust 后端..."
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build
+	@cd llm-gateway-rust && cargo build
 
 # 生产版本构建
 release:
 	@echo "🚀 构建生产版本..."
 	@echo "🦀 构建 Rust 后端..."
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo build --release
+	@cd llm-gateway-rust && cargo build --release
 	@echo "🌐 构建 Next.js 前端..."
 	@cp next.config.prod.js next.config.js.backup
 	@mv next.config.js next.config.dev.js 
@@ -132,7 +132,7 @@ test:
 	@echo "🧪 运行前端测试..."
 	@npm run test:ci || true
 	@echo "🦀 运行 Rust 测试..."
-	@cd llm-gateway-rust && export DATABASE_URL="postgresql://postgres:postgres@localhost:15432/llm_gateway" && cargo test
+	@cd llm-gateway-rust && cargo test
 
 # 代码检查
 lint:

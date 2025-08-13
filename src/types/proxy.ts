@@ -3,7 +3,7 @@
 export interface ProxyConfig {
   id: string
   name: string
-  proxyType: 'http' | 'https' | 'socks5'
+  proxyType: 'http' | 'socks5'
   host: string
   port: number
   enabled: boolean
@@ -24,7 +24,7 @@ export interface SystemProxyConfig {
 
 export interface CreateProxyRequest {
   name: string
-  proxyType: 'http' | 'https' | 'socks5'
+  proxyType: 'http' | 'socks5'
   host: string
   port: number
   enabled: boolean
@@ -33,7 +33,7 @@ export interface CreateProxyRequest {
 
 export interface UpdateProxyRequest {
   name?: string
-  proxyType?: 'http' | 'https' | 'socks5'
+  proxyType?: 'http' | 'socks5'
   host?: string
   port?: number
   enabled?: boolean
