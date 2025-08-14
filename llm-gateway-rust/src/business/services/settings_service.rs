@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, debug, warn};
 use crate::{
     infrastructure::database::Database,
     shared::error::{AppError, AppResult},
@@ -50,7 +50,7 @@ impl SettingsService {
 
         let mut new_cache = HashMap::new();
         for row in settings_rows {
-            info!("🔧 加载设置: {} = {}", row.key, row.value);
+            debug!("🔧 加载设置: {} = {}", row.key, row.value);
             new_cache.insert(row.key.clone(), SettingValue {
                 value: row.value,
                 value_type: row.value_type,

@@ -110,7 +110,7 @@ release:
 	@echo "🦀 Rust 二进制: ./llm-gateway-rust/target/release/llm-gateway-rust"
 	@echo ""
 	@echo "🚀 启动生产服务："
-	@echo "  cd llm-gateway-rust && FRONTEND_DIST_PATH='../out' ./target/release/llm-gateway-rust"
+	@echo "  cd llm-gateway-rust && FRONTEND_DIST_PATH='../out' RUST_LOG='llm_gateway_rust=info,tower_http=info' ./target/release/llm-gateway-rust"
 
 # 运行测试
 test:

@@ -7,7 +7,7 @@ use std::time::Instant;
 use std::sync::Arc;
 use std::pin::Pin;
 use std::collections::HashMap;
-use tracing::{info, error, instrument};
+use tracing::{info, error, debug, instrument};
 use futures_util::Stream;
 use bytes::Bytes;
 
@@ -262,14 +262,14 @@ impl ProxyCoordinator {
         for (key, value) in provider_headers {
             req_builder = req_builder.header(&key, &value);
             provider_headers_count += 1;
-            info!("🔍 [{}] [上游请求] 添加提供商头部: '{}': '{}'", request.request_id, key, value);
+            debug!("🔍 [{}] [上游请求] 添加提供商头部: '{}': '{}'", request.request_id, key, value);
         }
         
-        info!("🔍 [{}] [上游请求] 共转发 {} 个客户端头部 + {} 个提供商头部", request.request_id, forwarded_headers_count, provider_headers_count);
+        debug!("🔍 [{}] [上游请求] 共转发 {} 个客户端头部 + {} 个提供商头部", request.request_id, forwarded_headers_count, provider_headers_count);
 
         // 转换并添加请求体
         if let Some(body) = &request.body {
-            info!("🔍 [{}] [上游请求] 开始调用请求体转换", request.request_id);
+            debug!("🔍 [{}] [上游请求] 开始调用请求体转换", request.request_id);
             // 使用请求构建器转换请求体
             let transformed_body = match request_builder.transform_request_body(
                 body, 
@@ -277,7 +277,7 @@ impl ProxyCoordinator {
                 &request.request_id
             ) {
                 Ok(transformed) => {
-                    info!("🔍 [{}] [上游请求] 请求体转换成功，大小: {} -> {} bytes", 
+                    debug!("🔍 [{}] [上游请求] 请求体转换成功，大小: {} -> {} bytes", 
                           request.request_id, body.len(), transformed.len());
                     transformed
                 },

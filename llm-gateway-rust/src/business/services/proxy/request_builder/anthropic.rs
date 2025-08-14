@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use async_trait::async_trait;
-use tracing::info;
+use tracing::debug;
 use serde_json::Value;
 
 use crate::business::domain::{UpstreamAccount, AuthMethod, ProviderConfig};
@@ -71,14 +71,14 @@ impl RequestBuilder for AnthropicRequestBuilder {
                 
             if !should_skip {
                 filtered_headers.insert(key.clone(), value.clone());
-                info!("🔍 [AnthropicRequestBuilder] 转发头部: '{}': '{}'", key, value);
+                debug!("🔍 [AnthropicRequestBuilder] 转发头部: '{}': '{}'", key, value);
             } else {
                 let reason = if key_lower == "anthropic-beta" && is_oauth {
                     "OAuth账号使用专用beta头部"
                 } else {
                     "安全过滤"
                 };
-                info!("🔍 [AnthropicRequestBuilder] 过滤头部: '{}' ({})", key, reason);
+                debug!("🔍 [AnthropicRequestBuilder] 过滤头部: '{}' ({})", key, reason);
             }
         }
         
@@ -101,13 +101,13 @@ impl RequestBuilder for AnthropicRequestBuilder {
         if !has_user_agent {
             // 没有User-Agent，添加Claude CLI标准格式
             filtered_headers.insert("User-Agent".to_string(), "claude-cli/1.0.57 (external, cli)".to_string());
-            info!("🔍 [AnthropicRequestBuilder] 添加默认 User-Agent: claude-cli/1.0.57 (external, cli)");
+            debug!("🔍 [AnthropicRequestBuilder] 添加默认 User-Agent: claude-cli/1.0.57 (external, cli)");
         } else if !is_claude_code_ua {
             // 有User-Agent但不是Claude Code相关的，替换成Claude CLI标准格式
             filtered_headers.insert("User-Agent".to_string(), "claude-cli/1.0.57 (external, cli)".to_string());
-            info!("🔍 [AnthropicRequestBuilder] 替换 User-Agent 为 Claude CLI 标准格式: claude-cli/1.0.57 (external, cli)");
+            debug!("🔍 [AnthropicRequestBuilder] 替换 User-Agent 为 Claude CLI 标准格式: claude-cli/1.0.57 (external, cli)");
         } else {
-            info!("🔍 [AnthropicRequestBuilder] 保留客户端的 Claude Code User-Agent");
+            debug!("🔍 [AnthropicRequestBuilder] 保留客户端的 Claude Code User-Agent");
         }
         
         filtered_headers
@@ -117,11 +117,11 @@ impl RequestBuilder for AnthropicRequestBuilder {
         let mut headers = HashMap::new();
         
         // 添加 Anthropic 标准头部
-        info!("🔍 [AnthropicRequestBuilder] 添加Anthropic标准头部");
+        debug!("🔍 [AnthropicRequestBuilder] 添加Anthropic标准头部");
         
         // 1. anthropic-version - 总是添加API版本
         headers.insert("anthropic-version".to_string(), "2023-06-01".to_string());
-        info!("🔍 [AnthropicRequestBuilder] 添加 anthropic-version: 2023-06-01");
+        debug!("🔍 [AnthropicRequestBuilder] 添加 anthropic-version: 2023-06-01");
         
         // 2. anthropic-beta - 根据认证方式添加合适的beta标志
         let beta_flags = match account.provider_config.auth_method {
@@ -135,12 +135,12 @@ impl RequestBuilder for AnthropicRequestBuilder {
             }
         };
         headers.insert("anthropic-beta".to_string(), beta_flags.to_string());
-        info!("🔍 [AnthropicRequestBuilder] 添加 anthropic-beta: {}", beta_flags);
+        debug!("🔍 [AnthropicRequestBuilder] 添加 anthropic-beta: {}", beta_flags);
         
         // 3. User-Agent - 不覆盖客户端的User-Agent，只在没有的时候添加默认值
         // 注意：这里不添加User-Agent，让客户端的User-Agent通过filter_headers转发
         
-        info!("✅ [AnthropicRequestBuilder] Anthropic标准头部添加完成");
+        debug!("✅ [AnthropicRequestBuilder] Anthropic标准头部添加完成");
         headers
     }
     
@@ -149,7 +149,7 @@ impl RequestBuilder for AnthropicRequestBuilder {
         _account: &UpstreamAccount,
         request_id: &str
     ) -> AppResult<Vec<u8>> {
-        info!("🔍 [{}] [AnthropicRequestBuilder] 开始Body转换 - 注入Claude Code身份", request_id);
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 开始Body转换 - 注入Claude Code身份", request_id);
         
         // 解析原始JSON
         let body_str = std::str::from_utf8(body)
@@ -212,15 +212,15 @@ impl RequestBuilder for AnthropicRequestBuilder {
             claude_code_obj.insert("cache_control".to_string(), Value::Object(cache_control));
             
             new_system.push(Value::Object(claude_code_obj));
-            info!("🔍 [{}] [AnthropicRequestBuilder] 注入Claude Code身份", request_id);
+            debug!("🔍 [{}] [AnthropicRequestBuilder] 注入Claude Code身份", request_id);
         } else {
-            info!("🔍 [{}] [AnthropicRequestBuilder] 检测到已存在Claude Code身份，跳过注入", request_id);
+            debug!("🔍 [{}] [AnthropicRequestBuilder] 检测到已存在Claude Code身份，跳过注入", request_id);
         }
         
         // 添加原有的system内容
         new_system.extend(existing_system_array);
         
-        info!("🔍 [{}] [AnthropicRequestBuilder] 最终system数组长度: {}", request_id, new_system.len());
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 最终system数组长度: {}", request_id, new_system.len());
         for (i, item) in new_system.iter().enumerate() {
             if let Some(obj) = item.as_object() {
                 if let Some(text) = obj.get("text").and_then(|v| v.as_str()) {
@@ -230,7 +230,7 @@ impl RequestBuilder for AnthropicRequestBuilder {
                     } else {
                         text.to_string()
                     };
-                    info!("🔍 [{}] [AnthropicRequestBuilder] system[{}]: {}...", request_id, i, preview);
+                    debug!("🔍 [{}] [AnthropicRequestBuilder] system[{}]: {}...", request_id, i, preview);
                 }
             }
         }
@@ -244,7 +244,7 @@ impl RequestBuilder for AnthropicRequestBuilder {
             
             if max_tokens > limit {
                 body_obj.insert("max_tokens".to_string(), Value::Number(limit.into()));
-                info!("🔍 [{}] [AnthropicRequestBuilder] 调整max_tokens: {} -> {}", 
+                debug!("🔍 [{}] [AnthropicRequestBuilder] 调整max_tokens: {} -> {}", 
                       request_id, max_tokens, limit);
             }
         }
@@ -254,16 +254,16 @@ impl RequestBuilder for AnthropicRequestBuilder {
             .map_err(|e| AppError::Business(format!("序列化转换后的请求体失败: {}", e)))?;
         
         // 调试：详细记录转换过程
-        info!("🔍 [{}] [AnthropicRequestBuilder] 原始body长度: {} bytes", request_id, body.len());
-        info!("🔍 [{}] [AnthropicRequestBuilder] 原始body内容: {}", request_id, 
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 原始body长度: {} bytes", request_id, body.len());
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 原始body内容: {}", request_id, 
               std::str::from_utf8(body).unwrap_or("无效UTF-8"));
-        info!("🔍 [{}] [AnthropicRequestBuilder] 转换后body长度: {} bytes", request_id, transformed_body.len());
-        info!("🔍 [{}] [AnthropicRequestBuilder] 转换后body内容: {}", request_id, transformed_body);
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 转换后body长度: {} bytes", request_id, transformed_body.len());
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 转换后body内容: {}", request_id, transformed_body);
         
         let result_bytes = transformed_body.into_bytes();
-        info!("🔍 [{}] [AnthropicRequestBuilder] 最终字节数组长度: {} bytes", request_id, result_bytes.len());
+        debug!("🔍 [{}] [AnthropicRequestBuilder] 最终字节数组长度: {} bytes", request_id, result_bytes.len());
         
-        info!("🔍 [{}] [AnthropicRequestBuilder] ✅ Body转换完成，Claude Code身份已注入", request_id);
+        debug!("🔍 [{}] [AnthropicRequestBuilder] ✅ Body转换完成，Claude Code身份已注入", request_id);
         Ok(result_bytes)
     }
     

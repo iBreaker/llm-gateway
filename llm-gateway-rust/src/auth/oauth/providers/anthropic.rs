@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use reqwest::{Client, Proxy};
 use serde_json::{json, Value};
-use tracing::{info, error, debug};
+use tracing::{info, error};
 use url::Url;
 
 use crate::auth::oauth::{
@@ -144,7 +144,7 @@ impl AnthropicOAuthProvider {
             "expires_in": 31536000
         });
 
-        debug!("🔄 正在进行 Setup Token 交换...");
+        info!("🔄 正在进行 Setup Token 交换...");
 
         let response = client
             .post(AnthropicConfig::TOKEN_URL)
@@ -252,7 +252,7 @@ impl OAuthProvider for AnthropicOAuthProvider {
             "state": state
         });
 
-        debug!("🔄 正在进行 OAuth token 交换...");
+        info!("🔄 正在进行 OAuth token 交换...");
 
         let response = client
             .post(AnthropicConfig::TOKEN_URL)
@@ -321,7 +321,7 @@ impl OAuthProvider for AnthropicOAuthProvider {
             "refresh_token": refresh_token
         });
 
-        debug!("🔄 正在刷新 OAuth token...");
+        info!("🔄 正在刷新 OAuth token...");
 
         let response = client
             .post(AnthropicConfig::TOKEN_URL)

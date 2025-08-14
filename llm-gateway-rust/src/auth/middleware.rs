@@ -80,7 +80,7 @@ pub async fn api_key_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    use tracing::{info, error, debug};
+    use tracing::{error, debug};
     
     let database = &app_state.database;
     let headers = request.headers();
@@ -104,22 +104,22 @@ pub async fn api_key_middleware(
     // 从多个可能的header中提取API key
     let api_key = match extract_api_key(headers) {
         Some(key) => {
-            info!("🔍 [API Key认证] 成功提取API Key，长度: {}, 前缀: {}", 
+            debug!("🔍 [API Key认证] 成功提取API Key，长度: {}, 前缀: {}", 
                   key.len(), 
                   if key.len() > 10 { &key[..10] } else { &key });
             key
         },
         None => {
-            error!("❌ [API Key认证] 未找到API Key - 检查了以下头部: x-api-key, anthropic-api-key, authorization");
+            debug!("❌ [API Key认证] 未找到API Key - 检查了以下头部: x-api-key, anthropic-api-key, authorization");
             return Err(AppError::Authentication(AuthError::ApiKeyNotFound));
         }
     };
 
     // 验证API Key
-    info!("🔍 [API Key认证] 开始验证API Key");
+    debug!("🔍 [API Key认证] 开始验证API Key");
     match validate_api_key(&database, &api_key).await {
         Ok(api_key_info) => {
-            info!("✅ [API Key认证] API Key验证成功 - 用户ID: {}, Key名称: {}", 
+            debug!("✅ [API Key认证] API Key验证成功 - 用户ID: {}, Key名称: {}", 
                   api_key_info.user_id, api_key_info.name);
             
             // 检查速率限制
@@ -148,12 +148,12 @@ pub async fn api_key_middleware(
             request.extensions_mut().insert(api_key_info);
         },
         Err(AppError::Authentication(AuthError::ApiKeyNotFound)) => {
-            info!("🔄 [API Key认证] 网关Key未找到，假定为上游Key并传递给代理处理器");
+            debug!("🔄 [API Key认证] 网关Key未找到，假定为上游Key并传递给代理处理器");
             // 如果作为网关Key未找到，则假定为上游Key，并传递给下游处理器
             request.extensions_mut().insert(UpstreamApiKey(api_key));
         },
         Err(e) => {
-            error!("❌ [API Key认证] 验证失败: {:?}", e);
+            debug!("❌ [API Key认证] 验证失败: {:?}", e);
             // 其他错误（如数据库连接问题）则直接返回
             return Err(e);
         }
@@ -199,7 +199,7 @@ async fn validate_api_key(
     database: &Database,
     api_key: &str,
 ) -> Result<ApiKeyInfo, AppError> {
-    use tracing::{info, error, debug};
+    use tracing::{error, debug};
     
     debug!("🔍 [validate_api_key] 开始验证API Key，长度: {}", api_key.len());
     
@@ -227,7 +227,7 @@ async fn validate_api_key(
     
     let key_record = match key_record {
         Some(record) => {
-            info!("✅ [validate_api_key] 找到匹配的API Key记录 - ID: {}, 用户ID: {}", record.id, record.user_id);
+            debug!("✅ [validate_api_key] 找到匹配的API Key记录 - ID: {}, 用户ID: {}", record.id, record.user_id);
             record
         },
         None => {

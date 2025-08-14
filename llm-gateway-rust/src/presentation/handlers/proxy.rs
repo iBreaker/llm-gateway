@@ -15,7 +15,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, error, instrument};
+use tracing::{info, error, debug, instrument};
 
 use crate::infrastructure::Database;
 use crate::shared::{AppError, AppResult};
@@ -199,10 +199,10 @@ pub async fn proxy_messages(
     // 分析请求特征
     let features = analyze_request_features(&request);
 
-    info!("🔍 获取到 {} 个上游账号", available_accounts.len());
+    debug!("🔍 获取到 {} 个上游账号", available_accounts.len());
     
     for (i, account) in available_accounts.iter().enumerate() {
-        info!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}", 
+        debug!("🔍 账号 {}: ID={}, 名称={}, 提供商={:?}, 活跃={}", 
               i + 1, account.id, account.account_name, account.provider_config, account.is_active);
     }
 
@@ -211,19 +211,19 @@ pub async fn proxy_messages(
     }
 
     // 🔍 调试：检查客户端请求信息
-    info!("🔍 [{}] 客户端请求方法: POST", request_id);
-    info!("🔍 [{}] 客户端请求路径: /v1/messages", request_id);  
-    info!("🔍 [{}] 客户端请求头部: {:?}", request_id, headers);
+    debug!("🔍 [{}] 客户端请求方法: POST", request_id);
+    debug!("🔍 [{}] 客户端请求路径: /v1/messages", request_id);  
+    debug!("🔍 [{}] 客户端请求头部: {:?}", request_id, headers);
     
     // 检查是否是流式请求
     let is_streaming_request = headers.get("x-stainless-helper-method")
         .map_or(false, |v| v.to_str().unwrap_or("").contains("stream"));
-    info!("🔍 [{}] 客户端流式请求: {}", request_id, is_streaming_request);
+    debug!("🔍 [{}] 客户端流式请求: {}", request_id, is_streaming_request);
     
     if body.len() < 1000 {
-        info!("🔍 [{}] 客户端请求体: {}", request_id, body);
+        debug!("🔍 [{}] 客户端请求体: {}", request_id, body);
     } else {
-        info!("🔍 [{}] 客户端请求体大小: {} bytes", request_id, body.len());
+        debug!("🔍 [{}] 客户端请求体大小: {} bytes", request_id, body.len());
     }
 
     // 构建服务层代理请求
@@ -265,12 +265,12 @@ pub async fn proxy_messages(
             let is_sse = service_response.headers.get("content-type")
                 .map_or(false, |ct| ct.contains("text/event-stream"));
             
-            info!("🔍 [{}] [下游响应构建] 检测到SSE: {}, HTTP状态: {}", request_id, is_sse, service_response.status);
-            info!("🔍 [{}] [下游响应构建] 响应头部数量: {}", request_id, service_response.headers.len());
+            debug!("🔍 [{}] [下游响应构建] 检测到SSE: {}, HTTP状态: {}", request_id, is_sse, service_response.status);
+            debug!("🔍 [{}] [下游响应构建] 响应头部数量: {}", request_id, service_response.headers.len());
             
             // 详细记录所有响应头部
             for (key, value) in &service_response.headers {
-                info!("🔍 [{}] [下游响应构建] 头部 '{}': '{}'", request_id, key, value);
+                debug!("🔍 [{}] [下游响应构建] 头部 '{}': '{}'", request_id, key, value);
             }
             
             // 移除对缓冲响应体的日志记录
@@ -303,7 +303,7 @@ pub async fn proxy_messages(
                     let mut stream = service_response.body;
                     let mut chunk_count = 0;
                     
-                    info!("🔍 [{}] [下游响应构建] 开始收集非SSE响应流", request_id);
+                    debug!("🔍 [{}] [下游响应构建] 开始收集非SSE响应流", request_id);
                     
                     while let Some(chunk) = stream.next().await {
                         match chunk {
@@ -311,12 +311,12 @@ pub async fn proxy_messages(
                                 chunk_count += 1;
                                 let chunk_size = bytes.len();
                                 body_bytes.extend_from_slice(&bytes);
-                                info!("🔍 [{}] [下游响应构建] 收到chunk #{}: {} bytes", request_id, chunk_count, chunk_size);
+                                debug!("🔍 [{}] [下游响应构建] 收到chunk #{}: {} bytes", request_id, chunk_count, chunk_size);
                                 
                                 // 记录前几个chunk的内容（如果不太大）
                                 if chunk_count <= 3 && chunk_size <= 200 {
                                     let chunk_str = String::from_utf8_lossy(&bytes);
-                                    info!("🔍 [{}] [下游响应构建] Chunk #{} 内容: {}", request_id, chunk_count, chunk_str);
+                                    debug!("🔍 [{}] [下游响应构建] Chunk #{} 内容: {}", request_id, chunk_count, chunk_str);
                                 }
                             },
                             Err(e) => {
@@ -326,14 +326,14 @@ pub async fn proxy_messages(
                         }
                     }
                     
-                    info!("🔍 [{}] [下游响应构建] 流收集完成: 总共 {} 个chunk, {} bytes", request_id, chunk_count, body_bytes.len());
+                    debug!("🔍 [{}] [下游响应构建] 流收集完成: 总共 {} 个chunk, {} bytes", request_id, chunk_count, body_bytes.len());
                     
                     // 记录最终响应体内容（如果不太大）
                     if body_bytes.len() <= 1000 {
                         let body_str = String::from_utf8_lossy(&body_bytes);
-                        info!("🔍 [{}] [下游响应构建] 最终响应体内容: {}", request_id, body_str);
+                        debug!("🔍 [{}] [下游响应构建] 最终响应体内容: {}", request_id, body_str);
                     } else {
-                        info!("🔍 [{}] [下游响应构建] 响应体太大，仅记录大小: {} bytes", request_id, body_bytes.len());
+                        debug!("🔍 [{}] [下游响应构建] 响应体太大，仅记录大小: {} bytes", request_id, body_bytes.len());
                     }
                     
                     response_builder
@@ -342,7 +342,7 @@ pub async fn proxy_messages(
                 }
             };
                 
-            info!("🔍 [下游响应构建] ✅ 最终响应构建完成，准备返回给客户端");
+            debug!("🔍 [下游响应构建] ✅ 最终响应构建完成，准备返回给客户端");
             // 移除对缓冲响应体的日志记录
             // info!("🔍 [下游响应构建] 最终响应体大小: {} bytes", service_response.body.len());
             Ok(response)
@@ -366,7 +366,7 @@ pub async fn list_models(
     Extension(api_key_info): Extension<ApiKeyInfo>,
 ) -> AppResult<Json<ModelListResponse>> {
     let database = &app_state.database;
-    info!("📋 获取模型列表: API Key ID {}", api_key_info.id);
+    debug!("📋 获取模型列表: API Key ID {}", api_key_info.id);
 
     // 获取用户的上游账号
     let user = get_user_by_api_key(&database, &api_key_info).await?;
@@ -445,7 +445,7 @@ async fn get_available_upstream_accounts(
     database: &Database,
     user_id: i64,
 ) -> AppResult<Vec<crate::business::domain::UpstreamAccount>> {
-    info!("🔍 开始查询用户 {} 的可用上游账号", user_id);
+    debug!("🔍 开始查询用户 {} 的可用上游账号", user_id);
     
     let accounts = sqlx::query!(
         r#"
@@ -467,18 +467,18 @@ async fn get_available_upstream_accounts(
     .await
     .map_err(|e| AppError::Database(e))?;
 
-    info!("🔍 SQL查询返回 {} 条记录", accounts.len());
+    debug!("🔍 SQL查询返回 {} 条记录", accounts.len());
 
     let mut result = Vec::new();
     for (i, row) in accounts.into_iter().enumerate() {
-        info!("🔍 处理第 {} 条记录: service_provider={}, auth_method={}, name={}", i + 1, row.service_provider, row.auth_method, row.name);
+        debug!("🔍 处理第 {} 条记录: service_provider={}, auth_method={}, name={}", i + 1, row.service_provider, row.auth_method, row.name);
         let provider_config = match ProviderConfig::from_database_fields(&row.service_provider, &row.auth_method) {
             Ok(config) => {
-                info!("🔍 成功解析 provider_config: {:?}", config);
+                debug!("🔍 成功解析 provider_config: {:?}", config);
                 config
             },
             Err(e) => {
-                info!("🔍 无法解析 provider_config: {}, 跳过此记录", e);
+                debug!("🔍 无法解析 provider_config: {}, 跳过此记录", e);
                 continue;
             },
         };

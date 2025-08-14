@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 use reqwest::{Client, Proxy};
-use tracing::{info, error, debug};
+use tracing::{info, error};
 
 use crate::business::domain::{ProxyConfig, ProxyType};
 use crate::shared::{AppError, AppResult};
@@ -31,7 +31,7 @@ impl ProxyClientFactory {
                 let reqwest_proxy = Self::create_reqwest_proxy(proxy)?;
                 client_builder = client_builder.proxy(reqwest_proxy);
                 
-                debug!("✅ 代理配置已应用到HTTP客户端");
+                info!("✅ 代理配置已应用到HTTP客户端");
             } else {
                 info!("🔗 代理已禁用，使用直连模式");
             }
@@ -50,7 +50,7 @@ impl ProxyClientFactory {
     fn create_reqwest_proxy(proxy_config: &ProxyConfig) -> AppResult<Proxy> {
         let proxy_url = proxy_config.to_proxy_url();
         
-        debug!("🔧 创建reqwest代理: {}", proxy_url);
+        info!("🔧 创建reqwest代理: {}", proxy_url);
 
         let mut reqwest_proxy = match proxy_config.proxy_type {
             ProxyType::Http => {
@@ -67,7 +67,7 @@ impl ProxyClientFactory {
 
         // 配置代理认证
         if let Some(auth) = &proxy_config.auth {
-            debug!("🔐 配置代理认证: 用户名 {}", auth.username);
+            info!("🔐 配置代理认证: 用户名 {}", auth.username);
             reqwest_proxy = reqwest_proxy.basic_auth(&auth.username, &auth.password);
         }
 
@@ -103,7 +103,7 @@ impl ProxyClientFactory {
                     
                     // 可选：记录通过代理获取的IP地址用于验证
                     if let Ok(body) = response.text().await {
-                        debug!("📡 通过代理获取的响应: {}", body);
+                        info!("📡 通过代理获取的响应: {}", body);
                     }
                     
                     Ok(true)

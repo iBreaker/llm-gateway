@@ -13,11 +13,11 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 初始化日志
+    // 初始化日志 - 默认INFO等级，便于生产环境使用
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "llm_gateway_rust=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "llm_gateway_rust=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();

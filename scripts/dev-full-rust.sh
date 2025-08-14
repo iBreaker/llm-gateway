@@ -12,7 +12,7 @@ npm run build:static
 # 设置环境变量并启动 Rust 服务
 echo "🚀 启动 Rust 全栈服务..."
 export FRONTEND_DIST_PATH="$(pwd)/out"
-export RUST_LOG="llm_gateway_rust=debug,tower_http=debug"
+export RUST_LOG="llm_gateway_rust=info,tower_http=info"
 
 cd llm-gateway-rust
 cargo run --bin llm-gateway-rust

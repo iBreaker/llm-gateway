@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use rand::Rng;
-use tracing::{info, warn, instrument, debug};
+use tracing::{info, warn, instrument};
 
 use crate::business::domain::UpstreamAccount;
 use crate::shared::{AppError, AppResult};
@@ -216,7 +216,7 @@ impl CircuitBreaker {
                 if let Some(last_failure) = self.last_failure_time {
                     if last_failure.elapsed() >= Duration::from_secs(CIRCUIT_BREAKER_TIMEOUT_SECONDS) {
                         self.state = CircuitBreakerState::HalfOpen;
-                        debug!("熔断器进入半开状态");
+                        info!("熔断器进入半开状态");
                         true
                     } else {
                         false
@@ -478,7 +478,7 @@ impl IntelligentLoadBalancer {
         let mut rng = rand::thread_rng();
         let selected_idx = rng.gen_range(0..top_candidates);
         
-        debug!(
+        info!(
             "🧠 自适应选择：候选 {} 个，选择第 {} 个 (评分: {:.3})",
             top_candidates, selected_idx + 1, scored_accounts[selected_idx].1
         );

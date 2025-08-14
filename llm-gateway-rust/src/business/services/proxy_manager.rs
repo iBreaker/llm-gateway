@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, error, debug};
+use tracing::{info, error};
 
 use crate::business::domain::{SystemProxyConfig, ProxyConfig};
 use crate::business::services::proxy_client_factory::ProxyClientFactory;
@@ -209,15 +209,15 @@ impl SystemProxyManager {
         info!("🔍 批量验证 {} 个启用的代理", enabled_proxies.len());
 
         for proxy in enabled_proxies {
-            debug!("验证代理: {}", proxy.name);
+            info!("验证代理: {}", proxy.name);
             
             match ProxyClientFactory::validate_proxy(&proxy).await {
                 Ok(is_valid) => {
                     results.push((proxy.id.clone(), is_valid));
                     if is_valid {
-                        debug!("✅ 代理 {} 验证成功", proxy.name);
+                        info!("✅ 代理 {} 验证成功", proxy.name);
                     } else {
-                        debug!("❌ 代理 {} 验证失败", proxy.name);
+                        info!("❌ 代理 {} 验证失败", proxy.name);
                     }
                 },
                 Err(e) => {

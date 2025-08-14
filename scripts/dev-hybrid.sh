@@ -17,8 +17,8 @@ cd ..
 # 等待后端启动
 sleep 5
 
-# 检查后端状态
-if curl -s http://localhost:9527/health > /dev/null; then
+# 检查后端状态 (检查根路径，因为没有专门的health端点)
+if curl -s http://localhost:9527/ > /dev/null; then
     echo "✅ Rust 后端服务启动成功"
 else
     echo "❌ Rust 后端服务启动失败"

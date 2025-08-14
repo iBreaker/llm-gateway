@@ -3,7 +3,7 @@
 //! 负责处理上游账号的代理配置解析和应用
 
 use std::sync::Arc;
-use tracing::{info, error, debug};
+use tracing::{info, error};
 
 use crate::business::domain::{UpstreamAccount, ProxyConfig, AccountProxyConfig};
 use crate::business::services::proxy_manager::SystemProxyManager;
@@ -26,27 +26,27 @@ impl UpstreamProxyService {
         &self,
         account: &UpstreamAccount,
     ) -> AppResult<Option<ProxyConfig>> {
-        debug!("解析账号 {} 的代理配置", account.id);
+        info!("解析账号 {} 的代理配置", account.id);
 
         // 检查账号是否有代理配置
         let account_proxy_config = match &account.proxy_config {
             Some(config) => config,
             None => {
-                debug!("账号 {} 未配置代理", account.id);
+                info!("账号 {} 未配置代理", account.id);
                 return Ok(None);
             }
         };
 
         // 如果代理未启用，返回 None
         if !account_proxy_config.enabled {
-            debug!("账号 {} 的代理已禁用", account.id);
+            info!("账号 {} 的代理已禁用", account.id);
             return Ok(None);
         }
 
         // 获取代理配置
         let proxy_config = if let Some(proxy_id) = &account_proxy_config.proxy_id {
             // 使用指定的代理
-            debug!("账号 {} 使用指定代理: {}", account.id, proxy_id);
+            info!("账号 {} 使用指定代理: {}", account.id, proxy_id);
             match self.proxy_manager.get_proxy_from_db(proxy_id).await? {
                 Some(config) => {
                     if config.enabled {
@@ -63,7 +63,7 @@ impl UpstreamProxyService {
             }
         } else {
             // 使用系统默认代理
-            debug!("账号 {} 使用默认代理", account.id);
+            info!("账号 {} 使用默认代理", account.id);
             self.proxy_manager.get_default_proxy().await
         };
 
@@ -71,7 +71,7 @@ impl UpstreamProxyService {
             info!("账号 {} 将使用代理: {} ({}://{}:{})", 
                   account.id, config.name, config.proxy_type.as_str(), config.host, config.port);
         } else {
-            debug!("账号 {} 无可用的代理配置", account.id);
+            info!("账号 {} 无可用的代理配置", account.id);
         }
 
         Ok(proxy_config)
