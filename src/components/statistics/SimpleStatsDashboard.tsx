@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { apiClient } from '../../utils/api'
+import ApiKeyTokenChart from '../charts/ApiKeyTokenChart'
+import UpstreamTokenChart from '../charts/UpstreamTokenChart'
 
 // 使用与后端一致的数据结构
 interface SimpleStatsData {
@@ -29,6 +31,7 @@ export default function SimpleStatsDashboard() {
   const [data, setData] = useState<SimpleStatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('7d')
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -202,6 +205,43 @@ export default function SimpleStatsDashboard() {
             </div>
           </div>
         )}
+
+        {/* Token使用走势图表 */}
+        <div className="space-y-6">
+          {/* 错误消息 */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-sm p-4">
+              <div className="flex items-center space-x-2">
+                <div className="text-red-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-red-800 text-sm font-medium">{error}</span>
+                <button 
+                  onClick={() => setError(null)}
+                  className="ml-auto text-red-400 hover:text-red-600"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* API Key Token使用走势 */}
+          <ApiKeyTokenChart 
+            timeRange={timeRange} 
+            onError={setError}
+          />
+
+          {/* 上游账号Token使用走势 */}
+          <UpstreamTokenChart 
+            timeRange={timeRange} 
+            onError={setError}
+          />
+        </div>
 
       </div>
     </div>

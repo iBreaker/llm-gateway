@@ -129,6 +129,8 @@ pub async fn create_routes(mut database: Database, settings_service: SharedSetti
         // 统计数据
         .route("/api/stats/detailed", get(handlers::stats::get_detailed_stats))
         .route("/api/stats/basic", get(handlers::stats::get_basic_stats))
+        .route("/api/stats/api-key-token-trends", get(handlers::stats::get_api_key_token_trends))
+        .route("/api/stats/upstream-token-trends", get(handlers::stats::get_upstream_token_trends))
         
         // 系统设置管理
         .route("/api/settings", get(handlers::settings::get_settings))

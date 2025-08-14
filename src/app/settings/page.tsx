@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Save, CheckCircle, AlertCircle, Info, Settings, Shield, Database, Zap, Bell, RefreshCw, Globe } from 'lucide-react'
 import { apiClient } from '../../utils/api'
 import ProxySettingsTab from '../../components/settings/ProxySettingsTab'
+import PasswordChangeTab from '../../components/settings/PasswordChangeTab'
 
 interface SystemSettings {
   // 基础设置（使用camelCase，因为API客户端会转换）
@@ -95,7 +96,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab')
     if (tabFromUrl) {
-      const validTabs = ['basic', 'security', 'limits', 'cache', 'proxy', 'notifications', 'system']
+      const validTabs = ['basic', 'security', 'password', 'limits', 'cache', 'proxy', 'notifications', 'system']
       if (validTabs.includes(tabFromUrl)) {
         setActiveTab(tabFromUrl)
       }
@@ -192,6 +193,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'basic', name: '基础设置', icon: Settings },
     { id: 'security', name: '安全设置', icon: Shield },
+    { id: 'password', name: '密码修改', icon: Shield },
     { id: 'limits', name: '限流配置', icon: Zap },
     { id: 'cache', name: '缓存配置', icon: Database },
     { id: 'proxy', name: '代理设置', icon: Globe },
@@ -480,6 +482,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'password' && (
+          <div className="p-6">
+            <PasswordChangeTab />
           </div>
         )}
 

@@ -30,9 +30,21 @@ pub struct ApiKeyResponse {
     pub key_preview: String, // 只显示前8位
     pub permissions: Vec<String>,
     pub is_active: bool,
+    pub rate_limit: Option<i32>,
+    pub usage_stats: UsageStats,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// 使用统计
+#[derive(Debug, Serialize)]
+pub struct UsageStats {
+    pub total_requests: i64,
+    pub total_tokens: i64,
+    pub total_cost_usd: f64,
+    pub requests_today: i64,
+    pub tokens_today: i64,
 }
 
 /// 创建API Key响应（包含完整key）
@@ -166,13 +178,38 @@ pub async fn list_api_keys(
     let offset = pagination.offset() as i64;
     let limit = pagination.limit() as i64;
 
-    // 查询API Keys
+    // 查询API Keys with usage stats
     let api_keys = sqlx::query!(
         r#"
-        SELECT id, name, key_hash, permissions, is_active, expires_at, created_at, last_used_at
-        FROM api_keys 
-        WHERE user_id = $1 
-        ORDER BY created_at DESC 
+        SELECT 
+            ak.id, 
+            ak.name, 
+            ak.key_hash, 
+            ak.permissions, 
+            ak.is_active, 
+            ak.rate_limit,
+            ak.expires_at, 
+            ak.created_at, 
+            ak.last_used_at,
+            COALESCE(us.total_requests, 0) as total_requests,
+            COALESCE(us.total_tokens, 0) as total_tokens,
+            COALESCE(us.total_cost_usd, 0.0) as total_cost_usd,
+            COALESCE(us.requests_today, 0) as requests_today,
+            COALESCE(us.tokens_today, 0) as tokens_today
+        FROM api_keys ak
+        LEFT JOIN (
+            SELECT 
+                api_key_id,
+                COUNT(*) as total_requests,
+                SUM(total_tokens) as total_tokens,
+                SUM(cost_usd) as total_cost_usd,
+                COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as requests_today,
+                SUM(CASE WHEN created_at >= CURRENT_DATE THEN total_tokens ELSE 0 END) as tokens_today
+            FROM usage_records 
+            GROUP BY api_key_id
+        ) us ON ak.id = us.api_key_id
+        WHERE ak.user_id = $1 
+        ORDER BY ak.created_at DESC 
         LIMIT $2 OFFSET $3
         "#,
         user_id,
@@ -212,6 +249,14 @@ pub async fn list_api_keys(
                 key_preview,
                 permissions,
                 is_active: row.is_active,
+                rate_limit: row.rate_limit,
+                usage_stats: UsageStats {
+                    total_requests: row.total_requests.unwrap_or(0),
+                    total_tokens: row.total_tokens.unwrap_or(0),
+                    total_cost_usd: row.total_cost_usd.unwrap_or(0.0),
+                    requests_today: row.requests_today.unwrap_or(0),
+                    tokens_today: row.tokens_today.unwrap_or(0),
+                },
                 expires_at: row.expires_at.map(|dt| dt),
                 created_at: row.created_at,
                 last_used_at: row.last_used_at.map(|dt| dt),
@@ -242,9 +287,35 @@ pub async fn get_api_key(
 
     let api_key = sqlx::query!(
         r#"
-        SELECT id, name, key_hash, permissions, is_active, expires_at, created_at, last_used_at
-        FROM api_keys 
-        WHERE id = $1 AND user_id = $2
+        SELECT 
+            ak.id, 
+            ak.name, 
+            ak.key_hash, 
+            ak.permissions, 
+            ak.is_active, 
+            ak.rate_limit,
+            ak.expires_at, 
+            ak.created_at, 
+            ak.last_used_at,
+            COALESCE(us.total_requests, 0) as total_requests,
+            COALESCE(us.total_tokens, 0) as total_tokens,
+            COALESCE(us.total_cost_usd, 0.0) as total_cost_usd,
+            COALESCE(us.requests_today, 0) as requests_today,
+            COALESCE(us.tokens_today, 0) as tokens_today
+        FROM api_keys ak
+        LEFT JOIN (
+            SELECT 
+                api_key_id,
+                COUNT(*) as total_requests,
+                SUM(total_tokens) as total_tokens,
+                SUM(cost_usd) as total_cost_usd,
+                COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as requests_today,
+                SUM(CASE WHEN created_at >= CURRENT_DATE THEN total_tokens ELSE 0 END) as tokens_today
+            FROM usage_records 
+            WHERE api_key_id = $1
+            GROUP BY api_key_id
+        ) us ON ak.id = us.api_key_id
+        WHERE ak.id = $1 AND ak.user_id = $2
         "#,
         key_id,
         user_id
@@ -271,6 +342,14 @@ pub async fn get_api_key(
         key_preview,
         permissions,
         is_active: api_key.is_active,
+        rate_limit: api_key.rate_limit,
+        usage_stats: UsageStats {
+            total_requests: api_key.total_requests.unwrap_or(0),
+            total_tokens: api_key.total_tokens.unwrap_or(0),
+            total_cost_usd: api_key.total_cost_usd.unwrap_or(0.0),
+            requests_today: api_key.requests_today.unwrap_or(0),
+            tokens_today: api_key.tokens_today.unwrap_or(0),
+        },
         expires_at: api_key.expires_at.map(|dt| dt),
         created_at: api_key.created_at,
         last_used_at: api_key.last_used_at.map(|dt| dt),

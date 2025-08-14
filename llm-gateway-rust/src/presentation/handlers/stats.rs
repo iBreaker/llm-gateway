@@ -475,6 +475,210 @@ fn create_empty_stats(range: String) -> DetailedStats {
     }
 }
 
+/// API Key Token走势数据
+#[derive(Debug, Serialize)]
+pub struct ApiKeyTokenTrend {
+    pub api_key_id: i64,
+    pub api_key_name: String,
+    pub trend_data: Vec<TokenTrendPoint>,
+}
+
+/// 上游账号Token走势数据
+#[derive(Debug, Serialize)]
+pub struct UpstreamAccountTokenTrend {
+    pub account_id: i64,
+    pub account_name: String,
+    pub service_provider: String,
+    pub trend_data: Vec<TokenTrendPoint>,
+}
+
+/// Token走势数据点
+#[derive(Debug, Serialize)]
+pub struct TokenTrendPoint {
+    pub date: String,
+    pub total_tokens: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_tokens: i64,
+    pub requests_count: i64,
+    pub cost_usd: f64,
+}
+
+/// 获取API Key Token使用走势
+#[instrument(skip(app_state))]
+pub async fn get_api_key_token_trends(
+    State(app_state): State<crate::presentation::routes::AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(params): Query<StatsQuery>,
+) -> AppResult<Json<Vec<ApiKeyTokenTrend>>> {
+    let database = &app_state.database;
+    let range = params.range.unwrap_or_else(|| "7d".to_string());
+    info!("📊 获取API Key Token走势: 用户ID {}, 时间范围: {}", claims.sub, range);
+
+    let days = match range.as_str() {
+        "1d" => 1,
+        "7d" => 7,
+        "30d" => 30,
+        "90d" => 90,
+        _ => 7,
+    };
+
+    let user_id: i64 = claims.sub.parse().map_err(|_| crate::shared::AppError::Authentication(crate::infrastructure::AuthError::InvalidToken))?;
+
+    // 获取用户的API Keys及其使用趋势
+    let api_key_trends = sqlx::query!(
+        r#"
+        SELECT 
+            ak.id as api_key_id,
+            ak.name as api_key_name,
+            DATE(ur.created_at) as date,
+            COALESCE(SUM(ur.total_tokens), 0) as total_tokens,
+            COALESCE(SUM(ur.input_tokens), 0) as input_tokens,
+            COALESCE(SUM(ur.output_tokens), 0) as output_tokens,
+            COALESCE(SUM(ur.cache_creation_tokens + ur.cache_read_tokens), 0) as cache_tokens,
+            COUNT(ur.id) as requests_count,
+            COALESCE(SUM(ur.cost_usd), 0) as cost_usd
+        FROM api_keys ak
+        LEFT JOIN usage_records ur ON ak.id = ur.api_key_id 
+            AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
+        WHERE ak.user_id = $1 AND ak.is_active = true
+        GROUP BY ak.id, ak.name, DATE(ur.created_at)
+        ORDER BY ak.id, DATE(ur.created_at)
+        "#,
+        user_id,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    // 按API Key分组数据
+    let mut api_key_map: std::collections::HashMap<i64, (String, Vec<TokenTrendPoint>)> = std::collections::HashMap::new();
+    
+    for record in api_key_trends {
+        let key_id = record.api_key_id;
+        let key_name = record.api_key_name;
+        
+        if let Some(date) = record.date {
+            let trend_point = TokenTrendPoint {
+                date: date.to_string(),
+                total_tokens: record.total_tokens.unwrap_or(0),
+                input_tokens: record.input_tokens.unwrap_or(0),
+                output_tokens: record.output_tokens.unwrap_or(0),
+                cache_tokens: record.cache_tokens.unwrap_or(0),
+                requests_count: record.requests_count.unwrap_or(0),
+                cost_usd: record.cost_usd.unwrap_or(0.0),
+            };
+
+            api_key_map.entry(key_id)
+                .or_insert((key_name, Vec::new()))
+                .1
+                .push(trend_point);
+        }
+    }
+
+    let result: Vec<ApiKeyTokenTrend> = api_key_map
+        .into_iter()
+        .map(|(api_key_id, (api_key_name, trend_data))| ApiKeyTokenTrend {
+            api_key_id,
+            api_key_name,
+            trend_data,
+        })
+        .collect();
+
+    info!("✅ 获取API Key Token走势成功: {} 个API Key", result.len());
+    Ok(Json(result))
+}
+
+/// 获取上游账号Token使用走势
+#[instrument(skip(app_state))]
+pub async fn get_upstream_token_trends(
+    State(app_state): State<crate::presentation::routes::AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(params): Query<StatsQuery>,
+) -> AppResult<Json<Vec<UpstreamAccountTokenTrend>>> {
+    let database = &app_state.database;
+    let range = params.range.unwrap_or_else(|| "7d".to_string());
+    info!("📊 获取上游账号Token走势: 用户ID {}, 时间范围: {}", claims.sub, range);
+
+    let days = match range.as_str() {
+        "1d" => 1,
+        "7d" => 7,
+        "30d" => 30,
+        "90d" => 90,
+        _ => 7,
+    };
+
+    let user_id: i64 = claims.sub.parse().map_err(|_| crate::shared::AppError::Authentication(crate::infrastructure::AuthError::InvalidToken))?;
+
+    // 获取用户的上游账号及其使用趋势
+    let upstream_trends = sqlx::query!(
+        r#"
+        SELECT 
+            ua.id as account_id,
+            ua.name as account_name,
+            ua.service_provider,
+            DATE(ur.created_at) as date,
+            COALESCE(SUM(ur.total_tokens), 0) as total_tokens,
+            COALESCE(SUM(ur.input_tokens), 0) as input_tokens,
+            COALESCE(SUM(ur.output_tokens), 0) as output_tokens,
+            COALESCE(SUM(ur.cache_creation_tokens + ur.cache_read_tokens), 0) as cache_tokens,
+            COUNT(ur.id) as requests_count,
+            COALESCE(SUM(ur.cost_usd), 0) as cost_usd
+        FROM upstream_accounts ua
+        LEFT JOIN usage_records ur ON ua.id = ur.upstream_account_id 
+            AND ur.created_at >= NOW() - INTERVAL '1 day' * $2
+        WHERE ua.user_id = $1 AND ua.is_active = true
+        GROUP BY ua.id, ua.name, ua.service_provider, DATE(ur.created_at)
+        ORDER BY ua.id, DATE(ur.created_at)
+        "#,
+        user_id,
+        days as i32
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|e| crate::shared::AppError::Database(e))?;
+
+    // 按上游账号分组数据
+    let mut account_map: std::collections::HashMap<i64, (String, String, Vec<TokenTrendPoint>)> = std::collections::HashMap::new();
+    
+    for record in upstream_trends {
+        let account_id = record.account_id;
+        let account_name = record.account_name;
+        let service_provider = record.service_provider;
+        
+        if let Some(date) = record.date {
+            let trend_point = TokenTrendPoint {
+                date: date.to_string(),
+                total_tokens: record.total_tokens.unwrap_or(0),
+                input_tokens: record.input_tokens.unwrap_or(0),
+                output_tokens: record.output_tokens.unwrap_or(0),
+                cache_tokens: record.cache_tokens.unwrap_or(0),
+                requests_count: record.requests_count.unwrap_or(0),
+                cost_usd: record.cost_usd.unwrap_or(0.0),
+            };
+
+            account_map.entry(account_id)
+                .or_insert((account_name, service_provider, Vec::new()))
+                .2
+                .push(trend_point);
+        }
+    }
+
+    let result: Vec<UpstreamAccountTokenTrend> = account_map
+        .into_iter()
+        .map(|(account_id, (account_name, service_provider, trend_data))| UpstreamAccountTokenTrend {
+            account_id,
+            account_name,
+            service_provider,
+            trend_data,
+        })
+        .collect();
+
+    info!("✅ 获取上游账号Token走势成功: {} 个账号", result.len());
+    Ok(Json(result))
+}
+
 /// 获取基础统计数据
 #[instrument(skip(app_state))]
 pub async fn get_basic_stats(

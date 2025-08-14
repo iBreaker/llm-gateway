@@ -5,12 +5,22 @@ import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { Plus, Key, Copy, Eye, EyeOff, Edit, Trash2, AlertCircle, CheckCircle, X } from 'lucide-react'
 import { apiClient } from '../../utils/api'
 
+interface UsageStats {
+  totalRequests: number
+  totalTokens: number
+  totalCostUsd: number
+  requestsToday: number
+  tokensToday: number
+}
+
 interface ApiKey {
   id: number
   name: string
   keyPreview: string   // TypeScript使用camelCase
   permissions: string[]
-  isActive: boolean    // TypeScript使用camelCase  
+  isActive: boolean    // TypeScript使用camelCase
+  rateLimit: number | null
+  usageStats: UsageStats
   expiresAt: string | null
   lastUsedAt: string | null
   createdAt: string
@@ -298,16 +308,29 @@ export default function ApiKeysPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-500">
-                        -
+                      <div className="text-sm text-zinc-900">
+                        {apiKey.rateLimit ? `${apiKey.rateLimit}/min` : '无限制'}
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge isActive={apiKey.isActive} expiresAt={apiKey.expiresAt} />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-500">
-                        -
+                      <div className="space-y-1">
+                        <div className="text-sm text-zinc-900">
+                          {apiKey.usageStats.totalRequests.toLocaleString()} 请求
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          今日: {apiKey.usageStats.requestsToday.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          Token: {apiKey.usageStats.totalTokens.toLocaleString()}
+                        </div>
+                        {apiKey.usageStats.totalCostUsd > 0 && (
+                          <div className="text-xs text-zinc-500">
+                            成本: ${apiKey.usageStats.totalCostUsd.toFixed(4)}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
