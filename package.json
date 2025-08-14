@@ -4,6 +4,8 @@
   "description": "LLM Gateway 前端界面 - 纯UI层，连接Rust后端",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 7439",
+    "dev:hybrid": "./scripts/dev-hybrid.sh",
+    "dev:full-rust": "./scripts/dev-full-rust.sh",
     "build": "next build",
     "build:static": "NODE_ENV=production next build",
     "start": "next start -H 0.0.0.0",

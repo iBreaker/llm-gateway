@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 临时禁用静态导出以修复JavaScript交互问题
-  // output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  // 启用静态导出用于生产环境
+  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   trailingSlash: true,
   images: {
     unoptimized: true
