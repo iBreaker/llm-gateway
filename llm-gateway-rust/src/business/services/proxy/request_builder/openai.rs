@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::info;
 
 use crate::business::domain::{UpstreamAccount, ProviderConfig};
-use crate::shared::{AppError, AppResult};
+use crate::shared::AppResult;
 use super::super::traits::RequestBuilder;
 
 /// OpenAI 请求构建器
@@ -60,7 +60,7 @@ impl RequestBuilder for OpenAiRequestBuilder {
     }
     
     fn add_provider_headers(&self, _account: &UpstreamAccount) -> HashMap<String, String> {
-        let mut headers = HashMap::new();
+        let headers = HashMap::new();
         
         // OpenAI 可能需要的特定头部
         // headers.insert("OpenAI-Organization".to_string(), "org-xxx".to_string());

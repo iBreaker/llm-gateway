@@ -11,8 +11,6 @@ use axum::{
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer, services::ServeDir};
 use axum::middleware::Next;
-use tower::{ServiceBuilder, Layer};
-use std::time::Duration;
 
 use crate::infrastructure::Database;
 use crate::presentation::handlers;
@@ -32,7 +30,7 @@ pub struct AppState {
 
 /// 连接管理中间件，专门解决 Node.js fetch 的连接问题
 async fn connection_middleware(req: Request, next: Next) -> Response {
-    use tracing::{info, warn};
+    use tracing::info;
     
     // 获取User-Agent来识别Node.js请求
     let user_agent = req.headers()

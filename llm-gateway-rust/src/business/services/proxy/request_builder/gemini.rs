@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::info;
 
 use crate::business::domain::{UpstreamAccount, ProviderConfig};
-use crate::shared::{AppError, AppResult};
+use crate::shared::AppResult;
 use super::super::traits::RequestBuilder;
 
 /// Google Gemini 请求构建器

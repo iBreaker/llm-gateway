@@ -3,7 +3,7 @@
 use axum::{response::Json, Extension, extract::{Path, State}};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info, error};
+use tracing::info;
 
 use crate::shared::{AppError, AppResult};
 use crate::auth::Claims;

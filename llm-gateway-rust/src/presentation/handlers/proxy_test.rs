@@ -1,7 +1,6 @@
 //! 代理连接测试处理器
 
 use axum::{response::Json, Extension};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{info, error};

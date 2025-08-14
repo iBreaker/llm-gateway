@@ -7,7 +7,7 @@ use tracing::{info, error, debug};
 
 use crate::business::domain::{UpstreamAccount, ProxyConfig, AccountProxyConfig};
 use crate::business::services::proxy_manager::SystemProxyManager;
-use crate::shared::{AppError, AppResult};
+use crate::shared::AppResult;
 use crate::shared::types::UpstreamAccountId;
 
 /// 上游账号代理服务

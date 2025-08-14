@@ -83,7 +83,6 @@ impl ProxyConfig {
     pub fn is_valid(&self) -> bool {
         !self.host.is_empty() && 
         self.port > 0 && 
-        self.port <= 65535 &&
         !self.name.trim().is_empty() &&
         !self.id.trim().is_empty()
     }

@@ -3,12 +3,12 @@
 //! 集成智能路由、负载均衡和请求代理功能的主协调器
 //! 严格保持原有IntelligentProxy的所有逻辑
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::sync::Arc;
 use std::pin::Pin;
 use std::collections::HashMap;
 use tracing::{info, error, instrument};
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use bytes::Bytes;
 
 use crate::business::domain::{UpstreamAccount, User, SystemProxyConfig};
@@ -229,10 +229,10 @@ impl ProxyCoordinator {
 
         // 添加认证头（使用认证策略，支持客户端头部）
         let auth_headers = auth_strategy.get_auth_headers_with_client(account, &request.headers).await?;
-        let mut auth_headers_count = 0;
+        let mut _auth_headers_count = 0;
         for (key, value) in auth_headers {
             req_builder = req_builder.header(&key, &value);
-            auth_headers_count += 1;
+            _auth_headers_count += 1;
             // 只打印认证头的类型，不打印完整值
             if key.to_lowercase() == "authorization" {
                 let preview = if value.len() > 20 {

@@ -3,16 +3,16 @@
 //! 管理 OAuth 授权会话的创建、存储和验证
 
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use uuid::Uuid;
-use redis::AsyncCommands;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 use crate::infrastructure::cache::CacheManager;
 use super::types::*;
 
 /// OAuth 会话管理器
 pub struct OAuthSessionManager {
+    #[allow(dead_code)]
     cache: Arc<CacheManager>,
 }
 
@@ -44,8 +44,8 @@ impl OAuthSessionManager {
         };
 
         // 存储到缓存中，过期时间为30分钟
-        let key = format!("oauth_session:{}", session_id);
-        let value = serde_json::to_string(&session)
+        let _key = format!("oauth_session:{}", session_id);
+        let _value = serde_json::to_string(&session)
             .map_err(|e| OAuthError::JsonError(e))?;
         
         // 使用 Redis 缓存存储 OAuth 会话
@@ -83,7 +83,7 @@ impl OAuthSessionManager {
 
     /// 删除 OAuth 会话
     pub async fn delete_session(&self, session_id: &str) -> Result<(), OAuthError> {
-        let key = format!("oauth_session:{}", session_id);
+        let _key = format!("oauth_session:{}", session_id);
 
         // TODO: 实现真正的缓存删除
 
@@ -93,8 +93,8 @@ impl OAuthSessionManager {
 
     /// 清理过期会话（定期调用）
     pub async fn cleanup_expired_sessions(&self) -> Result<usize, OAuthError> {
-        let pattern = "oauth_session:*";
-        let mut cleaned_count = 0;
+        let _pattern = "oauth_session:*";
+        let cleaned_count = 0;
 
         // TODO: 实现真正的缓存清理
         info!("📝 缓存清理功能待完善");
@@ -115,8 +115,8 @@ impl OAuthSessionManager {
         session.expires_at = new_expires_at;
 
         // 重新保存
-        let key = format!("oauth_session:{}", session_id);
-        let value = serde_json::to_string(&session)
+        let _key = format!("oauth_session:{}", session_id);
+        let _value = serde_json::to_string(&session)
             .map_err(|e| OAuthError::JsonError(e))?;
 
         // TODO: 实现真正的缓存更新

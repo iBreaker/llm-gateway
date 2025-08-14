@@ -25,7 +25,7 @@ use crate::business::services::{
 };
 use crate::business::services::proxy::coordinator::{ProxyCoordinator, ProxyRequest as ServiceProxyRequest};
 use crate::business::domain::{User, ProviderConfig, AccountCredentials, SystemProxyConfig};
-use crate::business::services::{RoutingDecision, TokenUsage as ServiceTokenUsage};
+use crate::business::services::RoutingDecision;
 
 
 /// 代理消息请求（Claude格式）
@@ -696,6 +696,7 @@ async fn record_usage_stats_from_data(
 }
 
 /// 从数据库加载系统代理配置
+#[allow(dead_code)]
 async fn load_system_proxy_config(database: &Database) -> AppResult<SystemProxyConfig> {
     use crate::business::domain::proxy_config::{ProxyConfig, ProxyType, ProxyAuth};
     

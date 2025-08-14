@@ -8,8 +8,8 @@ use bytes::Bytes;
 use futures_util::Stream;
 use std::pin::Pin;
 
-use crate::business::domain::{UpstreamAccount, ServiceProvider, AuthMethod, ProviderConfig};
-use crate::shared::{AppError, AppResult};
+use crate::business::domain::{UpstreamAccount, ProviderConfig};
+use crate::shared::AppResult;
 
 /// 认证策略接口
 #[async_trait]
@@ -18,7 +18,7 @@ pub trait AuthStrategy: Send + Sync {
     async fn get_auth_headers(&self, account: &UpstreamAccount) -> AppResult<HashMap<String, String>>;
     
     /// 获取认证头部（支持客户端头部）
-    async fn get_auth_headers_with_client(&self, account: &UpstreamAccount, client_headers: &HashMap<String, String>) -> AppResult<HashMap<String, String>> {
+    async fn get_auth_headers_with_client(&self, account: &UpstreamAccount, _client_headers: &HashMap<String, String>) -> AppResult<HashMap<String, String>> {
         // 默认实现，忽略客户端头部
         self.get_auth_headers(account).await
     }

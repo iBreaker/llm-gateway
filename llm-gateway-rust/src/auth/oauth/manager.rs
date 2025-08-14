@@ -3,8 +3,8 @@
 //! 提供统一的 OAuth 管理接口，包括会话管理和提供商管理
 
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use tracing::{info, error};
+use chrono::Utc;
+use tracing::info;
 
 use crate::infrastructure::cache::CacheManager;
 use super::{

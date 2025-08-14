@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::info;
 
 use crate::business::domain::{UpstreamAccount, ProviderConfig};
-use crate::shared::{AppError, AppResult};
+use crate::shared::AppResult;
 use super::super::traits::RequestBuilder;
 
 /// Qwen 请求构建器
