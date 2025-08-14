@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    console.log('🔍 AuthContext: useEffect 触发', { pathname, hasChecked: hasCheckedAuth.current, isLoading })
+    console.log('🔍 AuthContext: useEffect 触发', { pathname, hasChecked: hasCheckedAuth.current, isLoading, user })
     
     // 登录页面直接设置为非加载状态，不做任何检查
     if (pathname.startsWith('/auth/login')) {
@@ -46,9 +46,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // 已经检查过就不再检查
-    if (hasCheckedAuth.current) {
-      console.log('🔍 AuthContext: 已检查过，跳过')
+    // 如果已经有用户信息且已检查过，跳过
+    if (hasCheckedAuth.current && user) {
+      console.log('🔍 AuthContext: 已检查过且有用户信息，跳过')
       return
     }
 
@@ -64,11 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    console.log('✅ AuthContext: 有token，认证成功')
+    console.log('✅ AuthContext: 有token，尝试获取用户信息')
     const userStr = localStorage.getItem('user')
     if (userStr) {
       try {
         const userData = JSON.parse(userStr)
+        console.log('✅ AuthContext: 用户数据解析成功', userData)
         setUser({
           id: userData.id.toString(),
           email: userData.email,
@@ -76,16 +77,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: 'user'
         })
       } catch (error) {
-        console.error('❌ AuthContext: 用户数据解析失败')
+        console.error('❌ AuthContext: 用户数据解析失败', error)
         localStorage.clear()
         setUser(null)
         router.push('/auth/login')
       }
+    } else {
+      console.log('❌ AuthContext: 无用户数据，跳转登录')
+      setUser(null)
+      router.push('/auth/login')
     }
     
     setIsLoading(false)
     hasCheckedAuth.current = true
-  }, [pathname])
+  }, [pathname, user])
 
   return (
     <AuthContext.Provider value={{ user, isLoading, logout }}>
