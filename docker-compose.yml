@@ -26,12 +26,14 @@ services:
     image: redis:7-alpine
     container_name: llm-gateway-redis
     restart: unless-stopped
-    # ports:
-    #   - "16379:6379"  # 内部服务，不需要暴露端口
+    ports:
+      - "16373:6379"  # 内部服务，不需要暴露端口
     volumes:
       - redis_data:/data
+    environment:
+      REDIS_PASSWORD: your_redis_password_here_92a03b2afe32
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-$(openssl rand -base64 32)}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
