@@ -61,24 +61,35 @@
 ./llm-gateway server status            # 服务状态
 ```
 
-### 账号管理
+### Gateway API Key管理（下游客户端）
 ```bash
-# 账号CRUD操作
-./llm-gateway account add --type=api-key --key=sk-ant-xxx --name="生产账号"
-./llm-gateway account add --type=oauth --client-id=xxx --client-secret=xxx --name="Claude Code"
-./llm-gateway account list             # 列出所有账号
-./llm-gateway account show <account-id> # 显示账号详情
-./llm-gateway account remove <account-id> # 删除账号
-./llm-gateway account enable <account-id> # 启用账号
-./llm-gateway account disable <account-id> # 禁用账号
+# Gateway API Key CRUD操作
+./llm-gateway apikey add --name="团队A" --permissions="read,write"
+./llm-gateway apikey list              # 列出所有Gateway API Key
+./llm-gateway apikey show <key-id>     # 显示Key详情
+./llm-gateway apikey remove <key-id>   # 删除Key
+./llm-gateway apikey disable <key-id>  # 禁用Key
+./llm-gateway apikey stats <key-id>    # Key使用统计
+```
+
+### 上游服务管理（LLM提供商账号）
+```bash
+# 上游账号CRUD操作
+./llm-gateway upstream add --type=api-key --key=sk-ant-xxx --name="生产账号"
+./llm-gateway upstream add --type=oauth --client-id=xxx --client-secret=xxx --name="Claude Code"
+./llm-gateway upstream list            # 列出所有上游账号
+./llm-gateway upstream show <upstream-id> # 显示上游账号详情
+./llm-gateway upstream remove <upstream-id> # 删除上游账号
+./llm-gateway upstream enable <upstream-id> # 启用上游账号
+./llm-gateway upstream disable <upstream-id> # 禁用上游账号
 ```
 
 ### OAuth专用管理
 ```bash
-./llm-gateway oauth start <account-id>  # 启动OAuth授权流程
-./llm-gateway oauth callback --code=xxx --account-id=<account-id> # 处理OAuth回调
-./llm-gateway oauth refresh <account-id> # 刷新OAuth token
-./llm-gateway oauth status <account-id>  # 查看OAuth状态
+./llm-gateway oauth start <upstream-id>  # 启动OAuth授权流程
+./llm-gateway oauth callback --code=xxx --upstream-id=<upstream-id> # 处理OAuth回调
+./llm-gateway oauth refresh <upstream-id> # 刷新OAuth token
+./llm-gateway oauth status <upstream-id>  # 查看OAuth状态
 ```
 
 ### 系统状态监控
@@ -99,12 +110,11 @@
 ```
 llm-gateway
 ├── server (start|stop|status)
-├── account (add|list|show|remove|enable|disable)  
-├── oauth (start|callback|refresh|status)
-├── status
-├── stats  
-├── health
-└── config (show|validate|reload)
+├── apikey (add|list|show|remove|disable|stats)    # 下游Gateway API Key管理
+├── upstream (add|list|show|remove|enable|disable) # 上游LLM服务账号管理  
+├── oauth (start|callback|refresh|status)          # OAuth流程管理
+├── status / stats / health                        # 系统状态监控
+└── config (show|validate|reload)                  # 配置管理
 ```
 
 ### 设计优势
