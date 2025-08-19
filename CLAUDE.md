@@ -219,6 +219,72 @@ llm-gateway/
 响应返回客户端
 ```
 
+## Module Responsibilities and Boundaries
+
+### 1. Client Module (`internal/client/`) - 客户端连接层
+**✅ 核心职责**:
+- HTTP服务器管理 - 接收请求、路由、中间件
+- 客户端认证 - 验证Gateway API Key
+- 连接管理 - 处理HTTP连接生命周期
+
+**❌ 不负责**:
+- 请求格式解析
+- 业务逻辑处理
+- 上游服务管理
+
+### 2. Transform Module (`internal/transform/`) - 格式转换层
+**✅ 核心职责**:
+- 格式检测 - 自动识别请求格式类型
+- 数据转换 - 请求/响应的格式标准化
+- 格式验证 - 确保数据完整性
+
+**❌ 不负责**:
+- 账号相关逻辑
+- 业务规则处理
+- OAuth认证流程
+
+### 3. Router Module (`internal/router/`) - 路由决策层
+**✅ 核心职责**:
+- 账号选择 - 根据策略选择可用账号
+- 负载均衡 - 请求分发和故障检测
+- 路由决策 - 确定请求处理路径
+
+**❌ 不负责**:
+- 账号生命周期管理
+- 格式转换处理
+- 上游API调用
+
+### 4. Upstream Module (`internal/upstream/`) - 上游服务层
+**✅ 核心职责**:
+- 账号管理 - CRUD操作、状态跟踪
+- OAuth处理 - 完整OAuth流程及业务增强
+- API调用 - 实际的上游服务调用
+- 特殊逻辑 - 提供商特有的业务规则
+
+**❌ 不负责**:
+- 客户端认证
+- 请求格式转换
+- 路由策略决策
+
+## Cross-Cutting Concerns
+
+### Error Handling - 错误处理分工
+- **Transform Module** - 格式错误、转换失败
+- **Router Module** - 路由失败、无可用账号
+- **Upstream Module** - 上游API错误、OAuth错误
+- **Client Module** - HTTP错误、认证失败
+
+### Configuration Management - 配置管理分工
+- **Config Module** - 统一配置加载和验证
+- **各业务模块** - 定义各自需要的配置结构
+- **配置热更新** - Config模块负责，各模块响应变更
+
+### Logging and Monitoring - 日志监控分工
+- **Client Module** - 请求日志、认证日志
+- **Transform Module** - 格式转换日志
+- **Router Module** - 路由决策日志、负载均衡指标
+- **Upstream Module** - 上游调用日志、账号状态日志
+
 ## Design Principles: Separation of Concerns
 
 ### Transform vs Upstream Responsibilities
@@ -251,6 +317,40 @@ if account.Type == "oauth" {
 // Transform模块：格式输出
 response := transformer.BuildResponse(result)
 ```
+
+## Data Flow Validation
+
+### Complete Request Processing Flow
+```
+1. 客户端请求 → [Client] server.go 接收
+2. [Client] auth.go 验证客户端 → 认证通过/失败
+3. [Transform] detector.go 检测格式 → 格式类型识别
+4. [Transform] openai.go/anthropic.go 解析 → 内部标准格式
+5. [Router] selector.go 选择账号 → 可用账号列表
+6. [Router] balancer.go 负载均衡 → 目标账号
+7. [Upstream] manager.go 获取账号信息 → 账号详情
+8. [Upstream] oauth.go 增强请求 → 添加业务逻辑(如系统提示词)
+9. [Upstream] client.go 调用上游 → 上游API响应
+10. [Transform] anthropic.go 处理响应 → 标准化响应
+11. [Transform] openai.go/anthropic.go 转换 → 客户端格式
+12. [Client] server.go 返回响应 → 客户端接收
+```
+
+### Error Flow Examples
+```
+格式错误: [Transform] detector.go → 400 Bad Request
+认证失败: [Client] auth.go → 401 Unauthorized  
+无可用账号: [Router] selector.go → 503 Service Unavailable
+OAuth失败: [Upstream] oauth.go → 401/403 Auth Error
+上游错误: [Upstream] client.go → 根据上游错误码处理
+```
+
+### Module Interaction Validation
+- ✅ **Client → Transform**: 传递原始请求数据
+- ✅ **Transform → Router**: 传递标准化请求 + 格式类型
+- ✅ **Router → Upstream**: 传递请求 + 选中账号信息
+- ✅ **Upstream → Transform**: 传递上游响应
+- ✅ **Transform → Client**: 传递格式化响应
 
 ## Infrastructure Components
 
