@@ -52,30 +52,67 @@
 客户端请求(任意格式) → 格式检测 → 账号选择 → 请求转换 → 上游调用 → 响应转换 → 返回客户端
 ```
 
-## 9. CLI管理命令
+## 9. CLI管理命令（子命令架构）
+
+### 服务管理
 ```bash
-# 服务启动
-./llm-gateway server
-
-# API Key账号管理
-./llm-gateway add-api-key --key=sk-ant-xxx --name="生产账号1"
-./llm-gateway list-accounts
-./llm-gateway disable-account --id=xxx
-./llm-gateway enable-account --id=xxx
-./llm-gateway remove-account --id=xxx
-
-# OAuth账号管理
-./llm-gateway add-oauth --client-id=xxx --client-secret=xxx --name="Claude Code团队"
-./llm-gateway oauth-start --account-id=xxx
-./llm-gateway oauth-callback --code=xxx --account-id=xxx
-./llm-gateway oauth-refresh --account-id=xxx
-./llm-gateway oauth-status
-
-# 状态查看
-./llm-gateway status
-./llm-gateway stats
-./llm-gateway health-check
+./llm-gateway server start             # 启动服务
+./llm-gateway server stop              # 停止服务  
+./llm-gateway server status            # 服务状态
 ```
+
+### 账号管理
+```bash
+# 账号CRUD操作
+./llm-gateway account add --type=api-key --key=sk-ant-xxx --name="生产账号"
+./llm-gateway account add --type=oauth --client-id=xxx --client-secret=xxx --name="Claude Code"
+./llm-gateway account list             # 列出所有账号
+./llm-gateway account show <account-id> # 显示账号详情
+./llm-gateway account remove <account-id> # 删除账号
+./llm-gateway account enable <account-id> # 启用账号
+./llm-gateway account disable <account-id> # 禁用账号
+```
+
+### OAuth专用管理
+```bash
+./llm-gateway oauth start <account-id>  # 启动OAuth授权流程
+./llm-gateway oauth callback --code=xxx --account-id=<account-id> # 处理OAuth回调
+./llm-gateway oauth refresh <account-id> # 刷新OAuth token
+./llm-gateway oauth status <account-id>  # 查看OAuth状态
+```
+
+### 系统状态监控
+```bash
+./llm-gateway status                   # 系统整体状态
+./llm-gateway stats                    # 使用统计数据
+./llm-gateway health                   # 健康检查
+```
+
+### 配置管理
+```bash  
+./llm-gateway config show             # 显示当前配置
+./llm-gateway config validate         # 验证配置文件
+./llm-gateway config reload           # 重新加载配置
+```
+
+### CLI命令层次结构
+```
+llm-gateway
+├── server (start|stop|status)
+├── account (add|list|show|remove|enable|disable)  
+├── oauth (start|callback|refresh|status)
+├── status
+├── stats  
+├── health
+└── config (show|validate|reload)
+```
+
+### 设计优势
+- **语义清晰** - 每个命令都有明确的对象和动作
+- **易于扩展** - 新功能可以添加新的子命令组
+- **符合习惯** - 类似git、docker、kubectl等现代CLI工具
+- **帮助友好** - 可以分层显示帮助信息
+- **参数一致** - 统一使用account-id等参数名称
 
 ## 10. 配置文件示例
 ```yaml
