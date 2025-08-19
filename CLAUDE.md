@@ -92,8 +92,11 @@ llm-gateway/
 ├── internal/
 │   ├── client/          # 客户端处理模块
 │   │   ├── server.go    # HTTP服务器
-│   │   ├── auth.go      # 客户端认证
-│   │   └── format.go    # 请求格式检测
+│   │   └── auth.go      # 客户端认证
+│   ├── transform/       # 请求响应转换模块
+│   │   ├── detector.go  # 格式检测
+│   │   ├── openai.go    # OpenAI转换器
+│   │   └── anthropic.go # Anthropic转换器
 │   ├── router/          # 路由模块  
 │   │   ├── balancer.go  # 负载均衡
 │   │   └── selector.go  # 账号选择
@@ -131,11 +134,22 @@ llm-gateway/
 - **认证中间件** - HTTP请求拦截和验证
 - **认证缓存** - 提高验证性能
 
-#### `format.go` - 请求格式处理
-- **格式检测** - 自动识别OpenAI/Anthropic格式
-- **请求标准化** - 转换为内部统一格式
-- **参数验证** - 验证必需字段和参数范围
-- **错误响应** - 格式化错误信息返回
+### Transform Module (`internal/transform/`) - 请求响应转换模块
+
+#### `detector.go` - 格式检测器
+- **自动检测** - 识别OpenAI/Anthropic请求格式
+- **格式验证** - 验证请求格式的完整性
+- **错误处理** - 不支持格式的错误响应
+
+#### `openai.go` - OpenAI转换器
+- **请求解析** - 解析OpenAI格式请求
+- **响应构建** - 构建OpenAI格式响应
+- **参数映射** - OpenAI参数到内部格式的映射
+
+#### `anthropic.go` - Anthropic转换器
+- **请求解析** - 解析Anthropic格式请求
+- **响应构建** - 构建Anthropic格式响应
+- **特殊处理** - 系统提示词注入等特殊逻辑
 
 ### 2. Router Module (`internal/router/`) - 路由模块
 
@@ -184,7 +198,9 @@ llm-gateway/
     ↓
 [Client] auth.go 验证客户端
     ↓
-[Client] format.go 格式检测和标准化
+[Transform] detector.go 检测请求格式
+    ↓
+[Transform] openai.go/anthropic.go 解析为内部格式
     ↓
 [Router] selector.go 选择可用账号
     ↓
@@ -195,6 +211,10 @@ llm-gateway/
 [Upstream] oauth.go 处理OAuth token (如需要)
     ↓
 [Upstream] client.go 调用上游API
+    ↓
+[Transform] anthropic.go 处理上游响应
+    ↓
+[Transform] openai.go/anthropic.go 转换为客户端格式
     ↓
 响应返回客户端
 ```
