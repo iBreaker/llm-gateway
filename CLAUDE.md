@@ -90,14 +90,17 @@ llm-gateway/
 ├── cmd/
 │   └── main.go          # 程序入口
 ├── internal/
-│   ├── server/
-│   │   └── server.go    # HTTP服务器
-│   ├── proxy/
-│   │   ├── proxy.go     # 代理核心
-│   │   └── format.go    # 格式转换
-│   ├── account/
+│   ├── client/          # 客户端处理模块
+│   │   ├── server.go    # HTTP服务器
+│   │   ├── auth.go      # 客户端认证
+│   │   └── format.go    # 请求格式检测
+│   ├── router/          # 路由模块  
+│   │   ├── balancer.go  # 负载均衡
+│   │   └── selector.go  # 账号选择
+│   ├── upstream/        # 上游模块
 │   │   ├── manager.go   # 账号管理
-│   │   └── oauth.go     # OAuth处理
+│   │   ├── oauth.go     # OAuth处理
+│   │   └── client.go    # 上游调用
 │   └── config/
 │       └── config.go    # 配置管理
 ├── pkg/
@@ -108,23 +111,109 @@ llm-gateway/
 ├── go.mod
 ├── go.sum
 └── docs/               # 文档目录
-    ├── CLAUDE.md
     ├── requirements.md
     └── data_structures.md
 ```
 
-## File Responsibilities
+## Three-Module Architecture
+
+### 1. Client Module (`internal/client/`) - 客户端处理模块
+
+#### `server.go` - HTTP服务器
+- **HTTP路由** - 定义API端点 (`/v1/chat/completions`, `/v1/messages` 等)
+- **中间件管理** - CORS、日志、恢复、超时
+- **服务生命周期** - 优雅启动和关闭
+- **健康检查端点** - `/health`, `/ready`
+
+#### `auth.go` - 客户端认证
+- **API Key验证** - 验证Gateway客户端的API Key
+- **权限控制** - 基于API Key的访问控制
+- **认证中间件** - HTTP请求拦截和验证
+- **认证缓存** - 提高验证性能
+
+#### `format.go` - 请求格式处理
+- **格式检测** - 自动识别OpenAI/Anthropic格式
+- **请求标准化** - 转换为内部统一格式
+- **参数验证** - 验证必需字段和参数范围
+- **错误响应** - 格式化错误信息返回
+
+### 2. Router Module (`internal/router/`) - 路由模块
+
+#### `selector.go` - 账号选择器
+- **选择策略** - 轮询、随机、权重、健康度优先
+- **账号过滤** - 根据模型类型过滤可用账号
+- **状态检查** - 实时检查账号可用性
+- **选择缓存** - 缓存选择结果提高性能
+
+#### `balancer.go` - 负载均衡器
+- **负载算法** - 实现多种负载均衡算法
+- **故障检测** - 检测上游账号异常
+- **自动切换** - 故障账号自动剔除和恢复
+- **监控指标** - 收集负载均衡相关指标
+
+### 3. Upstream Module (`internal/upstream/`) - 上游模块
+
+#### `manager.go` - 账号管理器
+- **账号CRUD** - 增删改查账号配置
+- **状态管理** - 跟踪账号状态 (active/disabled/error)
+- **配置持久化** - 保存账号配置到文件
+- **使用统计** - 记录每个账号的使用情况
+- **健康检查** - 定期检查账号可用性
+
+#### `oauth.go` - OAuth处理器
+- **OAuth流程** - 完整的OAuth 2.0授权流程
+- **Token管理** - access_token和refresh_token管理
+- **自动刷新** - token过期前自动刷新
+- **状态跟踪** - OAuth账号状态监控
+- **安全存储** - 敏感信息加密存储
+
+#### `client.go` - 上游客户端
+- **HTTP客户端** - 管理与上游服务的HTTP连接
+- **请求转换** - 将标准格式转换为上游格式
+- **特殊处理** - Anthropic OAuth系统提示词注入
+- **响应处理** - 统一处理上游响应格式
+- **连接池** - HTTP连接复用和管理
+- **重试机制** - 请求失败重试策略
+
+## Module Data Flow
+
+```
+客户端请求
+    ↓
+[Client] server.go 接收请求
+    ↓
+[Client] auth.go 验证客户端
+    ↓
+[Client] format.go 格式检测和标准化
+    ↓
+[Router] selector.go 选择可用账号
+    ↓
+[Router] balancer.go 负载均衡决策
+    ↓
+[Upstream] manager.go 获取账号信息
+    ↓
+[Upstream] oauth.go 处理OAuth token (如需要)
+    ↓
+[Upstream] client.go 调用上游API
+    ↓
+响应返回客户端
+```
+
+## Infrastructure Components
+
+### Configuration and Types
+
+#### `internal/config/config.go` - 配置管理
+- **配置加载** - YAML文件和环境变量
+- **配置验证** - 验证配置完整性和正确性
+- **热重载** - 支持配置热更新 (可选)
+- **默认值** - 提供合理的默认配置
+
+#### `pkg/types/types.go` - 公共类型
+- **请求响应结构** - 标准化的请求和响应类型
+- **账号类型定义** - Account、UsageStats等
+- **错误类型** - 统一的错误处理类型
+- **配置类型** - 配置文件对应的结构体
 
 ### Core Application
 - **cmd/main.go** - CLI command parsing and application entry point
-- **internal/server/server.go** - HTTP routing, middleware, server lifecycle
-
-### Business Logic
-- **internal/proxy/proxy.go** - Core proxy logic, upstream API calls, request routing
-- **internal/proxy/format.go** - Request/response format detection and conversion
-- **internal/account/manager.go** - Account CRUD operations, state management, persistence
-- **internal/account/oauth.go** - OAuth 2.0 flow, token refresh, authentication
-
-### Infrastructure
-- **internal/config/config.go** - Configuration loading, environment variable handling
-- **pkg/types/types.go** - Shared data structures and type definitions
