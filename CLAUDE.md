@@ -149,7 +149,7 @@ llm-gateway/
 #### `anthropic.go` - Anthropic转换器
 - **请求解析** - 解析Anthropic格式请求
 - **响应构建** - 构建Anthropic格式响应
-- **特殊处理** - 系统提示词注入等特殊逻辑
+- **格式标准化** - 转换为内部统一格式
 
 ### 2. Router Module (`internal/router/`) - 路由模块
 
@@ -180,12 +180,12 @@ llm-gateway/
 - **自动刷新** - token过期前自动刷新
 - **状态跟踪** - OAuth账号状态监控
 - **安全存储** - 敏感信息加密存储
+- **请求增强** - OAuth特有的业务逻辑处理（如Claude Code系统提示词注入）
 
 #### `client.go` - 上游客户端
 - **HTTP客户端** - 管理与上游服务的HTTP连接
-- **请求转换** - 将标准格式转换为上游格式
-- **特殊处理** - Anthropic OAuth系统提示词注入
-- **响应处理** - 统一处理上游响应格式
+- **API调用** - 执行对上游服务的实际调用
+- **响应处理** - 处理上游API响应
 - **连接池** - HTTP连接复用和管理
 - **重试机制** - 请求失败重试策略
 
@@ -208,7 +208,7 @@ llm-gateway/
     ↓
 [Upstream] manager.go 获取账号信息
     ↓
-[Upstream] oauth.go 处理OAuth token (如需要)
+[Upstream] oauth.go 处理OAuth token + 请求增强 (如需要)
     ↓
 [Upstream] client.go 调用上游API
     ↓
@@ -217,6 +217,39 @@ llm-gateway/
 [Transform] openai.go/anthropic.go 转换为客户端格式
     ↓
 响应返回客户端
+```
+
+## Design Principles: Separation of Concerns
+
+### Transform vs Upstream Responsibilities
+
+#### Transform Module - 纯格式处理
+- **职责范围** - 仅处理数据格式转换，不包含业务逻辑
+- **输入输出** - 接收原始请求，输出标准化格式
+- **无状态** - 不依赖账号信息或认证状态
+- **可复用** - 格式转换逻辑可在不同场景复用
+
+#### Upstream Module - 业务逻辑处理
+- **账号相关** - 处理不同账号类型的特殊需求
+- **认证逻辑** - OAuth流程、token管理、系统提示词注入
+- **状态管理** - 跟踪账号状态、使用统计
+- **业务规则** - 实现特定提供商的业务要求
+
+### Anthropic OAuth特殊处理示例
+```go
+// Transform模块：纯格式转换
+transformer := transform.NewAnthropicTransformer()
+request, err := transformer.ParseRequest(rawData)
+
+// Upstream模块：业务逻辑增强
+oauthProcessor := upstream.NewOAuthProcessor()
+if account.Type == "oauth" {
+    err := oauthProcessor.EnhanceRequest(request, account)
+    // 注入系统提示词等OAuth特有处理
+}
+
+// Transform模块：格式输出
+response := transformer.BuildResponse(result)
 ```
 
 ## Infrastructure Components
