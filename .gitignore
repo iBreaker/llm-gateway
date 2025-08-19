@@ -37,6 +37,9 @@ config.yaml
 *.env
 .env*
 
+# Claude Code指导文档 (项目特定，不提交)
+CLAUDE.md
+
 # Temporary files
 tmp/
 temp/
