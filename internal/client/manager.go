@@ -164,6 +164,14 @@ func (m *GatewayKeyManager) UpdateKeyUsage(keyID string, success bool, latency t
 	return nil
 }
 
+// LoadKey 从配置加载Gateway API Key
+func (m *GatewayKeyManager) LoadKey(key *types.GatewayAPIKey) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	m.keys[key.ID] = key
+}
+
 // generateRandomKey 生成随机密钥
 func generateRandomKey(length int) (string, error) {
 	bytes := make([]byte, length)

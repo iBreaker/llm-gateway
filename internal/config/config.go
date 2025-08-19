@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 	"github.com/iBreaker/llm-gateway/pkg/types"
@@ -51,6 +52,13 @@ func (m *ConfigManager) Save(config *types.Config) error {
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+
+	// 确保目录存在
+	if dir := filepath.Dir(m.configPath); dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("创建配置目录失败: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(m.configPath, data, 0600); err != nil {
