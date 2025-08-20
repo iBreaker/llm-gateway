@@ -1,12 +1,15 @@
 package upstream
 
 import (
-	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
@@ -14,16 +17,24 @@ import (
 
 // OAuthManager OAuth管理器
 type OAuthManager struct {
-	upstreamMgr *UpstreamManager
-	httpClient  *http.Client
+	upstreamMgr   *UpstreamManager
+	httpClient    *http.Client
+	pkceVerifiers map[string]string // 存储每个OAuth流程的code_verifier
 }
 
 // NewOAuthManager 创建新的OAuth管理器
 func NewOAuthManager(upstreamMgr *UpstreamManager) *OAuthManager {
+	// 创建支持代理的HTTP客户端
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment, // 自动读取HTTP_PROXY/HTTPS_PROXY环境变量
+	}
+	
 	return &OAuthManager{
-		upstreamMgr: upstreamMgr,
+		upstreamMgr:   upstreamMgr,
+		pkceVerifiers: make(map[string]string),
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 	}
 }
@@ -32,17 +43,51 @@ func NewOAuthManager(upstreamMgr *UpstreamManager) *OAuthManager {
 type AnthropicOAuthConfig struct {
 	AuthURL     string
 	TokenURL    string
+	ClientID    string
 	RedirectURI string
 	Scope       string
+}
+
+const (
+	// Anthropic Claude Code OAuth 固定配置
+	AnthropicClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+	// 不同的scope配置
+	ScopesFull  = "org:create_api_key user:profile user:inference"
+	ScopesSetup = "user:inference"
+)
+
+// generateRandomString 生成随机字符串
+func generateRandomString() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("生成随机字符串失败: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
+}
+
+// generatePKCE 生成PKCE参数
+func generatePKCE() (codeVerifier, codeChallenge string, err error) {
+	// 生成code_verifier
+	codeVerifier, err = generateRandomString()
+	if err != nil {
+		return "", "", fmt.Errorf("生成code_verifier失败: %w", err)
+	}
+	
+	// 生成code_challenge (SHA256哈希后base64url编码)
+	hash := sha256.Sum256([]byte(codeVerifier))
+	codeChallenge = base64.RawURLEncoding.EncodeToString(hash[:])
+	
+	return codeVerifier, codeChallenge, nil
 }
 
 // getAnthropicConfig 获取Anthropic OAuth配置
 func (m *OAuthManager) getAnthropicConfig() AnthropicOAuthConfig {
 	return AnthropicOAuthConfig{
-		AuthURL:     "https://console.anthropic.com/api/auth/oauth/authorize",
-		TokenURL:    "https://console.anthropic.com/api/auth/oauth/token",
-		RedirectURI: "http://localhost:8080/oauth/callback",
-		Scope:       "read write",
+		AuthURL:     "https://claude.ai/oauth/authorize",
+		TokenURL:    "https://console.anthropic.com/v1/oauth/token",
+		ClientID:    AnthropicClientID,
+		RedirectURI: "https://console.anthropic.com/oauth/code/callback", // 使用官方回调地址，会显示code
+		Scope:       ScopesFull, // 使用完整scope
 	}
 }
 
@@ -63,13 +108,32 @@ func (m *OAuthManager) StartOAuthFlow(upstreamID string) (string, error) {
 
 	config := m.getAnthropicConfig()
 	
-	// 构建授权URL
+	// 生成PKCE参数
+	codeVerifier, codeChallenge, err := generatePKCE()
+	if err != nil {
+		return "", fmt.Errorf("生成PKCE参数失败: %w", err)
+	}
+	
+	// 生成随机state参数
+	state, err := generateRandomString()
+	if err != nil {
+		return "", fmt.Errorf("生成state参数失败: %w", err)
+	}
+	
+	// 存储code_verifier和state用于后续验证
+	m.pkceVerifiers[upstreamID] = codeVerifier
+	// TODO: 也需要存储state用于验证
+	
+	// 构建授权URL - 按照工作示例的确切顺序
 	params := url.Values{}
-	params.Add("client_id", account.ClientID)
-	params.Add("redirect_uri", config.RedirectURI)
+	params.Add("code", "true")
+	params.Add("client_id", config.ClientID)
 	params.Add("response_type", "code")
+	params.Add("redirect_uri", config.RedirectURI)
 	params.Add("scope", config.Scope)
-	params.Add("state", upstreamID) // 使用upstream_id作为state参数
+	params.Add("code_challenge", codeChallenge)
+	params.Add("code_challenge_method", "S256")
+	params.Add("state", state)
 
 	authURL := fmt.Sprintf("%s?%s", config.AuthURL, params.Encode())
 	return authURL, nil
@@ -92,13 +156,29 @@ func (m *OAuthManager) HandleCallback(upstreamID string, code string) error {
 
 	config := m.getAnthropicConfig()
 
+	// 获取存储的code_verifier
+	codeVerifier, exists := m.pkceVerifiers[upstreamID]
+	if !exists {
+		return fmt.Errorf("未找到对应的code_verifier，请重新启动OAuth流程")
+	}
+
+	// 清理授权码 - 移除URL片段和其他参数
+	cleanedCode := code
+	if idx := strings.Index(code, "#"); idx != -1 {
+		cleanedCode = code[:idx]
+	}
+	if idx := strings.Index(cleanedCode, "&"); idx != -1 {
+		cleanedCode = cleanedCode[:idx]
+	}
+
 	// 交换authorization code获取access token
 	tokenReq := map[string]string{
 		"grant_type":    "authorization_code",
-		"client_id":     account.ClientID,
-		"client_secret": account.ClientSecret,
-		"code":          code,
+		"client_id":     config.ClientID,
+		"code":          cleanedCode,
 		"redirect_uri":  config.RedirectURI,
+		"code_verifier": codeVerifier,
+		"state":         upstreamID,
 	}
 
 	tokenResp, err := m.exchangeCodeForToken(config.TokenURL, tokenReq)
@@ -110,12 +190,17 @@ func (m *OAuthManager) HandleCallback(upstreamID string, code string) error {
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
 	// 更新账号token信息
-	return m.upstreamMgr.UpdateOAuthTokens(
+	err = m.upstreamMgr.UpdateOAuthTokens(
 		upstreamID,
 		tokenResp.AccessToken,
 		tokenResp.RefreshToken,
 		expiresAt,
 	)
+	
+	// 清理存储的code_verifier (无论成功还是失败都要清理)
+	delete(m.pkceVerifiers, upstreamID)
+	
+	return err
 }
 
 // RefreshToken 刷新OAuth token
@@ -142,8 +227,7 @@ func (m *OAuthManager) RefreshToken(upstreamID string) error {
 	// 使用refresh token获取新的access token
 	tokenReq := map[string]string{
 		"grant_type":    "refresh_token",
-		"client_id":     account.ClientID,
-		"client_secret": account.ClientSecret,
+		"client_id":     config.ClientID,
 		"refresh_token": account.RefreshToken,
 	}
 
@@ -205,18 +289,28 @@ type TokenResponse struct {
 
 // exchangeCodeForToken 交换授权码获取token
 func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string]string) (*TokenResponse, error) {
-	reqBody, err := json.Marshal(tokenReq)
-	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	// 使用form-encoded格式而不是JSON
+	formData := url.Values{}
+	for key, value := range tokenReq {
+		formData.Set(key, value)
 	}
+	reqBody := formData.Encode()
 
-	req, err := http.NewRequest("POST", tokenURL, bytes.NewBuffer(reqBody))
+	// 调试信息：打印请求内容
+	fmt.Printf("🔍 DEBUG: Token请求URL: %s\n", tokenURL)
+	fmt.Printf("🔍 DEBUG: Token请求Body: %s\n", reqBody)
+
+	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("User-Agent", "claude-cli/1.0.56 (external, cli)")
+	req.Header.Set("Referer", "https://claude.ai/")
+	req.Header.Set("Origin", "https://claude.ai")
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {

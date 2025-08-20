@@ -40,6 +40,9 @@ func NewProxyHandler(
 		transformer:   transformer,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment, // 支持代理环境变量
+			},
 		},
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/iBreaker/llm-gateway/internal/app"
 	"github.com/iBreaker/llm-gateway/pkg/types"
@@ -333,8 +334,6 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	provider := fs.String("provider", "anthropic", "提供商 (anthropic, openai, google, azure)")
 	baseURL := fs.String("base-url", "", "自定义API端点URL (可选)")
 	apiKey := fs.String("key", "", "API密钥 (type=api-key时必需)")
-	clientID := fs.String("client-id", "", "Client ID (type=oauth时必需)")
-	clientSecret := fs.String("client-secret", "", "Client Secret (type=oauth时必需)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -357,9 +356,7 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 		}
 	case "oauth":
 		upstreamType = types.UpstreamTypeOAuth
-		if *clientID == "" || *clientSecret == "" {
-			return fmt.Errorf("OAuth类型账号缺少参数: --client-id 或 --client-secret")
-		}
+		// OAuth账号使用固定的Claude Code配置，不需要用户提供client credentials
 	default:
 		return fmt.Errorf("无效的账号类型: %s (支持: api-key, oauth)", *accountType)
 	}
@@ -391,10 +388,8 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	// 设置认证信息
 	if upstreamType == types.UpstreamTypeAPIKey {
 		account.APIKey = *apiKey
-	} else {
-		account.ClientID = *clientID
-		account.ClientSecret = *clientSecret
 	}
+	// OAuth账号不需要设置client credentials，使用固定配置
 
 	// 添加账号
 	if err := app.UpstreamMgr.AddAccount(account); err != nil {
@@ -412,6 +407,16 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	fmt.Printf("  类型: %s\n", account.Type)
 	fmt.Printf("  提供商: %s\n", account.Provider)
 	fmt.Printf("  状态: %s\n", account.Status)
+
+	// 如果是OAuth账号，启动交互式授权流程
+	if upstreamType == types.UpstreamTypeOAuth {
+		fmt.Printf("\n🔐 开始OAuth授权流程...\n")
+		if err := startInteractiveOAuth(app, account.ID); err != nil {
+			fmt.Printf("⚠️  授权流程失败: %v\n", err)
+			fmt.Printf("💡 账号已创建但未授权，稍后可运行:\n")
+			fmt.Printf("   ./llm-gateway oauth start %s\n", account.ID)
+		}
+	}
 
 	return nil
 }
@@ -696,7 +701,103 @@ func handleServerStatus(args []string, app *app.Application) error {
 }
 
 func handleOAuth(args []string, app *app.Application) error {
-	fmt.Println("OAuth流程管理功能待实现")
+	if len(args) == 0 {
+		printOAuthUsage()
+		return nil
+	}
+
+	subcommand := args[0]
+	switch subcommand {
+	case "start":
+		return handleOAuthStart(args[1:], app)
+	case "status":
+		return handleOAuthStatus(args[1:], app)
+	case "refresh":
+		return handleOAuthRefresh(args[1:], app)
+	default:
+		fmt.Printf("未知的oauth子命令: %s\n\n", subcommand)
+		printOAuthUsage()
+		return fmt.Errorf("未知的oauth子命令: %s", subcommand)
+	}
+}
+
+func printOAuthUsage() {
+	fmt.Println("用法: llm-gateway oauth <subcommand>")
+	fmt.Println("描述: OAuth流程管理")
+	fmt.Println()
+	fmt.Println("子命令:")
+	fmt.Println("  start      启动OAuth授权流程")
+	fmt.Println("  status     查看OAuth状态")
+	fmt.Println("  refresh    刷新OAuth token")
+}
+
+func handleOAuthStart(args []string, app *app.Application) error {
+	if len(args) == 0 {
+		return fmt.Errorf("缺少参数: <upstream-id>")
+	}
+
+	upstreamID := args[0]
+	return startInteractiveOAuth(app, upstreamID)
+}
+
+func handleOAuthStatus(args []string, app *app.Application) error {
+	if len(args) == 0 {
+		return fmt.Errorf("缺少参数: <upstream-id>")
+	}
+
+	upstreamID := args[0]
+	account, err := app.UpstreamMgr.GetAccount(upstreamID)
+	if err != nil {
+		return err
+	}
+
+	if account.Type != types.UpstreamTypeOAuth {
+		return fmt.Errorf("账号不是OAuth类型: %s", upstreamID)
+	}
+
+	fmt.Printf("OAuth账号状态:\n")
+	fmt.Printf("  账号ID: %s\n", account.ID)
+	fmt.Printf("  名称: %s\n", account.Name)
+	fmt.Printf("  提供商: %s\n", account.Provider)
+	
+	if account.AccessToken != "" {
+		fmt.Printf("  Token状态: ✅ 已授权\n")
+		if account.ExpiresAt != nil {
+			fmt.Printf("  过期时间: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
+			remaining := time.Until(*account.ExpiresAt)
+			if remaining > 0 {
+				fmt.Printf("  剩余时间: %v\n", remaining)
+			} else {
+				fmt.Printf("  剩余时间: ❌ 已过期\n")
+			}
+		}
+	} else {
+		fmt.Printf("  Token状态: ❌ 未授权\n")
+		fmt.Printf("💡 运行以下命令完成授权:\n")
+		fmt.Printf("   ./llm-gateway oauth start %s\n", upstreamID)
+	}
+
+	return nil
+}
+
+func handleOAuthRefresh(args []string, app *app.Application) error {
+	if len(args) == 0 {
+		return fmt.Errorf("缺少参数: <upstream-id>")
+	}
+
+	upstreamID := args[0]
+	
+	fmt.Printf("刷新OAuth token: %s\n", upstreamID)
+	if err := app.OAuthMgr.RefreshToken(upstreamID); err != nil {
+		return fmt.Errorf("刷新token失败: %w", err)
+	}
+
+	// 保存配置
+	if err := app.SaveConfig(); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	fmt.Printf("✅ Token刷新成功\n")
 	return nil
 }
 
@@ -707,5 +808,72 @@ func handleSystemStatus(args []string, app *app.Application) error {
 
 func handleHealthCheck(args []string, app *app.Application) error {
 	fmt.Println("健康检查功能待实现")
+	return nil
+}
+
+// startInteractiveOAuth 启动交互式OAuth授权流程
+func startInteractiveOAuth(app *app.Application, upstreamID string) error {
+	// 验证账号存在且为OAuth类型
+	account, err := app.UpstreamMgr.GetAccount(upstreamID)
+	if err != nil {
+		return err
+	}
+
+	if account.Type != types.UpstreamTypeOAuth {
+		return fmt.Errorf("账号不是OAuth类型: %s", upstreamID)
+	}
+
+	// 启动OAuth授权流程
+	authURL, err := app.OAuthMgr.StartOAuthFlow(upstreamID)
+	if err != nil {
+		return fmt.Errorf("启动OAuth流程失败: %w", err)
+	}
+
+	fmt.Printf("🌐 请在浏览器中访问以下URL完成授权:\n")
+	fmt.Printf("%s\n\n", authURL)
+	fmt.Printf("⏳ 请输入授权后获得的code（或按Enter跳过）: ")
+
+	// 读取用户输入的authorization code
+	var code string
+	fmt.Scanln(&code)
+
+	if code == "" {
+		fmt.Printf("⚠️  授权流程已跳过\n")
+		fmt.Printf("💡 稍后可运行以下命令完成授权:\n")
+		fmt.Printf("   ./llm-gateway oauth start %s\n", upstreamID)
+		return nil
+	}
+
+	// 处理OAuth回调
+	fmt.Printf("🔄 处理授权回调...\n")
+	if err := app.OAuthMgr.HandleCallback(upstreamID, code); err != nil {
+		return fmt.Errorf("处理OAuth回调失败: %w", err)
+	}
+
+	// 保存配置
+	if err := app.SaveConfig(); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	// 验证授权成功
+	account, err = app.UpstreamMgr.GetAccount(upstreamID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("✅ 授权成功！\n")
+	fmt.Printf("🎉 OAuth账号 \"%s\" 已就绪并可用\n\n", account.Name)
+	
+	fmt.Printf("账号详情:\n")
+	fmt.Printf("  ID: %s\n", account.ID)
+	fmt.Printf("  名称: %s\n", account.Name)
+	fmt.Printf("  类型: %s\n", account.Type)
+	fmt.Printf("  提供商: %s\n", account.Provider)
+	fmt.Printf("  状态: %s ✅\n", account.Status)
+	
+	if account.ExpiresAt != nil {
+		fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
+	}
+
 	return nil
 }
