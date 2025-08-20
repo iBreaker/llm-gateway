@@ -54,6 +54,8 @@ func runCLI(args []string, app *app.Application) error {
 		return handleSystemStatus(args[2:], app)
 	case "health":
 		return handleHealthCheck(args[2:], app)
+	case "env":
+		return handleEnvironment(args[2:], app)
 	default:
 		fmt.Printf("未知命令: %s\n\n", command)
 		printUsage()
@@ -72,6 +74,7 @@ func printUsage() {
 	fmt.Println("  upstream   上游账号管理")
 	fmt.Println("  server     服务器管理")
 	fmt.Println("  oauth      OAuth流程管理")
+	fmt.Println("  env        环境变量管理")
 	fmt.Println("  status     显示系统状态")
 	fmt.Println("  health     健康检查")
 	fmt.Println()
@@ -873,6 +876,185 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 	
 	if account.ExpiresAt != nil {
 		fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
+	}
+
+	return nil
+}
+
+// ===== Environment 命令处理器 =====
+
+func handleEnvironment(args []string, app *app.Application) error {
+	if len(args) == 0 {
+		printEnvironmentUsage()
+		return nil
+	}
+
+	subcommand := args[0]
+	switch subcommand {
+	case "list":
+		return handleEnvList(args[1:], app)
+	case "set":
+		return handleEnvSet(args[1:], app)
+	case "unset":
+		return handleEnvUnset(args[1:], app)
+	case "show":
+		return handleEnvShow(args[1:], app)
+	default:
+		fmt.Printf("未知的env子命令: %s\n\n", subcommand)
+		printEnvironmentUsage()
+		return fmt.Errorf("未知的env子命令: %s", subcommand)
+	}
+}
+
+func printEnvironmentUsage() {
+	fmt.Println("用法: llm-gateway env <subcommand>")
+	fmt.Println("描述: 环境变量管理")
+	fmt.Println()
+	fmt.Println("子命令:")
+	fmt.Println("  list       显示所有环境变量配置")
+	fmt.Println("  set        设置环境变量")
+	fmt.Println("  unset      清除环境变量")
+	fmt.Println("  show       显示特定环境变量")
+	fmt.Println()
+	fmt.Println("示例:")
+	fmt.Println("  llm-gateway env list")
+	fmt.Println("  llm-gateway env set --http-proxy=http://proxy:8080")
+	fmt.Println("  llm-gateway env show --name=http_proxy")
+	fmt.Println("  llm-gateway env unset --name=http_proxy")
+}
+
+func handleEnvList(args []string, app *app.Application) error {
+	config := app.Config.Get()
+	
+	fmt.Println("环境变量配置:")
+	fmt.Printf("  HTTP Proxy:  %s\n", config.Environment.HTTPProxy)
+	fmt.Printf("  HTTPS Proxy: %s\n", config.Environment.HTTPSProxy)
+	fmt.Printf("  No Proxy:    %s\n", config.Environment.NoProxy)
+	
+	fmt.Println()
+	fmt.Println("当前运行时环境变量:")
+	fmt.Printf("  HTTP_PROXY:  %s\n", os.Getenv("HTTP_PROXY"))
+	fmt.Printf("  HTTPS_PROXY: %s\n", os.Getenv("HTTPS_PROXY"))
+	fmt.Printf("  NO_PROXY:    %s\n", os.Getenv("NO_PROXY"))
+	
+	return nil
+}
+
+func handleEnvSet(args []string, app *app.Application) error {
+	fs := flag.NewFlagSet("env set", flag.ContinueOnError)
+	httpProxy := fs.String("http-proxy", "", "HTTP代理地址")
+	httpsProxy := fs.String("https-proxy", "", "HTTPS代理地址") 
+	noProxy := fs.String("no-proxy", "", "不使用代理的地址列表")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	config := app.Config.Get()
+	modified := false
+
+	if *httpProxy != "" {
+		config.Environment.HTTPProxy = *httpProxy
+		modified = true
+		fmt.Printf("✅ 设置 HTTP_PROXY = %s\n", *httpProxy)
+	}
+
+	if *httpsProxy != "" {
+		config.Environment.HTTPSProxy = *httpsProxy
+		modified = true
+		fmt.Printf("✅ 设置 HTTPS_PROXY = %s\n", *httpsProxy)
+	}
+
+	if *noProxy != "" {
+		config.Environment.NoProxy = *noProxy
+		modified = true
+		fmt.Printf("✅ 设置 NO_PROXY = %s\n", *noProxy)
+	}
+
+	if !modified {
+		fmt.Println("❌ 未指定任何环境变量设置")
+		printEnvironmentUsage()
+		return fmt.Errorf("未指定任何环境变量")
+	}
+
+	// 保存配置
+	if err := app.Config.Save(config); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	fmt.Println("💾 配置已保存")
+	return nil
+}
+
+func handleEnvUnset(args []string, app *app.Application) error {
+	fs := flag.NewFlagSet("env unset", flag.ContinueOnError)
+	name := fs.String("name", "", "要清除的环境变量名称 (http_proxy, https_proxy, no_proxy)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *name == "" {
+		return fmt.Errorf("缺少必要参数: --name")
+	}
+
+	config := app.Config.Get()
+	modified := false
+
+	switch strings.ToLower(*name) {
+	case "http_proxy":
+		config.Environment.HTTPProxy = ""
+		modified = true
+		fmt.Println("✅ 已清除 HTTP_PROXY 配置")
+	case "https_proxy":
+		config.Environment.HTTPSProxy = ""
+		modified = true
+		fmt.Println("✅ 已清除 HTTPS_PROXY 配置")
+	case "no_proxy":
+		config.Environment.NoProxy = ""
+		modified = true
+		fmt.Println("✅ 已清除 NO_PROXY 配置")
+	default:
+		return fmt.Errorf("不支持的环境变量名称: %s (支持: http_proxy, https_proxy, no_proxy)", *name)
+	}
+
+	if modified {
+		// 保存配置
+		if err := app.Config.Save(config); err != nil {
+			return fmt.Errorf("保存配置失败: %w", err)
+		}
+		fmt.Println("💾 配置已保存")
+	}
+
+	return nil
+}
+
+func handleEnvShow(args []string, app *app.Application) error {
+	fs := flag.NewFlagSet("env show", flag.ContinueOnError)
+	name := fs.String("name", "", "要显示的环境变量名称 (http_proxy, https_proxy, no_proxy)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *name == "" {
+		return fmt.Errorf("缺少必要参数: --name")
+	}
+
+	config := app.Config.Get()
+
+	switch strings.ToLower(*name) {
+	case "http_proxy":
+		fmt.Printf("配置值: %s\n", config.Environment.HTTPProxy)
+		fmt.Printf("运行时值: %s\n", os.Getenv("HTTP_PROXY"))
+	case "https_proxy":
+		fmt.Printf("配置值: %s\n", config.Environment.HTTPSProxy)
+		fmt.Printf("运行时值: %s\n", os.Getenv("HTTPS_PROXY"))
+	case "no_proxy":
+		fmt.Printf("配置值: %s\n", config.Environment.NoProxy)
+		fmt.Printf("运行时值: %s\n", os.Getenv("NO_PROXY"))
+	default:
+		return fmt.Errorf("不支持的环境变量名称: %s (支持: http_proxy, https_proxy, no_proxy)", *name)
 	}
 
 	return nil
