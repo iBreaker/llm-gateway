@@ -280,9 +280,24 @@ func (m *UpstreamManager) GetAuthHeaders(account *types.UpstreamAccount) (map[st
 			return nil, fmt.Errorf("OAuth account missing access token")
 		}
 		
-		// 检查token是否过期
-		if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) {
-			return nil, fmt.Errorf("OAuth access token has expired")
+		// 1. 提前5分钟刷新token，避免在请求过程中过期
+		needRefresh := false
+		if account.ExpiresAt != nil {
+			timeUntilExpiry := time.Until(*account.ExpiresAt)
+			if timeUntilExpiry < 5*time.Minute {
+				needRefresh = true
+			}
+		} else {
+			// 如果没有过期时间，认为已过期需要刷新
+			needRefresh = true
+		}
+		
+		// 2. 如果需要刷新，调用自动刷新逻辑
+		if needRefresh {
+			if err := m.autoRefreshToken(account); err != nil {
+				return nil, fmt.Errorf("auto refresh token failed: %w", err)
+			}
+			// 3. 刷新成功后，使用更新后的内存中的token信息
 		}
 		
 		// OAuth总是使用Bearer认证
@@ -301,6 +316,19 @@ func (m *UpstreamManager) GetAuthHeaders(account *types.UpstreamAccount) (map[st
 	}
 	
 	return headers, nil
+}
+
+// autoRefreshToken 自动刷新OAuth token
+func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error {
+	// 1. 检查是否有refresh token
+	if account.RefreshToken == "" {
+		return fmt.Errorf("no refresh token available for account %s", account.ID)
+	}
+	
+	// 2. 创建OAuth管理器实例并调用刷新方法
+	// RefreshToken内部会调用UpdateOAuthTokens更新内存中的数据
+	oauthMgr := NewOAuthManager(m)
+	return oauthMgr.RefreshToken(account.ID)
 }
 
 // generateUpstreamID 生成上游账号ID
