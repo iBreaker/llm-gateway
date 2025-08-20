@@ -10,26 +10,51 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 	"github.com/iBreaker/llm-gateway/internal/client"
 	"github.com/iBreaker/llm-gateway/internal/router"
+	"github.com/iBreaker/llm-gateway/internal/transform"
+	"github.com/iBreaker/llm-gateway/internal/upstream"
 )
 
 // HTTPServer HTTP服务器
 type HTTPServer struct {
-	mux       *http.ServeMux
-	config    *types.ServerConfig
-	clientMgr *client.GatewayKeyManager
-	router    *router.RequestRouter
-	server    *http.Server
+	mux           *http.ServeMux
+	config        *types.ServerConfig
+	clientMgr     *client.GatewayKeyManager
+	upstreamMgr   *upstream.UpstreamManager
+	router        *router.RequestRouter
+	transformer   *transform.Transformer
+	server        *http.Server
+	authMW        *AuthMiddleware
+	rateLimitMW   *RateLimitMiddleware
+	proxyHandler  *ProxyHandler
 }
 
 // NewServer 创建新的HTTP服务器
-func NewServer(config *types.ServerConfig, clientMgr *client.GatewayKeyManager, router *router.RequestRouter) *HTTPServer {
+func NewServer(
+	config *types.ServerConfig, 
+	clientMgr *client.GatewayKeyManager, 
+	upstreamMgr *upstream.UpstreamManager,
+	router *router.RequestRouter,
+	transformer *transform.Transformer,
+) *HTTPServer {
 	mux := http.NewServeMux()
 
+	// 创建中间件
+	authMW := NewAuthMiddleware(clientMgr)
+	rateLimitMW := NewRateLimitMiddleware(clientMgr)
+	
+	// 创建代理处理器
+	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, transformer)
+
 	s := &HTTPServer{
-		mux:       mux,
-		config:    config,
-		clientMgr: clientMgr,
-		router:    router,
+		mux:          mux,
+		config:       config,
+		clientMgr:    clientMgr,
+		upstreamMgr:  upstreamMgr,
+		router:       router,
+		transformer:  transformer,
+		authMW:       authMW,
+		rateLimitMW:  rateLimitMW,
+		proxyHandler: proxyHandler,
 	}
 
 	s.setupRoutes()
@@ -38,12 +63,25 @@ func NewServer(config *types.ServerConfig, clientMgr *client.GatewayKeyManager, 
 
 // setupRoutes 设置路由
 func (s *HTTPServer) setupRoutes() {
-	// 健康检查
-	s.mux.HandleFunc("/health", s.handleHealth)
+	// 健康检查路由（无需认证）
+	s.mux.HandleFunc("/health", CORSMiddleware(LoggingMiddleware(s.handleHealth)))
 	
-	// API代理路由
-	s.mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
-	s.mux.HandleFunc("/v1/completions", s.handleCompletions)
+	// API代理路由（需要完整的中间件链）
+	s.mux.HandleFunc("/v1/chat/completions", s.withMiddleware(s.proxyHandler.HandleChatCompletions))
+	s.mux.HandleFunc("/v1/completions", s.withMiddleware(s.proxyHandler.HandleCompletions))
+	s.mux.HandleFunc("/v1/messages", s.withMiddleware(s.proxyHandler.HandleChatCompletions)) // Anthropic原生端点
+}
+
+// withMiddleware 应用中间件链
+func (s *HTTPServer) withMiddleware(handler http.HandlerFunc) http.HandlerFunc {
+	// 中间件链：CORS -> 日志 -> 认证 -> 限流 -> 处理器
+	return CORSMiddleware(
+		LoggingMiddleware(
+			s.authMW.Authenticate(
+				s.rateLimitMW.RateLimit(handler),
+			),
+		),
+	)
 }
 
 // Start 启动服务器
@@ -94,28 +132,3 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleChatCompletions 聊天完成API处理器
-func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: 实现聊天完成API
-	s.writeJSONResponse(w, http.StatusNotImplemented, map[string]string{
-		"error": "Not implemented yet",
-	})
-}
-
-// handleCompletions 文本完成API处理器
-func (s *HTTPServer) handleCompletions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: 实现文本完成API
-	s.writeJSONResponse(w, http.StatusNotImplemented, map[string]string{
-		"error": "Not implemented yet",
-	})
-}

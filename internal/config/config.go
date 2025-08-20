@@ -165,7 +165,7 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 	return &types.Config{
 		Server: types.ServerConfig{
 			Host:    "0.0.0.0",
-			Port:    8080,
+			Port:    3847, // 使用随机端口避免冲突
 			Timeout: 30,
 		},
 		GatewayKeys:      []types.GatewayAPIKey{},

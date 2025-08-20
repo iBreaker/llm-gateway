@@ -331,6 +331,7 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	accountType := fs.String("type", "", "账号类型 (api-key, oauth)")
 	name := fs.String("name", "", "账号名称")
 	provider := fs.String("provider", "anthropic", "提供商 (anthropic, openai, google, azure)")
+	baseURL := fs.String("base-url", "", "自定义API端点URL (可选)")
 	apiKey := fs.String("key", "", "API密钥 (type=api-key时必需)")
 	clientID := fs.String("client-id", "", "Client ID (type=oauth时必需)")
 	clientSecret := fs.String("client-secret", "", "Client Secret (type=oauth时必需)")
@@ -383,6 +384,7 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 		Name:     *name,
 		Type:     upstreamType,
 		Provider: providerType,
+		BaseURL:  *baseURL,
 		Status:   "active",
 	}
 

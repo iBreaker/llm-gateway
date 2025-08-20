@@ -67,6 +67,7 @@ type UpstreamAccount struct {
 	Type            UpstreamType          `json:"type" yaml:"type"`
 	Status          string                `json:"status" yaml:"status"` // active, disabled, error
 	Provider        Provider              `json:"provider" yaml:"provider"`
+	BaseURL         string                `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	APIKey          string                `json:"api_key,omitempty" yaml:"api_key,omitempty"`
 	ClientID        string                `json:"client_id,omitempty" yaml:"client_id,omitempty"`
 	ClientSecret    string                `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
