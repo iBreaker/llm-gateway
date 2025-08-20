@@ -259,6 +259,50 @@ func (m *UpstreamManager) IsTokenExpired(upstreamID string) (bool, error) {
 	return time.Now().After(*account.ExpiresAt), nil
 }
 
+// GetAuthHeaders 获取上游账号的认证头部
+func (m *UpstreamManager) GetAuthHeaders(account *types.UpstreamAccount) (map[string]string, error) {
+	headers := make(map[string]string)
+	
+	switch account.Type {
+	case types.UpstreamTypeAPIKey:
+		switch account.Provider {
+		case types.ProviderAnthropic:
+			headers["x-api-key"] = account.APIKey
+			headers["anthropic-version"] = "2023-06-01"
+		case types.ProviderOpenAI:
+			headers["Authorization"] = "Bearer " + account.APIKey
+		default:
+			headers["Authorization"] = "Bearer " + account.APIKey
+		}
+		
+	case types.UpstreamTypeOAuth:
+		if account.AccessToken == "" {
+			return nil, fmt.Errorf("OAuth account missing access token")
+		}
+		
+		// 检查token是否过期
+		if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) {
+			return nil, fmt.Errorf("OAuth access token has expired")
+		}
+		
+		// OAuth总是使用Bearer认证
+		headers["Authorization"] = "Bearer " + account.AccessToken
+		
+		// Anthropic OAuth需要特殊处理
+		if account.Provider == types.ProviderAnthropic {
+			// 设置API版本头部
+			headers["anthropic-version"] = "2023-06-01"
+			// 设置OAuth特有的beta标志
+			headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
+		}
+		
+	default:
+		return nil, fmt.Errorf("unsupported upstream auth type: %s", account.Type)
+	}
+	
+	return headers, nil
+}
+
 // generateUpstreamID 生成上游账号ID
 func generateUpstreamID() string {
 	return fmt.Sprintf("upstream_%d", time.Now().UnixNano())

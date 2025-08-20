@@ -587,9 +587,14 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "LLM-Gateway/1.0")
 
-	// 5. 设置认证头部
-	if err := h.setAuthHeaders(req, account); err != nil {
-		return nil, fmt.Errorf("failed to set auth headers: %w", err)
+	// 5. 设置认证头部 - 调用Upstream模块处理
+	authHeaders, err := h.upstreamMgr.GetAuthHeaders(account)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth headers: %w", err)
+	}
+	
+	for key, value := range authHeaders {
+		req.Header.Set(key, value)
 	}
 
 	return req, nil
@@ -701,30 +706,6 @@ func (h *ProxyHandler) getProviderBaseURL(provider types.Provider) string {
 	}
 }
 
-// setAuthHeaders 设置认证头部
-func (h *ProxyHandler) setAuthHeaders(req *http.Request, account *types.UpstreamAccount) error {
-	switch account.Type {
-	case types.UpstreamTypeAPIKey:
-		switch account.Provider {
-		case types.ProviderAnthropic:
-			req.Header.Set("x-api-key", account.APIKey)
-			req.Header.Set("anthropic-version", "2023-06-01")
-		case types.ProviderOpenAI:
-			req.Header.Set("Authorization", "Bearer "+account.APIKey)
-		default:
-			req.Header.Set("Authorization", "Bearer "+account.APIKey)
-		}
-	case types.UpstreamTypeOAuth:
-		if account.AccessToken == "" {
-			return fmt.Errorf("OAuth account missing access token")
-		}
-		req.Header.Set("Authorization", "Bearer "+account.AccessToken)
-	default:
-		return fmt.Errorf("unsupported upstream auth type: %s", account.Type)
-	}
-	
-	return nil
-}
 
 // handleUpstreamError 处理上游错误
 func (h *ProxyHandler) handleUpstreamError(w http.ResponseWriter, account *types.UpstreamAccount, err error) {
