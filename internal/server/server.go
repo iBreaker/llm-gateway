@@ -69,7 +69,7 @@ func (s *HTTPServer) setupRoutes() {
 	// API代理路由（需要完整的中间件链）
 	s.mux.HandleFunc("/v1/chat/completions", s.withMiddleware(s.proxyHandler.HandleChatCompletions))
 	s.mux.HandleFunc("/v1/completions", s.withMiddleware(s.proxyHandler.HandleCompletions))
-	s.mux.HandleFunc("/v1/messages", s.withMiddleware(s.proxyHandler.HandleChatCompletions)) // Anthropic原生端点
+	s.mux.HandleFunc("/v1/messages", s.withMiddleware(s.proxyHandler.HandleMessages)) // Anthropic原生端点
 }
 
 // withMiddleware 应用中间件链

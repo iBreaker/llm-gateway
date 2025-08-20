@@ -43,3 +43,5 @@ CLAUDE.md
 # Temporary files
 tmp/
 temp/
+
+tests/

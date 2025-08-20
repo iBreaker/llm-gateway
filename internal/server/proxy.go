@@ -45,16 +45,21 @@ func NewProxyHandler(
 
 // HandleChatCompletions 处理聊天完成请求
 func (h *ProxyHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	h.handleProxyRequest(w, r, "/v1/messages") // Anthropic使用/v1/messages端点
+	h.handleProxyRequest(w, r, "/v1/messages", "/v1/chat/completions") // 第二个参数是客户端端点
 }
 
 // HandleCompletions 处理文本完成请求  
 func (h *ProxyHandler) HandleCompletions(w http.ResponseWriter, r *http.Request) {
-	h.handleProxyRequest(w, r, "/v1/complete")
+	h.handleProxyRequest(w, r, "/v1/complete", "/v1/completions")
+}
+
+// HandleMessages 处理Anthropic原生消息端点
+func (h *ProxyHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
+	h.handleProxyRequest(w, r, "/v1/messages", "/v1/messages")
 }
 
 // handleProxyRequest 处理代理请求的核心逻辑
-func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, upstreamPath string) {
+func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, upstreamPath, clientEndpoint string) {
 	startTime := time.Now()
 	
 	// 1. 读取请求体
@@ -66,7 +71,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	defer r.Body.Close()
 
 	// 2. 检测请求格式
-	requestFormat := h.transformer.DetectFormat(requestBody)
+	requestFormat := h.transformer.DetectFormatWithEndpoint(requestBody, clientEndpoint)
 	if requestFormat == transform.FormatUnknown {
 		h.writeErrorResponse(w, http.StatusBadRequest, "unsupported_format", "Unsupported request format")
 		return
@@ -169,21 +174,33 @@ func (h *ProxyHandler) callUpstreamAPI(account *types.UpstreamAccount, request *
 		return nil, fmt.Errorf("upstream API error: status=%d, body=%s", resp.StatusCode, string(responseBody))
 	}
 
-	// 5. 解析响应
-	var proxyResponse types.ProxyResponse
-	if err := json.Unmarshal(responseBody, &proxyResponse); err != nil {
+	// 5. 解析响应 - 根据提供商类型处理不同的响应格式
+	proxyResponse, err := h.parseUpstreamResponse(responseBody, account.Provider)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse upstream response: %w", err)
 	}
 
-	return &proxyResponse, nil
+	return proxyResponse, nil
 }
 
 // buildUpstreamRequest 构建上游请求
 func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.ProxyRequest, path string) (*http.Request, error) {
-	// 1. 序列化请求体
-	requestBody, err := json.Marshal(request)
+	// 1. 根据上游提供商转换请求格式
+	var requestBody []byte
+	var err error
+	
+	switch account.Provider {
+	case types.ProviderAnthropic:
+		requestBody, err = h.transformer.TransformToAnthropicRequest(request)
+	case types.ProviderOpenAI:
+		requestBody, err = h.transformer.TransformToOpenAIRequest(request)
+	default:
+		// 默认使用内部格式（与OpenAI兼容）
+		requestBody, err = json.Marshal(request)
+	}
+	
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to transform request for upstream: %w", err)
 	}
 
 	// 2. 构建URL (优先使用账号配置的BaseURL)
@@ -209,6 +226,96 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	}
 
 	return req, nil
+}
+
+// parseUpstreamResponse 根据提供商类型解析上游响应
+func (h *ProxyHandler) parseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.ProxyResponse, error) {
+	switch provider {
+	case types.ProviderAnthropic:
+		return h.parseAnthropicResponse(responseBody)
+	case types.ProviderOpenAI:
+		return h.parseOpenAIResponse(responseBody)
+	default:
+		// 默认尝试OpenAI格式
+		return h.parseOpenAIResponse(responseBody)
+	}
+}
+
+// parseAnthropicResponse 解析Anthropic API响应
+func (h *ProxyHandler) parseAnthropicResponse(responseBody []byte) (*types.ProxyResponse, error) {
+	// Anthropic API响应格式
+	var anthropicResp struct {
+		ID           string `json:"id"`
+		Type         string `json:"type"`
+		Role         string `json:"role"`
+		Content      []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		Model       string `json:"model"`
+		StopReason  string `json:"stop_reason"`
+		StopSequence interface{} `json:"stop_sequence"`
+		Usage       struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(responseBody, &anthropicResp); err != nil {
+		return nil, fmt.Errorf("failed to parse Anthropic response: %w", err)
+	}
+
+	// 转换为统一的ProxyResponse格式
+	var content string
+	if len(anthropicResp.Content) > 0 {
+		content = anthropicResp.Content[0].Text
+	}
+
+	// 转换结束原因
+	var finishReason string
+	switch anthropicResp.StopReason {
+	case "end_turn":
+		finishReason = "stop"
+	case "max_tokens":
+		finishReason = "length"
+	case "stop_sequence":
+		finishReason = "stop"
+	default:
+		finishReason = "stop"
+	}
+
+	proxyResp := &types.ProxyResponse{
+		ID:      anthropicResp.ID,
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
+		Model:   anthropicResp.Model,
+		Choices: []types.ResponseChoice{
+			{
+				Index: 0,
+				Message: types.Message{
+					Role:    "assistant",
+					Content: content,
+				},
+				FinishReason: finishReason,
+			},
+		},
+		Usage: types.ResponseUsage{
+			PromptTokens:     anthropicResp.Usage.InputTokens,
+			CompletionTokens: anthropicResp.Usage.OutputTokens,
+			TotalTokens:      anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens,
+		},
+	}
+
+	return proxyResp, nil
+}
+
+// parseOpenAIResponse 解析OpenAI API响应
+func (h *ProxyHandler) parseOpenAIResponse(responseBody []byte) (*types.ProxyResponse, error) {
+	var proxyResp types.ProxyResponse
+	if err := json.Unmarshal(responseBody, &proxyResp); err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)
+	}
+	return &proxyResp, nil
 }
 
 // getProviderBaseURL 获取提供商的基础URL
