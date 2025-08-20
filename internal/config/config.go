@@ -180,8 +180,8 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 			File:   "",
 		},
 		Environment: types.EnvironmentConfig{
-			HTTPProxy:  "http://Clash:CYzl3x5O@192.168.100.1:7890",
-			HTTPSProxy: "http://Clash:CYzl3x5O@192.168.100.1:7890",
+			HTTPProxy:  "",
+			HTTPSProxy: "",
 			NoProxy:    "localhost,127.0.0.1,::1",
 		},
 	}
