@@ -44,6 +44,10 @@ func (m *ConfigManager) Load() (*types.Config, error) {
 	}
 
 	m.config = &config
+	
+	// 应用环境变量配置
+	m.applyEnvironmentConfig(&config)
+	
 	return &config, nil
 }
 
@@ -175,6 +179,11 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 			Format: "json",
 			File:   "",
 		},
+		Environment: types.EnvironmentConfig{
+			HTTPProxy:  "http://Clash:CYzl3x5O@192.168.100.1:7890",
+			HTTPSProxy: "http://Clash:CYzl3x5O@192.168.100.1:7890",
+			NoProxy:    "localhost,127.0.0.1,::1",
+		},
 	}
 }
 
@@ -186,4 +195,20 @@ func (m *ConfigManager) Reload() (*types.Config, error) {
 // GetConfigPath 获取配置文件路径
 func (m *ConfigManager) GetConfigPath() string {
 	return m.configPath
+}
+
+// applyEnvironmentConfig 应用环境变量配置
+func (m *ConfigManager) applyEnvironmentConfig(config *types.Config) {
+	// 设置HTTP代理环境变量
+	if config.Environment.HTTPProxy != "" {
+		os.Setenv("HTTP_PROXY", config.Environment.HTTPProxy)
+	}
+	
+	if config.Environment.HTTPSProxy != "" {
+		os.Setenv("HTTPS_PROXY", config.Environment.HTTPSProxy)
+	}
+	
+	if config.Environment.NoProxy != "" {
+		os.Setenv("NO_PROXY", config.Environment.NoProxy)
+	}
 }

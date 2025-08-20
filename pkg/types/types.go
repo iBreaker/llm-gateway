@@ -141,6 +141,7 @@ type Config struct {
 	GatewayKeys      []GatewayAPIKey   `yaml:"gateway_keys"`
 	UpstreamAccounts []UpstreamAccount `yaml:"upstream_accounts"`
 	Logging          LoggingConfig     `yaml:"logging"`
+	Environment      EnvironmentConfig `yaml:"environment"`
 }
 
 // ServerConfig - 服务器配置
@@ -155,4 +156,11 @@ type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
 	File   string `yaml:"file"`
+}
+
+// EnvironmentConfig - 环境变量配置
+type EnvironmentConfig struct {
+	HTTPProxy  string `yaml:"http_proxy"`
+	HTTPSProxy string `yaml:"https_proxy"`
+	NoProxy    string `yaml:"no_proxy"`
 }
