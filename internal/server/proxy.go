@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -102,28 +103,391 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	// 7. 根据上游账号类型注入特殊处理
 	h.transformer.InjectSystemPrompt(proxyReq, upstreamAccount.Provider, upstreamAccount.Type)
 
-	// 8. 调用上游API
-	response, err := h.callUpstreamAPI(upstreamAccount, proxyReq, upstreamPath)
+	// 8. 根据stream参数选择处理方式
+	if proxyReq.Stream {
+		// 流式响应处理
+		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime)
+	} else {
+		// 非流式响应处理
+		h.handleNonStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime)
+	}
+}
+
+// handleNonStreamResponse 处理非流式响应
+func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) {
+	// 调用上游API
+	response, err := h.callUpstreamAPI(account, request, upstreamPath)
 	if err != nil {
-		h.handleUpstreamError(w, upstreamAccount, err)
+		h.handleUpstreamError(w, account, err)
 		return
 	}
 
-	// 9. 转换响应格式
+	// 转换响应格式
 	responseBytes, err := h.transformer.TransformResponse(response, requestFormat)
 	if err != nil {
 		h.writeErrorResponse(w, http.StatusInternalServerError, "response_transform_error", fmt.Sprintf("Failed to transform response: %v", err))
 		return
 	}
 
-	// 10. 记录成功统计
+	// 记录成功统计
 	duration := time.Since(startTime)
-	go h.recordSuccess(keyID, upstreamAccount.ID, duration, response.Usage.TotalTokens)
+	go h.recordSuccess(keyID, account.ID, duration, response.Usage.TotalTokens)
 
-	// 11. 返回响应
+	// 返回响应
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(responseBytes)
+}
+
+// handleStreamResponse 处理流式响应
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) {
+	// 设置SSE响应头
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	
+	// 获取Flusher确保实时推送
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "stream_not_supported", "Streaming not supported")
+		return
+	}
+
+	// 调用上游流式API
+	err := h.callUpstreamStreamAPI(w, flusher, account, request, upstreamPath, requestFormat, keyID, startTime)
+	if err != nil {
+		// 流式响应中的错误处理
+		h.writeStreamError(w, flusher, err)
+		return
+	}
+}
+
+// callUpstreamStreamAPI 调用上游流式API
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) error {
+	// 构建上游请求
+	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
+	if err != nil {
+		return fmt.Errorf("failed to build upstream request: %w", err)
+	}
+
+	// 发送流式请求
+	resp, err := h.httpClient.Do(upstreamReq)
+	if err != nil {
+		return fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("upstream API error: status=%d", resp.StatusCode)
+	}
+
+	// 验证Content-Type是否为流式响应
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/event-stream") {
+		return fmt.Errorf("unexpected content type: %s", contentType)
+	}
+
+	// 不需要显式调用WriteHeader，让Go在第一次写入时自动发送200状态码
+	// 这样可以避免与中间件包装器的WriteHeader冲突
+	flusher.Flush()
+	
+	// 开始处理流式响应
+	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime)
+}
+
+// processStreamResponse 处理流式响应
+func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat transform.RequestFormat, keyID, upstreamID string, startTime time.Time) error {
+	scanner := bufio.NewScanner(responseBody)
+	var totalTokens int
+	var firstEvent bool = true
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		
+		// 跳过空行
+		if line == "" {
+			continue
+		}
+
+		// 解析SSE事件
+		if strings.HasPrefix(line, "data: ") {
+			data := line[6:] // 移除"data: "前缀
+			
+			// 处理结束标记
+			if data == "[DONE]" {
+				// OpenAI风格的结束标记
+				if requestFormat == transform.FormatOpenAI {
+					fmt.Fprintf(w, "data: [DONE]\n\n")
+					flusher.Flush()
+				}
+				break
+			}
+
+			// 转换并写入事件
+			convertedEvent, tokens, err := h.convertStreamEvent(data, provider, requestFormat, firstEvent)
+			if err != nil {
+				// 记录错误但继续处理
+				continue
+			}
+
+			if convertedEvent != "" {
+				fmt.Fprintf(w, "data: %s\n\n", convertedEvent)
+				flusher.Flush()
+				firstEvent = false
+			}
+
+			totalTokens += tokens
+		} else if strings.HasPrefix(line, "event: ") {
+			// Anthropic风格的命名事件，需要读取下一行的data
+			eventType := line[7:] // 移除"event: "前缀
+			if scanner.Scan() {
+				dataLine := scanner.Text()
+				if strings.HasPrefix(dataLine, "data: ") {
+					data := dataLine[6:]
+					
+					// 处理命名事件
+					convertedEvent, tokens, err := h.convertNamedEvent(eventType, data, requestFormat, firstEvent)
+					if err != nil {
+						continue
+					}
+
+					if convertedEvent != "" {
+						fmt.Fprintf(w, "data: %s\n\n", convertedEvent)
+						flusher.Flush()
+						firstEvent = false
+					}
+
+					totalTokens += tokens
+
+					// 处理结束事件
+					if eventType == "message_stop" && requestFormat == transform.FormatOpenAI {
+						fmt.Fprintf(w, "data: [DONE]\n\n")
+						flusher.Flush()
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// 记录成功统计
+	duration := time.Since(startTime)
+	go h.recordSuccess(keyID, upstreamID, duration, totalTokens)
+
+	return scanner.Err()
+}
+
+// writeStreamError 写入流式错误
+func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flusher, err error) {
+	errorEvent := map[string]interface{}{
+		"error": map[string]string{
+			"type":    "stream_error",
+			"message": err.Error(),
+		},
+	}
+	
+	errorBytes, _ := json.Marshal(errorEvent)
+	fmt.Fprintf(w, "data: %s\n\n", string(errorBytes))
+	flusher.Flush()
+}
+
+// convertStreamEvent 转换流式事件（处理无命名的data事件）
+func (h *ProxyHandler) convertStreamEvent(data string, provider types.Provider, targetFormat transform.RequestFormat, isFirst bool) (string, int, error) {
+	// 解析JSON数据
+	var eventData map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &eventData); err != nil {
+		return "", 0, err
+	}
+
+	// 提取token使用量
+	tokens := h.extractTokensFromEvent(eventData)
+
+	// 根据提供商和目标格式转换
+	if provider == types.ProviderAnthropic && targetFormat == transform.FormatOpenAI {
+		// Anthropic -> OpenAI：这种情况很少见，因为Anthropic通常使用命名事件
+		return h.convertAnthropicToOpenAI(eventData, isFirst)
+	} else if provider == types.ProviderOpenAI && targetFormat == transform.FormatAnthropic {
+		// OpenAI -> Anthropic：转换chunk为Anthropic事件
+		return h.convertOpenAIToAnthropic(eventData, isFirst)
+	} else {
+		// 相同格式，直接透传
+		return data, tokens, nil
+	}
+}
+
+// convertNamedEvent 转换命名事件（处理Anthropic的event: xxx格式）
+func (h *ProxyHandler) convertNamedEvent(eventType, data string, targetFormat transform.RequestFormat, isFirst bool) (string, int, error) {
+	// 解析JSON数据
+	var eventData map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &eventData); err != nil {
+		return "", 0, err
+	}
+
+	// 提取token使用量
+	tokens := h.extractTokensFromEvent(eventData)
+
+	// 如果目标格式是Anthropic，直接透传
+	if targetFormat == transform.FormatAnthropic {
+		return data, tokens, nil
+	}
+
+	// 转换Anthropic命名事件到OpenAI格式
+	return h.convertAnthropicEventToOpenAI(eventType, eventData, isFirst)
+}
+
+// extractTokensFromEvent 从事件中提取token信息
+func (h *ProxyHandler) extractTokensFromEvent(eventData map[string]interface{}) int {
+	// 尝试从usage字段提取
+	if usage, ok := eventData["usage"].(map[string]interface{}); ok {
+		if total, ok := usage["total_tokens"].(float64); ok {
+			return int(total)
+		}
+		if output, ok := usage["output_tokens"].(float64); ok {
+			return int(output)
+		}
+	}
+
+	// 尝试从choices中的usage提取
+	if choices, ok := eventData["choices"].([]interface{}); ok {
+		for _, choice := range choices {
+			if choiceMap, ok := choice.(map[string]interface{}); ok {
+				if usage, ok := choiceMap["usage"].(map[string]interface{}); ok {
+					if total, ok := usage["total_tokens"].(float64); ok {
+						return int(total)
+					}
+				}
+			}
+		}
+	}
+
+	return 0
+}
+
+// convertOpenAIToAnthropic 转换OpenAI chunk到Anthropic事件
+func (h *ProxyHandler) convertOpenAIToAnthropic(eventData map[string]interface{}, isFirst bool) (string, int, error) {
+	// 简化实现：暂时只处理内容转换
+	choices, ok := eventData["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return "", 0, nil
+	}
+
+	choice := choices[0].(map[string]interface{})
+	delta, ok := choice["delta"].(map[string]interface{})
+	if !ok {
+		return "", 0, nil
+	}
+
+	// 检查是否有内容
+	if content, ok := delta["content"].(string); ok && content != "" {
+		// 构建Anthropic content_block_delta事件
+		anthropicEvent := map[string]interface{}{
+			"type":  "content_block_delta",
+			"index": 0,
+			"delta": map[string]interface{}{
+				"type": "text_delta",
+				"text": content,
+			},
+		}
+
+		result, err := json.Marshal(anthropicEvent)
+		if err != nil {
+			return "", 0, err
+		}
+
+		return string(result), 0, nil
+	}
+
+	return "", 0, nil
+}
+
+// convertAnthropicToOpenAI 转换Anthropic事件到OpenAI chunk
+func (h *ProxyHandler) convertAnthropicToOpenAI(eventData map[string]interface{}, isFirst bool) (string, int, error) {
+	// 这是从data事件转换（少见），暂时简单处理
+	return "", 0, nil
+}
+
+// convertAnthropicEventToOpenAI 转换Anthropic命名事件到OpenAI chunk
+func (h *ProxyHandler) convertAnthropicEventToOpenAI(eventType string, eventData map[string]interface{}, isFirst bool) (string, int, error) {
+	switch eventType {
+	case "message_start":
+		// 第一个chunk，包含role信息
+		if isFirst {
+			chunk := map[string]interface{}{
+				"id":      eventData["message"].(map[string]interface{})["id"],
+				"object":  "chat.completion.chunk",
+				"created": time.Now().Unix(),
+				"model":   eventData["message"].(map[string]interface{})["model"],
+				"choices": []map[string]interface{}{
+					{
+						"index": 0,
+						"delta": map[string]interface{}{
+							"role": "assistant",
+						},
+						"finish_reason": nil,
+					},
+				},
+			}
+			result, err := json.Marshal(chunk)
+			return string(result), 0, err
+		}
+		return "", 0, nil
+
+	case "content_block_delta":
+		// 内容增量
+		delta, ok := eventData["delta"].(map[string]interface{})
+		if !ok {
+			return "", 0, nil
+		}
+
+		text, ok := delta["text"].(string)
+		if !ok {
+			return "", 0, nil
+		}
+
+		chunk := map[string]interface{}{
+			"id":      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
+			"object":  "chat.completion.chunk",
+			"created": time.Now().Unix(),
+			"model":   "claude-sonnet-4-20250514", // 暂时硬编码
+			"choices": []map[string]interface{}{
+				{
+					"index": 0,
+					"delta": map[string]interface{}{
+						"content": text,
+					},
+					"finish_reason": nil,
+				},
+			},
+		}
+
+		result, err := json.Marshal(chunk)
+		return string(result), 0, err
+
+	case "message_stop":
+		// 结束事件
+		chunk := map[string]interface{}{
+			"id":      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
+			"object":  "chat.completion.chunk",
+			"created": time.Now().Unix(),
+			"model":   "claude-sonnet-4-20250514",
+			"choices": []map[string]interface{}{
+				{
+					"index":         0,
+					"delta":         map[string]interface{}{},
+					"finish_reason": "stop",
+				},
+			},
+		}
+
+		result, err := json.Marshal(chunk)
+		return string(result), 0, err
+
+	default:
+		// 其他事件类型暂不处理
+		return "", 0, nil
+	}
 }
 
 // determineProvider 根据模型名称确定提供商

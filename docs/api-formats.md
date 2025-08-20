@@ -10,7 +10,8 @@
 4. [格式检测规则](#格式检测规则)
 5. [格式转换映射](#格式转换映射)
 6. [错误响应格式](#错误响应格式)
-7. [最佳实践](#最佳实践)
+7. [Stream格式规范](#stream格式规范)
+8. [最佳实践](#最佳实践)
 
 ---
 
@@ -514,6 +515,337 @@ curl -X POST "http://localhost:3847/v1/messages" \
   }'
 ```
 
+### 6.4 Stream流式请求示例
+
+#### OpenAI格式Stream请求
+```bash
+curl -N -X POST "http://localhost:3847/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_GATEWAY_API_KEY" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+      {"role": "user", "content": "写一首短诗"}
+    ],
+    "max_tokens": 200,
+    "stream": true
+  }'
+```
+
+#### Anthropic格式Stream请求
+```bash
+curl -N -X POST "http://localhost:3847/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_GATEWAY_API_KEY" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 200,
+    "messages": [
+      {"role": "user", "content": "写一首短诗"}
+    ],
+    "stream": true
+  }'
+```
+
+#### 使用EventSource API (浏览器端)
+```javascript
+// 创建SSE连接
+const eventSource = new EventSource('/v1/chat/completions/stream?' + 
+  new URLSearchParams({
+    model: 'gpt-3.5-turbo',
+    message: 'Hello',
+    stream: 'true'
+  })
+);
+
+eventSource.onmessage = function(event) {
+  if (event.data === '[DONE]') {
+    eventSource.close();
+    console.log('Stream completed');
+    return;
+  }
+  
+  const data = JSON.parse(event.data);
+  const content = data.choices[0]?.delta?.content;
+  if (content) {
+    document.getElementById('output').textContent += content;
+  }
+};
+
+eventSource.onerror = function(error) {
+  console.error('EventSource failed:', error);
+  eventSource.close();
+};
+```
+
+---
+
+## Stream格式规范
+
+### 7.1 Stream vs 非Stream格式差异
+
+#### 🔄 响应模式对比
+
+| 特性 | 非Stream模式 | Stream模式 |
+|------|-------------|------------|
+| **HTTP连接** | 短连接，请求-响应 | 长连接，持续数据流 |
+| **Content-Type** | `application/json` | `text/event-stream; charset=utf-8` |
+| **数据传输** | 等待完整响应，一次性返回 | 增量传输，实时推送 |
+| **响应格式** | 单个完整JSON对象 | 多个SSE事件，每个事件一行 |
+| **用户体验** | 需等待完整回答 | 实时显示生成过程 |
+| **错误处理** | 简单的状态码和错误JSON | 需要监听错误事件 |
+
+### 7.2 OpenAI Stream格式
+
+#### HTTP响应头
+```http
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+#### 事件格式
+```
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18}}
+
+data: [DONE]
+```
+
+#### OpenAI Stream事件结构
+```json
+{
+  "id": "chatcmpl-123",
+  "object": "chat.completion.chunk",
+  "created": 1677652288,
+  "model": "gpt-3.5-turbo",
+  "choices": [{
+    "index": 0,
+    "delta": {
+      "role": "assistant",    // 仅在第一个chunk
+      "content": "Hello"      // 增量内容
+    },
+    "finish_reason": null     // 结束时为"stop"/"length"等
+  }],
+  "usage": {                  // 仅在最后一个chunk
+    "prompt_tokens": 10,
+    "completion_tokens": 8,
+    "total_tokens": 18
+  }
+}
+```
+
+### 7.3 Anthropic Stream格式
+
+#### 事件命名
+Anthropic使用命名事件，每个事件有特定的类型和用途：
+
+```
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_01ABC","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","usage":{"output_tokens":3}}}
+
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+### 7.4 Stream事件类型对比
+
+#### OpenAI事件流程
+```
+1. 首个事件：包含role信息的delta
+2. 内容事件：多个包含content的delta事件  
+3. 结束事件：包含finish_reason和usage的delta
+4. 终止标记：data: [DONE]
+```
+
+#### Anthropic事件流程
+```
+1. message_start：消息开始，包含元数据
+2. content_block_start：内容块开始
+3. content_block_delta：内容增量（多个）
+4. content_block_stop：内容块结束
+5. message_delta：使用统计更新
+6. message_stop：消息结束
+```
+
+### 7.5 Stream格式转换规则
+
+#### OpenAI → Anthropic转换
+
+| OpenAI事件 | Anthropic事件 | 转换逻辑 |
+|------------|---------------|----------|
+| 首个delta（含role） | `message_start` + `content_block_start` | 生成消息开始和内容块开始事件 |
+| 内容delta | `content_block_delta` | 将`delta.content`转换为`delta.text` |
+| 结束delta（含finish_reason） | `content_block_stop` + `message_delta` + `message_stop` | 生成内容块结束、统计更新和消息结束 |
+| `[DONE]` | - | 忽略（已通过message_stop表示结束） |
+
+#### Anthropic → OpenAI转换
+
+| Anthropic事件 | OpenAI事件 | 转换逻辑 |
+|---------------|------------|----------|
+| `message_start` | 首个delta（含role） | 提取role信息生成首个chunk |
+| `content_block_start` | - | 忽略（OpenAI无此概念） |
+| `content_block_delta` | 内容delta | 将`delta.text`转换为`delta.content` |
+| `content_block_stop` | - | 忽略 |
+| `message_delta` | - | 缓存usage信息 |
+| `message_stop` | 结束delta + `[DONE]` | 生成包含finish_reason和usage的最终chunk |
+
+### 7.6 Stream实现要点
+
+#### 客户端JavaScript示例
+```javascript
+// OpenAI格式流式请求
+const response = await fetch('/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    model: 'gpt-3.5-turbo',
+    messages: [{role: 'user', content: 'Hello'}],
+    stream: true
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const chunk = decoder.decode(value);
+  const lines = chunk.split('\n');
+  
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6);
+      if (data === '[DONE]') {
+        console.log('Stream completed');
+        return;
+      }
+      
+      try {
+        const json = JSON.parse(data);
+        const content = json.choices[0]?.delta?.content;
+        if (content) {
+          console.log(content); // 显示增量内容
+        }
+      } catch (e) {
+        console.error('Parse error:', e);
+      }
+    }
+  }
+}
+```
+
+#### 服务端实现要点
+```go
+// Stream响应处理伪代码
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, req *types.ProxyRequest) {
+    // 设置SSE响应头
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+    
+    // 创建上游stream连接
+    upstreamResp, err := h.callUpstreamStream(req)
+    if err != nil {
+        return
+    }
+    defer upstreamResp.Body.Close()
+    
+    // 逐行读取并转换事件
+    scanner := bufio.NewScanner(upstreamResp.Body)
+    for scanner.Scan() {
+        line := scanner.Text()
+        
+        // 解析SSE事件
+        event := parseSSEEvent(line)
+        
+        // 根据格式转换事件
+        convertedEvent := h.convertStreamEvent(event, req.OriginalFormat)
+        
+        // 写入客户端
+        fmt.Fprintf(w, "data: %s\n\n", convertedEvent)
+        w.(http.Flusher).Flush()
+    }
+}
+```
+
+### 7.7 Stream错误处理
+
+#### 错误类型
+1. **连接中断**：网络异常导致stream中断
+2. **上游错误**：上游API返回错误事件
+3. **格式错误**：无法解析的SSE事件
+4. **超时错误**：长时间无响应
+
+#### 错误恢复策略
+```javascript
+// 客户端错误恢复示例
+const EventSource = require('eventsource');
+
+const es = new EventSource('/v1/chat/completions/stream');
+
+es.onmessage = function(event) {
+  if (event.data === '[DONE]') {
+    es.close();
+    return;
+  }
+  
+  try {
+    const data = JSON.parse(event.data);
+    // 处理正常数据
+  } catch (error) {
+    console.error('Parse error:', error);
+    // 跳过无效事件，继续监听
+  }
+};
+
+es.onerror = function(error) {
+  console.error('Stream error:', error);
+  // 可以实现重连逻辑
+  setTimeout(() => {
+    // 重新创建连接
+  }, 1000);
+};
+```
+
+### 7.8 Stream性能优化
+
+#### 缓冲控制
+- **最小缓冲**：减少延迟，及时推送每个事件
+- **错误边界**：无效事件不影响整个流
+- **连接保活**：正确处理HTTP长连接
+
+#### 监控指标
+- **首字节时间**：从请求到第一个内容chunk的延迟
+- **平均延迟**：每个chunk的推送延迟
+- **错误率**：stream中断和错误事件比例
+- **吞吐量**：每秒传输的chunk数量
+
 ---
 
 ## 最佳实践
@@ -585,6 +917,13 @@ curl -X POST "http://localhost:3847/v1/messages" \
 - 使用系统提示引导模型给出简洁回答
 - 实施请求缓存避免重复调用
 
+**4. Stream使用建议：**
+- **适用场景**：长文本生成、实时对话、代码生成等需要即时反馈的场景
+- **客户端处理**：使用`EventSource`或`fetch`的流式读取处理SSE响应
+- **错误恢复**：实现连接中断重连机制，处理网络异常
+- **性能优化**：最小化缓冲，及时刷新响应确保实时性
+- **用户体验**：显示加载指示器，提供停止按钮允许用户中断stream
+
 ### 🔍 格式检测流程图
 
 ```
@@ -618,3 +957,9 @@ curl -X POST "http://localhost:3847/v1/messages" \
 7. **参数范围差异**：注意temperature等参数的取值范围在两个API中不同。
 
 8. **角色支持差异**：Anthropic不支持`function`角色，系统消息使用独立字段。
+
+9. **Stream响应差异**：OpenAI使用统一的chunk格式，Anthropic使用命名事件；两者的事件生命周期和JSON结构完全不同。
+
+10. **Stream连接管理**：长连接需要proper的keep-alive处理，客户端需要处理连接中断和重连。
+
+11. **Stream错误处理**：流式传输中的错误可能出现在任何时点，需要实现robust的错误边界处理。
