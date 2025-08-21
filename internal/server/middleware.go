@@ -25,21 +25,33 @@ func NewAuthMiddleware(gatewayKeyMgr *client.GatewayKeyManager) *AuthMiddleware 
 // Authenticate 认证中间件处理函数
 func (m *AuthMiddleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 提取Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			m.writeErrorResponse(w, http.StatusUnauthorized, "missing_authorization", "Authorization header is required")
-			return
-		}
+		// 支持两种认证方式：
+		// 1. Authorization: Bearer <token>  (Gateway标准格式)
+		// 2. x-api-key: <token>            (Anthropic原生格式)
+		
+		var token string
+		
+		// 首先检查 x-api-key 头部（Anthropic原生格式）
+		if apiKey := r.Header.Get("x-api-key"); apiKey != "" {
+			token = apiKey
+		} else {
+			// 检查 Authorization 头部（Gateway标准格式）
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				m.writeErrorResponse(w, http.StatusUnauthorized, "missing_authorization", "Authorization header or x-api-key header is required")
+				return
+			}
 
-		// 检查Bearer token格式
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			m.writeErrorResponse(w, http.StatusUnauthorized, "invalid_authorization_format", "Authorization header must be 'Bearer <token>'")
-			return
-		}
+			// 检查Bearer token格式
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				m.writeErrorResponse(w, http.StatusUnauthorized, "invalid_authorization_format", "Authorization header must be 'Bearer <token>'")
+				return
+			}
 
-		// 提取token
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+			// 提取token
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+		
 		if token == "" {
 			m.writeErrorResponse(w, http.StatusUnauthorized, "empty_token", "Authorization token cannot be empty")
 			return
