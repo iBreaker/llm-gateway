@@ -233,3 +233,71 @@ func TestTransformResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestTransformRequestAnthropicWithTools(t *testing.T) {
+	input := []byte(`{
+		"model": "claude-3-5-sonnet-20241022",
+		"max_tokens": 1024,
+		"tools": [
+			{
+				"name": "get_weather",
+				"description": "Get the current weather information for a specific location. This tool provides real-time weather data including temperature, humidity, wind speed, and conditions.",
+				"input_schema": {
+					"type": "object",
+					"properties": {
+						"location": {
+							"type": "string",
+							"description": "The city and state, country, or coordinates (e.g. San Francisco, CA or 40.7128,-74.0060)"
+						},
+						"unit": {
+							"type": "string",
+							"enum": ["celsius", "fahrenheit"],
+							"description": "Temperature unit preference",
+							"default": "celsius"
+						},
+						"include_forecast": {
+							"type": "boolean",
+							"description": "Whether to include 3-day forecast",
+							"default": false
+						}
+					},
+					"required": ["location"]
+				}
+			}
+		],
+		"messages": [
+			{
+				"role": "user",
+				"content": "What's the weather like in Tokyo today? Please include the forecast."
+			}
+		]
+	}`)
+
+	transformer := NewTransformer()
+	format := transformer.DetectFormat(input)
+	proxyReq, err := transformer.TransformRequest(input, format)
+
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+	if proxyReq.Model != "claude-3-5-sonnet-20241022" {
+		t.Errorf("TransformRequest() Model = %v, want claude-3-5-sonnet-20241022", proxyReq.Model)
+	}
+	if proxyReq.MaxTokens != 1024 {
+		t.Errorf("TransformRequest() MaxTokens = %v, want 1024", proxyReq.MaxTokens)
+	}
+	if len(proxyReq.Messages) != 1 {
+		t.Errorf("TransformRequest() Messages length = %d, want 1", len(proxyReq.Messages))
+	}
+	if proxyReq.Messages[0].Role != "user" {
+		t.Errorf("TransformRequest() Messages[0].Role = %v, want user", proxyReq.Messages[0].Role)
+	}
+	if proxyReq.Messages[0].Content != "What's the weather like in Tokyo today? Please include the forecast." {
+		t.Errorf("TransformRequest() Messages[0].Content = %v, want weather query", proxyReq.Messages[0].Content)
+	}
+
+	// 验证格式检测正确识别为 Anthropic 格式
+	if format != FormatAnthropic {
+		t.Errorf("DetectFormat() = %v, want FormatAnthropic", format)
+	}
+}

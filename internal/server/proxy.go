@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -52,7 +53,7 @@ func (h *ProxyHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	h.handleProxyRequest(w, r, "/v1/messages", "/v1/chat/completions") // 第二个参数是客户端端点
 }
 
-// HandleCompletions 处理文本完成请求  
+// HandleCompletions 处理文本完成请求
 func (h *ProxyHandler) HandleCompletions(w http.ResponseWriter, r *http.Request) {
 	h.handleProxyRequest(w, r, "/v1/complete", "/v1/completions")
 }
@@ -65,7 +66,7 @@ func (h *ProxyHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 // handleProxyRequest 处理代理请求的核心逻辑
 func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, upstreamPath, clientEndpoint string) {
 	startTime := time.Now()
-	
+
 	// 1. 读取请求体
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -149,7 +150,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	// 获取Flusher确保实时推送
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -195,7 +196,7 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 	// 不需要显式调用WriteHeader，让Go在第一次写入时自动发送200状态码
 	// 这样可以避免与中间件包装器的WriteHeader冲突
 	flusher.Flush()
-	
+
 	// 开始处理流式响应
 	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime)
 }
@@ -208,7 +209,7 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// 跳过空行
 		if line == "" {
 			continue
@@ -217,7 +218,7 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 		// 解析SSE事件
 		if strings.HasPrefix(line, "data: ") {
 			data := line[6:] // 移除"data: "前缀
-			
+
 			// 处理结束标记
 			if data == "[DONE]" {
 				// OpenAI风格的结束标记
@@ -249,7 +250,7 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 				dataLine := scanner.Text()
 				if strings.HasPrefix(dataLine, "data: ") {
 					data := dataLine[6:]
-					
+
 					// 处理命名事件
 					convertedEvent, tokens, err := h.convertNamedEvent(eventType, data, requestFormat, firstEvent)
 					if err != nil {
@@ -290,7 +291,7 @@ func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flus
 			"message": err.Error(),
 		},
 	}
-	
+
 	errorBytes, _ := json.Marshal(errorEvent)
 	fmt.Fprintf(w, "data: %s\n\n", string(errorBytes))
 	flusher.Flush()
@@ -496,7 +497,7 @@ func (h *ProxyHandler) convertAnthropicEventToOpenAI(eventType string, eventData
 // determineProvider 根据模型名称确定提供商
 func (h *ProxyHandler) determineProvider(model string) types.Provider {
 	model = strings.ToLower(model)
-	
+
 	// 根据模型名称前缀判断提供商
 	if strings.Contains(model, "claude") || strings.Contains(model, "anthropic") {
 		return types.ProviderAnthropic
@@ -510,7 +511,7 @@ func (h *ProxyHandler) determineProvider(model string) types.Provider {
 	if strings.Contains(model, "azure") {
 		return types.ProviderAzure
 	}
-	
+
 	// 默认使用Anthropic
 	return types.ProviderAnthropic
 }
@@ -555,7 +556,7 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	// 1. 根据上游提供商转换请求格式
 	var requestBody []byte
 	var err error
-	
+
 	switch account.Provider {
 	case types.ProviderAnthropic:
 		requestBody, err = h.transformer.TransformToAnthropicRequest(request)
@@ -565,7 +566,7 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 		// 默认使用内部格式（与OpenAI兼容）
 		requestBody, err = json.Marshal(request)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request for upstream: %w", err)
 	}
@@ -592,7 +593,7 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth headers: %w", err)
 	}
-	
+
 	for key, value := range authHeaders {
 		req.Header.Set(key, value)
 	}
@@ -617,17 +618,17 @@ func (h *ProxyHandler) parseUpstreamResponse(responseBody []byte, provider types
 func (h *ProxyHandler) parseAnthropicResponse(responseBody []byte) (*types.ProxyResponse, error) {
 	// Anthropic API响应格式
 	var anthropicResp struct {
-		ID           string `json:"id"`
-		Type         string `json:"type"`
-		Role         string `json:"role"`
-		Content      []struct {
+		ID      string `json:"id"`
+		Type    string `json:"type"`
+		Role    string `json:"role"`
+		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
-		Model       string `json:"model"`
-		StopReason  string `json:"stop_reason"`
+		Model        string      `json:"model"`
+		StopReason   string      `json:"stop_reason"`
 		StopSequence interface{} `json:"stop_sequence"`
-		Usage       struct {
+		Usage        struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
@@ -706,12 +707,11 @@ func (h *ProxyHandler) getProviderBaseURL(provider types.Provider) string {
 	}
 }
 
-
 // handleUpstreamError 处理上游错误
 func (h *ProxyHandler) handleUpstreamError(w http.ResponseWriter, account *types.UpstreamAccount, err error) {
 	// 记录错误到上游账号统计
 	go h.router.MarkUpstreamError(account.ID, err)
-	
+
 	// 返回错误响应
 	h.writeErrorResponse(w, http.StatusBadGateway, "upstream_error", fmt.Sprintf("Upstream API error: %v", err))
 }
@@ -722,13 +722,16 @@ func (h *ProxyHandler) recordSuccess(keyID, upstreamID string, latency time.Dura
 	if keyID != "" {
 		h.gatewayKeyMgr.UpdateKeyUsage(keyID, true, latency)
 	}
-	
+
 	// 更新上游账号统计
 	h.router.MarkUpstreamSuccess(upstreamID, latency, int64(tokensUsed))
 }
 
 // writeErrorResponse 写入错误响应
 func (h *ProxyHandler) writeErrorResponse(w http.ResponseWriter, statusCode int, errorType, message string) {
+	// 记录错误日志到控制台
+	log.Printf("[ERROR] HTTP %d - %s: %s", statusCode, errorType, message)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
