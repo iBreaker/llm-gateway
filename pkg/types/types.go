@@ -164,3 +164,55 @@ type EnvironmentConfig struct {
 	HTTPSProxy string `yaml:"https_proxy"`
 	NoProxy    string `yaml:"no_proxy"`
 }
+
+// API请求结构体
+
+// OpenAIRequest - OpenAI API请求格式
+type OpenAIRequest struct {
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Temperature float64   `json:"temperature,omitempty"`
+	Stream      bool      `json:"stream,omitempty"`
+}
+
+// FlexibleMessage - 支持多种content格式的消息结构
+type FlexibleMessage struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
+}
+
+// AnthropicRequest - Anthropic API请求格式
+type AnthropicRequest struct {
+	Model       string            `json:"model"`
+	Messages    []FlexibleMessage `json:"messages"`
+	MaxTokens   int               `json:"max_tokens,omitempty"`
+	Temperature float64           `json:"temperature,omitempty"`
+	Stream      bool              `json:"stream,omitempty"`
+}
+
+// API响应结构体
+
+// AnthropicContentBlock - Anthropic响应中的内容块
+type AnthropicContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// AnthropicUsage - Anthropic API使用统计
+type AnthropicUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+// AnthropicResponse - Anthropic API响应格式
+type AnthropicResponse struct {
+	ID           string                  `json:"id"`
+	Type         string                  `json:"type"`
+	Role         string                  `json:"role"`
+	Content      []AnthropicContentBlock `json:"content"`
+	Model        string                  `json:"model"`
+	StopReason   string                  `json:"stop_reason"`
+	StopSequence interface{}             `json:"stop_sequence"`
+	Usage        AnthropicUsage          `json:"usage"`
+}

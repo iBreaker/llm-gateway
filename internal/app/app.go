@@ -6,7 +6,7 @@ import (
 	"github.com/iBreaker/llm-gateway/internal/config"
 	"github.com/iBreaker/llm-gateway/internal/router"
 	"github.com/iBreaker/llm-gateway/internal/server"
-	"github.com/iBreaker/llm-gateway/internal/transform"
+	"github.com/iBreaker/llm-gateway/internal/converter"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
 )
 
@@ -17,7 +17,7 @@ type Application struct {
 	UpstreamMgr     *upstream.UpstreamManager
 	OAuthMgr        *upstream.OAuthManager
 	Router          *router.RequestRouter
-	Transformer     *transform.Transformer
+	Converter       *converter.RequestResponseConverter
 	HTTPServer      *server.HTTPServer
 }
 
@@ -36,13 +36,13 @@ func NewApplication(configPath string) (*Application, error) {
 	gatewayKeyMgr := client.NewGatewayKeyManager()
 	upstreamMgr := upstream.NewUpstreamManager()
 	oauthMgr := upstream.NewOAuthManager(upstreamMgr)
-	transformer := transform.NewTransformer()
+	converter := converter.NewRequestResponseConverter()
 	
 	// 设置路由器策略
 	requestRouter := router.NewRequestRouter(upstreamMgr, router.StrategyHealthFirst)
 	
 	// 创建HTTP服务器
-	httpServer := server.NewServer(&cfg.Server, gatewayKeyMgr, upstreamMgr, requestRouter, transformer)
+	httpServer := server.NewServer(&cfg.Server, gatewayKeyMgr, upstreamMgr, requestRouter, converter)
 
 	app := &Application{
 		Config:        configMgr,
@@ -50,7 +50,7 @@ func NewApplication(configPath string) (*Application, error) {
 		UpstreamMgr:   upstreamMgr,
 		OAuthMgr:      oauthMgr,
 		Router:        requestRouter,
-		Transformer:   transformer,
+		Converter:     converter,
 		HTTPServer:    httpServer,
 	}
 

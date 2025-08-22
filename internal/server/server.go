@@ -10,7 +10,7 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 	"github.com/iBreaker/llm-gateway/internal/client"
 	"github.com/iBreaker/llm-gateway/internal/router"
-	"github.com/iBreaker/llm-gateway/internal/transform"
+	"github.com/iBreaker/llm-gateway/internal/converter"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
 )
 
@@ -21,7 +21,7 @@ type HTTPServer struct {
 	clientMgr     *client.GatewayKeyManager
 	upstreamMgr   *upstream.UpstreamManager
 	router        *router.RequestRouter
-	transformer   *transform.Transformer
+	converter     *converter.RequestResponseConverter
 	server        *http.Server
 	authMW        *AuthMiddleware
 	rateLimitMW   *RateLimitMiddleware
@@ -34,7 +34,7 @@ func NewServer(
 	clientMgr *client.GatewayKeyManager, 
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
-	transformer *transform.Transformer,
+	converter *converter.RequestResponseConverter,
 ) *HTTPServer {
 	mux := http.NewServeMux()
 
@@ -43,7 +43,7 @@ func NewServer(
 	rateLimitMW := NewRateLimitMiddleware(clientMgr)
 	
 	// 创建代理处理器
-	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, transformer)
+	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter)
 
 	s := &HTTPServer{
 		mux:          mux,
@@ -51,7 +51,7 @@ func NewServer(
 		clientMgr:    clientMgr,
 		upstreamMgr:  upstreamMgr,
 		router:       router,
-		transformer:  transformer,
+		converter:    converter,
 		authMW:       authMW,
 		rateLimitMW:  rateLimitMW,
 		proxyHandler: proxyHandler,

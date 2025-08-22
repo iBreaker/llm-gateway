@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -12,8 +11,8 @@ import (
 	"time"
 
 	"github.com/iBreaker/llm-gateway/internal/client"
+	"github.com/iBreaker/llm-gateway/internal/converter"
 	"github.com/iBreaker/llm-gateway/internal/router"
-	"github.com/iBreaker/llm-gateway/internal/transform"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
@@ -23,7 +22,7 @@ type ProxyHandler struct {
 	gatewayKeyMgr *client.GatewayKeyManager
 	upstreamMgr   *upstream.UpstreamManager
 	router        *router.RequestRouter
-	transformer   *transform.Transformer
+	converter     *converter.RequestResponseConverter
 	httpClient    *http.Client
 }
 
@@ -32,13 +31,13 @@ func NewProxyHandler(
 	gatewayKeyMgr *client.GatewayKeyManager,
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
-	transformer *transform.Transformer,
+	converter *converter.RequestResponseConverter,
 ) *ProxyHandler {
 	return &ProxyHandler{
 		gatewayKeyMgr: gatewayKeyMgr,
 		upstreamMgr:   upstreamMgr,
 		router:        router,
-		transformer:   transformer,
+		converter:     converter,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
@@ -76,14 +75,14 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	defer r.Body.Close()
 
 	// 2. 检测请求格式
-	requestFormat := h.transformer.DetectFormatWithEndpoint(requestBody, clientEndpoint)
-	if requestFormat == transform.FormatUnknown {
+	requestFormat := h.converter.DetectFormatWithEndpoint(requestBody, clientEndpoint)
+	if requestFormat == converter.FormatUnknown {
 		h.writeErrorResponse(w, http.StatusBadRequest, "unsupported_format", "Unsupported request format")
 		return
 	}
 
 	// 3. 转换请求到统一格式
-	proxyReq, err := h.transformer.TransformRequest(requestBody, requestFormat)
+	proxyReq, err := h.converter.TransformRequest(requestBody, requestFormat)
 	if err != nil {
 		h.writeErrorResponse(w, http.StatusBadRequest, "request_transform_error", fmt.Sprintf("Failed to transform request: %v", err))
 		return
@@ -105,7 +104,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	proxyReq.UpstreamID = upstreamAccount.ID
 
 	// 7. 根据上游账号类型注入特殊处理
-	h.transformer.InjectSystemPrompt(proxyReq, upstreamAccount.Provider, upstreamAccount.Type)
+	h.converter.InjectSystemPrompt(proxyReq, upstreamAccount.Provider, upstreamAccount.Type)
 
 	// 8. 根据stream参数选择处理方式
 	if proxyReq.Stream {
@@ -118,16 +117,16 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 }
 
 // handleNonStreamResponse 处理非流式响应
-func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) {
-	// 调用上游API
-	response, err := h.callUpstreamAPI(account, request, upstreamPath)
+func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) {
+	// 调用上游API获取原始响应
+	responseBytes, err := h.callUpstreamAPIRaw(account, request, upstreamPath)
 	if err != nil {
 		h.handleUpstreamError(w, account, err)
 		return
 	}
 
-	// 转换响应格式
-	responseBytes, err := h.transformer.TransformResponse(response, requestFormat)
+	// 使用Transform模块统一处理响应转换
+	transformedBytes, err := h.converter.TransformUpstreamResponse(responseBytes, account.Provider, requestFormat)
 	if err != nil {
 		h.writeErrorResponse(w, http.StatusInternalServerError, "response_transform_error", fmt.Sprintf("Failed to transform response: %v", err))
 		return
@@ -135,16 +134,17 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 
 	// 记录成功统计
 	duration := time.Since(startTime)
-	go h.recordSuccess(keyID, account.ID, duration, response.Usage.TotalTokens)
+	// TODO: 从transformedBytes中提取token使用信息
+	go h.recordSuccess(keyID, account.ID, duration, 0)
 
 	// 返回响应
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(responseBytes)
+	w.Write(transformedBytes)
 }
 
 // handleStreamResponse 处理流式响应
-func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) {
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) {
 	// 设置SSE响应头
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -168,7 +168,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 }
 
 // callUpstreamStreamAPI 调用上游流式API
-func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat transform.RequestFormat, keyID string, startTime time.Time) error {
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) error {
 	// 构建上游请求
 	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
 	if err != nil {
@@ -202,85 +202,26 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 }
 
 // processStreamResponse 处理流式响应
-func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat transform.RequestFormat, keyID, upstreamID string, startTime time.Time) error {
-	scanner := bufio.NewScanner(responseBody)
+func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.RequestFormat, keyID, upstreamID string, startTime time.Time) error {
 	var totalTokens int
-	var firstEvent bool = true
 
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// 跳过空行
-		if line == "" {
-			continue
+	// 使用Transform模块处理流式响应
+	processor := h.converter.GetStreamResponseProcessor()
+	err := processor.ProcessStream(responseBody, provider, requestFormat, func(event string, tokens int) {
+		if event == "[DONE]" {
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+		} else {
+			fmt.Fprintf(w, "data: %s\n\n", event)
 		}
-
-		// 解析SSE事件
-		if strings.HasPrefix(line, "data: ") {
-			data := line[6:] // 移除"data: "前缀
-
-			// 处理结束标记
-			if data == "[DONE]" {
-				// OpenAI风格的结束标记
-				if requestFormat == transform.FormatOpenAI {
-					fmt.Fprintf(w, "data: [DONE]\n\n")
-					flusher.Flush()
-				}
-				break
-			}
-
-			// 转换并写入事件
-			convertedEvent, tokens, err := h.convertStreamEvent(data, provider, requestFormat, firstEvent)
-			if err != nil {
-				// 记录错误但继续处理
-				continue
-			}
-
-			if convertedEvent != "" {
-				fmt.Fprintf(w, "data: %s\n\n", convertedEvent)
-				flusher.Flush()
-				firstEvent = false
-			}
-
-			totalTokens += tokens
-		} else if strings.HasPrefix(line, "event: ") {
-			// Anthropic风格的命名事件，需要读取下一行的data
-			eventType := line[7:] // 移除"event: "前缀
-			if scanner.Scan() {
-				dataLine := scanner.Text()
-				if strings.HasPrefix(dataLine, "data: ") {
-					data := dataLine[6:]
-
-					// 处理命名事件
-					convertedEvent, tokens, err := h.convertNamedEvent(eventType, data, requestFormat, firstEvent)
-					if err != nil {
-						continue
-					}
-
-					if convertedEvent != "" {
-						fmt.Fprintf(w, "data: %s\n\n", convertedEvent)
-						flusher.Flush()
-						firstEvent = false
-					}
-
-					totalTokens += tokens
-
-					// 处理结束事件
-					if eventType == "message_stop" && requestFormat == transform.FormatOpenAI {
-						fmt.Fprintf(w, "data: [DONE]\n\n")
-						flusher.Flush()
-						break
-					}
-				}
-			}
-		}
-	}
+		flusher.Flush()
+		totalTokens += tokens
+	})
 
 	// 记录成功统计
 	duration := time.Since(startTime)
 	go h.recordSuccess(keyID, upstreamID, duration, totalTokens)
 
-	return scanner.Err()
+	return err
 }
 
 // writeStreamError 写入流式错误
@@ -295,203 +236,6 @@ func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flus
 	errorBytes, _ := json.Marshal(errorEvent)
 	fmt.Fprintf(w, "data: %s\n\n", string(errorBytes))
 	flusher.Flush()
-}
-
-// convertStreamEvent 转换流式事件（处理无命名的data事件）
-func (h *ProxyHandler) convertStreamEvent(data string, provider types.Provider, targetFormat transform.RequestFormat, isFirst bool) (string, int, error) {
-	// 解析JSON数据
-	var eventData map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &eventData); err != nil {
-		return "", 0, err
-	}
-
-	// 提取token使用量
-	tokens := h.extractTokensFromEvent(eventData)
-
-	// 根据提供商和目标格式转换
-	if provider == types.ProviderAnthropic && targetFormat == transform.FormatOpenAI {
-		// Anthropic -> OpenAI：这种情况很少见，因为Anthropic通常使用命名事件
-		return h.convertAnthropicToOpenAI(eventData, isFirst)
-	} else if provider == types.ProviderOpenAI && targetFormat == transform.FormatAnthropic {
-		// OpenAI -> Anthropic：转换chunk为Anthropic事件
-		return h.convertOpenAIToAnthropic(eventData, isFirst)
-	} else {
-		// 相同格式，直接透传
-		return data, tokens, nil
-	}
-}
-
-// convertNamedEvent 转换命名事件（处理Anthropic的event: xxx格式）
-func (h *ProxyHandler) convertNamedEvent(eventType, data string, targetFormat transform.RequestFormat, isFirst bool) (string, int, error) {
-	// 解析JSON数据
-	var eventData map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &eventData); err != nil {
-		return "", 0, err
-	}
-
-	// 提取token使用量
-	tokens := h.extractTokensFromEvent(eventData)
-
-	// 如果目标格式是Anthropic，直接透传
-	if targetFormat == transform.FormatAnthropic {
-		return data, tokens, nil
-	}
-
-	// 转换Anthropic命名事件到OpenAI格式
-	return h.convertAnthropicEventToOpenAI(eventType, eventData, isFirst)
-}
-
-// extractTokensFromEvent 从事件中提取token信息
-func (h *ProxyHandler) extractTokensFromEvent(eventData map[string]interface{}) int {
-	// 尝试从usage字段提取
-	if usage, ok := eventData["usage"].(map[string]interface{}); ok {
-		if total, ok := usage["total_tokens"].(float64); ok {
-			return int(total)
-		}
-		if output, ok := usage["output_tokens"].(float64); ok {
-			return int(output)
-		}
-	}
-
-	// 尝试从choices中的usage提取
-	if choices, ok := eventData["choices"].([]interface{}); ok {
-		for _, choice := range choices {
-			if choiceMap, ok := choice.(map[string]interface{}); ok {
-				if usage, ok := choiceMap["usage"].(map[string]interface{}); ok {
-					if total, ok := usage["total_tokens"].(float64); ok {
-						return int(total)
-					}
-				}
-			}
-		}
-	}
-
-	return 0
-}
-
-// convertOpenAIToAnthropic 转换OpenAI chunk到Anthropic事件
-func (h *ProxyHandler) convertOpenAIToAnthropic(eventData map[string]interface{}, isFirst bool) (string, int, error) {
-	// 简化实现：暂时只处理内容转换
-	choices, ok := eventData["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		return "", 0, nil
-	}
-
-	choice := choices[0].(map[string]interface{})
-	delta, ok := choice["delta"].(map[string]interface{})
-	if !ok {
-		return "", 0, nil
-	}
-
-	// 检查是否有内容
-	if content, ok := delta["content"].(string); ok && content != "" {
-		// 构建Anthropic content_block_delta事件
-		anthropicEvent := map[string]interface{}{
-			"type":  "content_block_delta",
-			"index": 0,
-			"delta": map[string]interface{}{
-				"type": "text_delta",
-				"text": content,
-			},
-		}
-
-		result, err := json.Marshal(anthropicEvent)
-		if err != nil {
-			return "", 0, err
-		}
-
-		return string(result), 0, nil
-	}
-
-	return "", 0, nil
-}
-
-// convertAnthropicToOpenAI 转换Anthropic事件到OpenAI chunk
-func (h *ProxyHandler) convertAnthropicToOpenAI(eventData map[string]interface{}, isFirst bool) (string, int, error) {
-	// 这是从data事件转换（少见），暂时简单处理
-	return "", 0, nil
-}
-
-// convertAnthropicEventToOpenAI 转换Anthropic命名事件到OpenAI chunk
-func (h *ProxyHandler) convertAnthropicEventToOpenAI(eventType string, eventData map[string]interface{}, isFirst bool) (string, int, error) {
-	switch eventType {
-	case "message_start":
-		// 第一个chunk，包含role信息
-		if isFirst {
-			chunk := map[string]interface{}{
-				"id":      eventData["message"].(map[string]interface{})["id"],
-				"object":  "chat.completion.chunk",
-				"created": time.Now().Unix(),
-				"model":   eventData["message"].(map[string]interface{})["model"],
-				"choices": []map[string]interface{}{
-					{
-						"index": 0,
-						"delta": map[string]interface{}{
-							"role": "assistant",
-						},
-						"finish_reason": nil,
-					},
-				},
-			}
-			result, err := json.Marshal(chunk)
-			return string(result), 0, err
-		}
-		return "", 0, nil
-
-	case "content_block_delta":
-		// 内容增量
-		delta, ok := eventData["delta"].(map[string]interface{})
-		if !ok {
-			return "", 0, nil
-		}
-
-		text, ok := delta["text"].(string)
-		if !ok {
-			return "", 0, nil
-		}
-
-		chunk := map[string]interface{}{
-			"id":      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
-			"object":  "chat.completion.chunk",
-			"created": time.Now().Unix(),
-			"model":   "claude-sonnet-4-20250514", // 暂时硬编码
-			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"delta": map[string]interface{}{
-						"content": text,
-					},
-					"finish_reason": nil,
-				},
-			},
-		}
-
-		result, err := json.Marshal(chunk)
-		return string(result), 0, err
-
-	case "message_stop":
-		// 结束事件
-		chunk := map[string]interface{}{
-			"id":      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
-			"object":  "chat.completion.chunk",
-			"created": time.Now().Unix(),
-			"model":   "claude-sonnet-4-20250514",
-			"choices": []map[string]interface{}{
-				{
-					"index":         0,
-					"delta":         map[string]interface{}{},
-					"finish_reason": "stop",
-				},
-			},
-		}
-
-		result, err := json.Marshal(chunk)
-		return string(result), 0, err
-
-	default:
-		// 其他事件类型暂不处理
-		return "", 0, nil
-	}
 }
 
 // determineProvider 根据模型名称确定提供商
@@ -516,8 +260,8 @@ func (h *ProxyHandler) determineProvider(model string) types.Provider {
 	return types.ProviderAnthropic
 }
 
-// callUpstreamAPI 调用上游API
-func (h *ProxyHandler) callUpstreamAPI(account *types.UpstreamAccount, request *types.ProxyRequest, path string) (*types.ProxyResponse, error) {
+// callUpstreamAPIRaw 调用上游API并返回原始响应字节
+func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.ProxyRequest, path string) ([]byte, error) {
 	// 1. 构建上游请求
 	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
 	if err != nil {
@@ -537,18 +281,12 @@ func (h *ProxyHandler) callUpstreamAPI(account *types.UpstreamAccount, request *
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
-	// 4. 检查响应状态
+	// 4. 检查HTTP状态码
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("upstream API error: status=%d, body=%s", resp.StatusCode, string(responseBody))
 	}
 
-	// 5. 解析响应 - 根据提供商类型处理不同的响应格式
-	proxyResponse, err := h.parseUpstreamResponse(responseBody, account.Provider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse upstream response: %w", err)
-	}
-
-	return proxyResponse, nil
+	return responseBody, nil
 }
 
 // buildUpstreamRequest 构建上游请求
@@ -559,9 +297,9 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 
 	switch account.Provider {
 	case types.ProviderAnthropic:
-		requestBody, err = h.transformer.TransformToAnthropicRequest(request)
+		requestBody, err = h.converter.BuildAnthropicRequest(request)
 	case types.ProviderOpenAI:
-		requestBody, err = h.transformer.TransformToOpenAIRequest(request)
+		requestBody, err = h.converter.BuildOpenAIRequest(request)
 	default:
 		// 默认使用内部格式（与OpenAI兼容）
 		requestBody, err = json.Marshal(request)
@@ -599,96 +337,6 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	}
 
 	return req, nil
-}
-
-// parseUpstreamResponse 根据提供商类型解析上游响应
-func (h *ProxyHandler) parseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.ProxyResponse, error) {
-	switch provider {
-	case types.ProviderAnthropic:
-		return h.parseAnthropicResponse(responseBody)
-	case types.ProviderOpenAI:
-		return h.parseOpenAIResponse(responseBody)
-	default:
-		// 默认尝试OpenAI格式
-		return h.parseOpenAIResponse(responseBody)
-	}
-}
-
-// parseAnthropicResponse 解析Anthropic API响应
-func (h *ProxyHandler) parseAnthropicResponse(responseBody []byte) (*types.ProxyResponse, error) {
-	// Anthropic API响应格式
-	var anthropicResp struct {
-		ID      string `json:"id"`
-		Type    string `json:"type"`
-		Role    string `json:"role"`
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		Model        string      `json:"model"`
-		StopReason   string      `json:"stop_reason"`
-		StopSequence interface{} `json:"stop_sequence"`
-		Usage        struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-
-	if err := json.Unmarshal(responseBody, &anthropicResp); err != nil {
-		return nil, fmt.Errorf("failed to parse Anthropic response: %w", err)
-	}
-
-	// 转换为统一的ProxyResponse格式
-	var content string
-	if len(anthropicResp.Content) > 0 {
-		content = anthropicResp.Content[0].Text
-	}
-
-	// 转换结束原因
-	var finishReason string
-	switch anthropicResp.StopReason {
-	case "end_turn":
-		finishReason = "stop"
-	case "max_tokens":
-		finishReason = "length"
-	case "stop_sequence":
-		finishReason = "stop"
-	default:
-		finishReason = "stop"
-	}
-
-	proxyResp := &types.ProxyResponse{
-		ID:      anthropicResp.ID,
-		Object:  "chat.completion",
-		Created: time.Now().Unix(),
-		Model:   anthropicResp.Model,
-		Choices: []types.ResponseChoice{
-			{
-				Index: 0,
-				Message: types.Message{
-					Role:    "assistant",
-					Content: content,
-				},
-				FinishReason: finishReason,
-			},
-		},
-		Usage: types.ResponseUsage{
-			PromptTokens:     anthropicResp.Usage.InputTokens,
-			CompletionTokens: anthropicResp.Usage.OutputTokens,
-			TotalTokens:      anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens,
-		},
-	}
-
-	return proxyResp, nil
-}
-
-// parseOpenAIResponse 解析OpenAI API响应
-func (h *ProxyHandler) parseOpenAIResponse(responseBody []byte) (*types.ProxyResponse, error) {
-	var proxyResp types.ProxyResponse
-	if err := json.Unmarshal(responseBody, &proxyResp); err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)
-	}
-	return &proxyResp, nil
 }
 
 // getProviderBaseURL 获取提供商的基础URL
