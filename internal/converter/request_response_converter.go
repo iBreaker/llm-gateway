@@ -132,21 +132,9 @@ func (c *RequestResponseConverter) parseOpenAIRequest(requestBody []byte) (*type
 	}, nil
 }
 
-// FlexibleMessage 支持多种content格式的消息结构
-type FlexibleMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
-}
-
 // parseAnthropicRequest 解析Anthropic格式请求
 func (c *RequestResponseConverter) parseAnthropicRequest(requestBody []byte) (*types.ProxyRequest, error) {
-	var anthropicReq struct {
-		Model       string            `json:"model"`
-		Messages    []FlexibleMessage `json:"messages"`
-		MaxTokens   int               `json:"max_tokens,omitempty"`
-		Temperature float64           `json:"temperature,omitempty"`
-		Stream      bool              `json:"stream,omitempty"`
-	}
+	var anthropicReq types.AnthropicRequest
 
 	if err := json.Unmarshal(requestBody, &anthropicReq); err != nil {
 		return nil, fmt.Errorf("解析Anthropic请求失败: %w", err)
@@ -276,23 +264,7 @@ func (c *RequestResponseConverter) TransformUpstreamResponse(responseBody []byte
 
 // parseAnthropicResponse 解析Anthropic API响应为内部格式
 func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (*types.ProxyResponse, error) {
-	// Anthropic API响应格式
-	var anthropicResp struct {
-		ID      string `json:"id"`
-		Type    string `json:"type"`
-		Role    string `json:"role"`
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		Model        string      `json:"model"`
-		StopReason   string      `json:"stop_reason"`
-		StopSequence interface{} `json:"stop_sequence"`
-		Usage        struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
-	}
+	var anthropicResp types.AnthropicResponse
 
 	if err := json.Unmarshal(responseBody, &anthropicResp); err != nil {
 		return nil, fmt.Errorf("failed to parse Anthropic response: %w", err)
