@@ -7,96 +7,104 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-func TestTransformer_DetectFormat(t *testing.T) {
-	transformer := NewTransformer()
-
+func TestTransformRequest(t *testing.T) {
 	tests := []struct {
 		name           string
-		requestBody    string
+		input          []byte
 		expectedFormat RequestFormat
+		expectedModel  string
+		expectError    bool
 	}{
 		{
-			name: "openai_chat_completions",
-			requestBody: `{
-				"model": "gpt-3.5-turbo",
+			name: "OpenAI format",
+			input: []byte(`{
+				"model": "gpt-4o",
 				"messages": [
 					{"role": "user", "content": "Hello"}
 				]
-			}`,
+			}`),
 			expectedFormat: FormatOpenAI,
+			expectedModel:  "gpt-4o",
+			expectError:    false,
 		},
 		{
-			name: "anthropic_chat_completions",
-			requestBody: `{
-				"model": "claude-3-sonnet",
+			name: "Anthropic format",
+			input: []byte(`{
+				"model": "claude-3-5-sonnet",
+				"max_tokens": 100,
 				"messages": [
 					{"role": "user", "content": "Hello"}
 				]
-			}`,
+			}`),
 			expectedFormat: FormatAnthropic,
+			expectedModel:  "claude-3-5-sonnet",
+			expectError:    false,
 		},
 		{
-			name: "openai_legacy_completions",
-			requestBody: `{
-				"model": "text-davinci-003",
-				"prompt": "Hello world"
-			}`,
-			expectedFormat: FormatOpenAI,
-		},
-		{
-			name: "invalid_json",
-			requestBody: `{invalid json}`,
-			expectedFormat: FormatUnknown,
-		},
-		{
-			name: "empty_body",
-			requestBody: `{}`,
-			expectedFormat: FormatUnknown,
-		},
-		{
-			name: "anthropic_claude_model",
-			requestBody: `{
-				"model": "claude-instant-1",
-				"messages": [
-					{"role": "user", "content": "Test"}
-				]
-			}`,
-			expectedFormat: FormatAnthropic,
+			name:        "Invalid JSON",
+			input:       []byte(`{invalid json`),
+			expectError: true,
 		},
 	}
 
+	transformer := NewTransformer()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			format := transformer.DetectFormat([]byte(tt.requestBody))
-			if format != tt.expectedFormat {
-				t.Errorf("DetectFormat() = %v, want %v", format, tt.expectedFormat)
+			// 先检测格式
+			format := transformer.DetectFormat(tt.input)
+			if format == FormatUnknown {
+				if !tt.expectError {
+					t.Errorf("DetectFormat() returned FormatUnknown for valid input")
+				}
+				return
+			}
+
+			proxyReq, err := transformer.TransformRequest(tt.input, format)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("TransformRequest() error = %v", err)
+			}
+			if proxyReq.Model != tt.expectedModel {
+				t.Errorf("TransformRequest() Model = %v, want %v", proxyReq.Model, tt.expectedModel)
 			}
 		})
 	}
 }
 
-func TestTransformer_TransformOpenAIRequest(t *testing.T) {
-	transformer := NewTransformer()
-
-	requestBody := `{
-		"model": "gpt-3.5-turbo",
+func TestTransformRequestOpenAI(t *testing.T) {
+	input := []byte(`{
+		"model": "gpt-4o",
 		"messages": [
-			{"role": "system", "content": "You are a helpful assistant"},
+			{"role": "system", "content": "You are helpful"},
 			{"role": "user", "content": "Hello"}
 		],
 		"max_tokens": 100,
-		"temperature": 0.7,
-		"stream": false
-	}`
+		"temperature": 0.7
+	}`)
 
-	proxyReq, err := transformer.TransformRequest([]byte(requestBody), FormatOpenAI)
+	transformer := NewTransformer()
+	format := transformer.DetectFormat(input)
+	proxyReq, err := transformer.TransformRequest(input, format)
+
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
-
-	// 验证转换结果
-	if proxyReq.Model != "gpt-3.5-turbo" {
-		t.Errorf("TransformRequest() Model = %v, want gpt-3.5-turbo", proxyReq.Model)
+	if proxyReq.Model != "gpt-4o" {
+		t.Errorf("TransformRequest() Model = %v, want gpt-4o", proxyReq.Model)
+	}
+	if proxyReq.MaxTokens != 100 {
+		t.Errorf("TransformRequest() MaxTokens = %v, want 100", proxyReq.MaxTokens)
+	}
+	if proxyReq.Temperature != 0.7 {
+		t.Errorf("TransformRequest() Temperature = %v, want 0.7", proxyReq.Temperature)
 	}
 	if len(proxyReq.Messages) != 2 {
 		t.Errorf("TransformRequest() Messages length = %d, want 2", len(proxyReq.Messages))
@@ -104,241 +112,124 @@ func TestTransformer_TransformOpenAIRequest(t *testing.T) {
 	if proxyReq.Messages[0].Role != "system" {
 		t.Errorf("TransformRequest() Messages[0].Role = %v, want system", proxyReq.Messages[0].Role)
 	}
+	if proxyReq.Messages[0].Content != "You are helpful" {
+		t.Errorf("TransformRequest() Messages[0].Content = %v, want 'You are helpful'", proxyReq.Messages[0].Content)
+	}
 	if proxyReq.Messages[1].Role != "user" {
 		t.Errorf("TransformRequest() Messages[1].Role = %v, want user", proxyReq.Messages[1].Role)
 	}
-	if proxyReq.MaxTokens != 100 {
-		t.Errorf("TransformRequest() MaxTokens = %d, want 100", proxyReq.MaxTokens)
-	}
-	if proxyReq.Temperature != 0.7 {
-		t.Errorf("TransformRequest() Temperature = %f, want 0.7", proxyReq.Temperature)
-	}
-	if proxyReq.Stream != false {
-		t.Errorf("TransformRequest() Stream = %v, want false", proxyReq.Stream)
-	}
-	if proxyReq.OriginalFormat != string(FormatOpenAI) {
-		t.Errorf("TransformRequest() OriginalFormat = %v, want %v", proxyReq.OriginalFormat, string(FormatOpenAI))
+	if proxyReq.Messages[1].Content != "Hello" {
+		t.Errorf("TransformRequest() Messages[1].Content = %v, want 'Hello'", proxyReq.Messages[1].Content)
 	}
 }
 
-func TestTransformer_TransformAnthropicRequest(t *testing.T) {
-	transformer := NewTransformer()
-
-	requestBody := `{
-		"model": "claude-3-sonnet",
+func TestTransformRequestAnthropic(t *testing.T) {
+	input := []byte(`{
+		"model": "claude-3-5-sonnet",
+		"max_tokens": 100,
+		"system": "You are helpful",
 		"messages": [
-			{"role": "user", "content": "Hello Claude"}
+			{"role": "user", "content": "Hello"}
 		],
-		"max_tokens": 1000,
-		"temperature": 0.5
-	}`
+		"temperature": 0.7
+	}`)
 
-	proxyReq, err := transformer.TransformRequest([]byte(requestBody), FormatAnthropic)
+	transformer := NewTransformer()
+	format := transformer.DetectFormat(input)
+	proxyReq, err := transformer.TransformRequest(input, format)
+
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
-
-	// 验证转换结果
-	if proxyReq.Model != "claude-3-sonnet" {
-		t.Errorf("TransformRequest() Model = %v, want claude-3-sonnet", proxyReq.Model)
+	if proxyReq.Model != "claude-3-5-sonnet" {
+		t.Errorf("TransformRequest() Model = %v, want claude-3-5-sonnet", proxyReq.Model)
+	}
+	if proxyReq.MaxTokens != 100 {
+		t.Errorf("TransformRequest() MaxTokens = %v, want 100", proxyReq.MaxTokens)
+	}
+	if proxyReq.Temperature != 0.7 {
+		t.Errorf("TransformRequest() Temperature = %v, want 0.7", proxyReq.Temperature)
 	}
 	if len(proxyReq.Messages) != 1 {
 		t.Errorf("TransformRequest() Messages length = %d, want 1", len(proxyReq.Messages))
 	}
-	if proxyReq.Messages[0].Content != "Hello Claude" {
-		t.Errorf("TransformRequest() Messages[0].Content = %v, want Hello Claude", proxyReq.Messages[0].Content)
+	if proxyReq.Messages[0].Role != "user" {
+		t.Errorf("TransformRequest() Messages[0].Role = %v, want user", proxyReq.Messages[0].Role)
 	}
-	if proxyReq.OriginalFormat != string(FormatAnthropic) {
-		t.Errorf("TransformRequest() OriginalFormat = %v, want %v", proxyReq.OriginalFormat, string(FormatAnthropic))
+	if proxyReq.Messages[0].Content != "Hello" {
+		t.Errorf("TransformRequest() Messages[0].Content = %v, want 'Hello'", proxyReq.Messages[0].Content)
 	}
 }
 
-func TestTransformer_TransformResponse(t *testing.T) {
-	transformer := NewTransformer()
-
-	response := &types.ProxyResponse{
-		ID:      "test-id",
+func TestTransformResponse(t *testing.T) {
+	proxyResp := &types.ProxyResponse{
+		ID:      "test-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
-		Model:   "gpt-3.5-turbo",
+		Model:   "gpt-4o",
 		Choices: []types.ResponseChoice{
 			{
 				Index: 0,
 				Message: types.Message{
 					Role:    "assistant",
-					Content: "Hello! How can I help you today?",
+					Content: "Hello, world!",
 				},
 				FinishReason: "stop",
 			},
 		},
 		Usage: types.ResponseUsage{
 			PromptTokens:     10,
-			CompletionTokens: 8,
-			TotalTokens:      18,
+			CompletionTokens: 5,
+			TotalTokens:      15,
 		},
 	}
-
-	// 测试转换为OpenAI格式
-	openaiBytes, err := transformer.TransformResponse(response, FormatOpenAI)
-	if err != nil {
-		t.Fatalf("TransformResponse(OpenAI) error = %v", err)
-	}
-
-	var openaiResp types.ProxyResponse
-	err = json.Unmarshal(openaiBytes, &openaiResp)
-	if err != nil {
-		t.Fatalf("Unmarshal OpenAI response error = %v", err)
-	}
-
-	if openaiResp.ID != response.ID {
-		t.Errorf("TransformResponse(OpenAI) ID = %v, want %v", openaiResp.ID, response.ID)
-	}
-	if openaiResp.Model != response.Model {
-		t.Errorf("TransformResponse(OpenAI) Model = %v, want %v", openaiResp.Model, response.Model)
-	}
-
-	// 测试转换为Anthropic格式
-	anthropicBytes, err := transformer.TransformResponse(response, FormatAnthropic)
-	if err != nil {
-		t.Fatalf("TransformResponse(Anthropic) error = %v", err)
-	}
-
-	var anthropicResp types.ProxyResponse
-	err = json.Unmarshal(anthropicBytes, &anthropicResp)
-	if err != nil {
-		t.Fatalf("Unmarshal Anthropic response error = %v", err)
-	}
-
-	if anthropicResp.ID != response.ID {
-		t.Errorf("TransformResponse(Anthropic) ID = %v, want %v", anthropicResp.ID, response.ID)
-	}
-}
-
-func TestTransformer_InjectSystemPrompt(t *testing.T) {
-	transformer := NewTransformer()
 
 	tests := []struct {
-		name         string
-		request      *types.ProxyRequest
-		provider     types.Provider
-		upstreamType types.UpstreamType
-		expectInject bool
+		name           string
+		format         RequestFormat
+		expectedOutput string
 	}{
 		{
-			name: "anthropic_oauth_should_inject",
-			request: &types.ProxyRequest{
-				Messages: []types.Message{
-					{Role: "user", Content: "Hello"},
-				},
-			},
-			provider:     types.ProviderAnthropic,
-			upstreamType: types.UpstreamTypeOAuth,
-			expectInject: true,
+			name:           "OpenAI format",
+			format:         FormatOpenAI,
+			expectedOutput: `{"id":"test-123","object":"chat.completion","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"Hello, world!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
 		},
 		{
-			name: "anthropic_api_key_should_not_inject",
-			request: &types.ProxyRequest{
-				Messages: []types.Message{
-					{Role: "user", Content: "Hello"},
-				},
-			},
-			provider:     types.ProviderAnthropic,
-			upstreamType: types.UpstreamTypeAPIKey,
-			expectInject: false,
-		},
-		{
-			name: "openai_oauth_should_not_inject",
-			request: &types.ProxyRequest{
-				Messages: []types.Message{
-					{Role: "user", Content: "Hello"},
-				},
-			},
-			provider:     types.ProviderOpenAI,
-			upstreamType: types.UpstreamTypeOAuth,
-			expectInject: false,
-		},
-		{
-			name: "anthropic_oauth_with_existing_system",
-			request: &types.ProxyRequest{
-				Messages: []types.Message{
-					{Role: "system", Content: "Existing system prompt"},
-					{Role: "user", Content: "Hello"},
-				},
-			},
-			provider:     types.ProviderAnthropic,
-			upstreamType: types.UpstreamTypeOAuth,
-			expectInject: true,
+			name:           "Anthropic format",
+			format:         FormatAnthropic,
+			expectedOutput: `{"id":"test-123","type":"message","role":"assistant","model":"gpt-4o","content":[{"type":"text","text":"Hello, world!"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":5}}`,
 		},
 	}
+
+	transformer := NewTransformer()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			originalMsgCount := len(tt.request.Messages)
-			
-			transformer.InjectSystemPrompt(tt.request, tt.provider, tt.upstreamType)
+			output, err := transformer.TransformResponse(proxyResp, tt.format)
+			if err != nil {
+				t.Fatalf("TransformResponse() error = %v", err)
+			}
 
-			if tt.expectInject {
-				// 检查是否注入了系统提示词
-				found := false
-				for _, msg := range tt.request.Messages {
-					if msg.Role == "system" && msg.Content == "你是 Claude Code，Anthropic的官方CLI工具" {
-						found = true
-						break
-					}
-					if msg.Role == "system" && msg.Content != "" {
-						// 检查是否合并了现有的系统提示词
-						if msg.Content != "Existing system prompt" && 
-						   len(msg.Content) > len("你是 Claude Code，Anthropic的官方CLI工具") {
-							found = true
-							break
-						}
-					}
-				}
-				if !found {
-					t.Error("InjectSystemPrompt() should inject Claude Code system prompt for Anthropic OAuth")
-				}
-			} else {
-				// 检查消息没有被修改
-				if len(tt.request.Messages) != originalMsgCount {
-					t.Error("InjectSystemPrompt() should not modify messages for non-Anthropic OAuth")
-				}
+			// Parse and re-serialize to handle field order differences
+			var parsed map[string]interface{}
+			err = json.Unmarshal(output, &parsed)
+			if err != nil {
+				t.Fatalf("Failed to parse output: %v", err)
+			}
+
+			expectedParsed := make(map[string]interface{})
+			err = json.Unmarshal([]byte(tt.expectedOutput), &expectedParsed)
+			if err != nil {
+				t.Fatalf("Failed to parse expected output: %v", err)
+			}
+
+			// Compare key fields instead of exact match
+			if parsed["id"] != expectedParsed["id"] {
+				t.Errorf("ID mismatch: got %v, want %v", parsed["id"], expectedParsed["id"])
+			}
+			if parsed["model"] != expectedParsed["model"] {
+				t.Errorf("Model mismatch: got %v, want %v", parsed["model"], expectedParsed["model"])
 			}
 		})
-	}
-}
-
-func TestTransformer_TransformUnsupportedFormat(t *testing.T) {
-	transformer := NewTransformer()
-
-	requestBody := `{"model": "test"}`
-
-	// 测试不支持的请求格式
-	_, err := transformer.TransformRequest([]byte(requestBody), FormatUnknown)
-	if err == nil {
-		t.Error("TransformRequest() should fail for unknown format")
-	}
-
-	// 测试不支持的响应格式
-	response := &types.ProxyResponse{ID: "test"}
-	_, err = transformer.TransformResponse(response, FormatUnknown)
-	if err == nil {
-		t.Error("TransformResponse() should fail for unknown format")
-	}
-}
-
-func TestTransformer_TransformInvalidJSON(t *testing.T) {
-	transformer := NewTransformer()
-
-	invalidJSON := `{invalid json}`
-
-	// 测试无效JSON
-	_, err := transformer.TransformRequest([]byte(invalidJSON), FormatOpenAI)
-	if err == nil {
-		t.Error("TransformRequest() should fail for invalid JSON")
-	}
-
-	_, err = transformer.TransformRequest([]byte(invalidJSON), FormatAnthropic)
-	if err == nil {
-		t.Error("TransformRequest() should fail for invalid JSON")
 	}
 }

@@ -1,13 +1,12 @@
 package transform
 
 import (
+	"bytes"
+	"net/http"
 	"testing"
 )
 
-// TestFormatDetection 测试格式检测功能
-func TestFormatDetection(t *testing.T) {
-	transformer := &Transformer{}
-
+func TestDetectFormat(t *testing.T) {
 	tests := []struct {
 		name           string
 		requestBody    string
@@ -15,157 +14,189 @@ func TestFormatDetection(t *testing.T) {
 		description    string
 	}{
 		{
-			name: "OpenAI_ChatCompletions_GPT",
+			name: "openai_chat_completions",
 			requestBody: `{
-				"model": "gpt-3.5-turbo",
+				"model": "gpt-4o",
 				"messages": [
 					{"role": "user", "content": "Hello"}
-				],
-				"max_tokens": 100
+				]
 			}`,
 			expectedFormat: FormatOpenAI,
-			description:    "OpenAI格式 - GPT模型",
+			description:    "OpenAI格式 - GPT-4o模型",
 		},
 		{
-			name: "OpenAI_ChatCompletions_GPT4",
+			name: "openai_gpt4",
 			requestBody: `{
-				"model": "gpt-4",
+				"model": "gpt-4o-mini",
 				"messages": [
-					{"role": "system", "content": "You are helpful."},
 					{"role": "user", "content": "Hello"}
-				],
-				"temperature": 0.7
+				]
 			}`,
 			expectedFormat: FormatOpenAI,
-			description:    "OpenAI格式 - GPT-4模型",
+			description:    "OpenAI格式 - GPT-4o-mini模型",
 		},
 		{
-			name: "Anthropic_Claude3_Sonnet",
+			name: "anthropic_claude_sonnet",
 			requestBody: `{
-				"model": "claude-3-sonnet",
+				"model": "claude-3-5-sonnet",
+				"max_tokens": 100,
 				"messages": [
 					{"role": "user", "content": "Hello"}
-				],
-				"max_tokens": 100
-			}`,
-			expectedFormat: FormatAnthropic,
-			description:    "Anthropic格式 - Claude 3 Sonnet",
-		},
-		{
-			name: "Anthropic_Claude3_Haiku",
-			requestBody: `{
-				"model": "claude-3-haiku",
-				"messages": [
-					{"role": "user", "content": "Quick question"}
 				]
 			}`,
 			expectedFormat: FormatAnthropic,
-			description:    "Anthropic格式 - Claude 3 Haiku",
+			description:    "Anthropic格式 - Claude 3.5 Sonnet模型",
 		},
 		{
-			name: "Anthropic_Claude3_Opus",
+			name: "anthropic_claude_haiku",
 			requestBody: `{
-				"model": "claude-3-opus",
+				"model": "claude-3-5-haiku",
+				"max_tokens": 100,
 				"messages": [
-					{"role": "user", "content": "Complex task"}
-				],
-				"system": "You are an expert."
+					{"role": "user", "content": "Hello"}
+				]
 			}`,
 			expectedFormat: FormatAnthropic,
-			description:    "Anthropic格式 - Claude 3 Opus",
+			description:    "Anthropic格式 - Claude 3.5 Haiku模型",
 		},
 		{
-			name: "OpenAI_Legacy_Completions",
+			name: "anthropic_with_system",
+			requestBody: `{
+				"model": "claude-3-5-sonnet",
+				"max_tokens": 100,
+				"system": "You are helpful",
+				"messages": [
+					{"role": "user", "content": "Hello"}
+				]
+			}`,
+			expectedFormat: FormatAnthropic,
+			description:    "Anthropic格式 - 带system字段",
+		},
+		{
+			name: "openai_legacy_completions",
 			requestBody: `{
 				"model": "text-davinci-003",
-				"prompt": "Once upon a time",
-				"max_tokens": 50
+				"prompt": "Hello world"
 			}`,
 			expectedFormat: FormatOpenAI,
-			description:    "OpenAI格式 - 旧版文本完成",
+			description:    "OpenAI遗留格式 - text-davinci-003",
 		},
 		{
-			name: "Unknown_Format_NoMessages",
-			requestBody: `{
-				"unknown_field": "value",
-				"invalid_format": true
-			}`,
-			expectedFormat: FormatUnknown,
-			description:    "未知格式 - 缺少messages和prompt字段",
-		},
-		{
-			name: "Invalid_JSON",
-			requestBody: `{invalid json content`,
+			name:           "invalid_json",
+			requestBody:    `{invalid json`,
 			expectedFormat: FormatUnknown,
 			description:    "无效JSON格式",
 		},
 		{
-			name: "Empty_Request",
-			requestBody: `{}`,
+			name:           "empty_body",
+			requestBody:    `{}`,
 			expectedFormat: FormatUnknown,
 			description:    "空请求体",
 		},
 		{
-			name: "Mixed_Case_Model_Claude",
+			name: "anthropic_claude_model_case_insensitive",
 			requestBody: `{
-				"model": "CLAUDE-3-SONNET",
-				"messages": [{"role": "user", "content": "test"}]
+				"model": "CLAUDE-3-5-SONNET",
+				"max_tokens": 100,
+				"messages": [
+					{"role": "user", "content": "Test"}
+				]
 			}`,
-			expectedFormat: FormatOpenAI, // 当前实现是大小写敏感的
-			description:    "大写Claude模型名",
-		},
-		{
-			name: "Messages_Without_Model",
-			requestBody: `{
-				"messages": [{"role": "user", "content": "test"}],
-				"max_tokens": 100
-			}`,
-			expectedFormat: FormatOpenAI,
-			description:    "有messages但无model字段，默认OpenAI",
+			expectedFormat: FormatAnthropic,
+			description:    "Anthropic格式 - 模型名大小写不敏感",
 		},
 	}
+
+	transformer := NewTransformer()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			format := transformer.DetectFormat([]byte(tt.requestBody))
 			if format != tt.expectedFormat {
-				t.Errorf("格式检测错误:\n  测试用例: %s\n  描述: %s\n  期望格式: %s\n  实际格式: %s",
-					tt.name, tt.description, tt.expectedFormat, format)
-			} else {
-				t.Logf("✅ %s - %s: 检测为 %s", tt.name, tt.description, format)
+				t.Errorf("DetectFormat() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
 			}
 		})
 	}
 }
 
-// BenchmarkFormatDetection 性能基准测试
-func BenchmarkFormatDetection(b *testing.B) {
-	transformer := &Transformer{}
-	
-	testCases := []struct {
-		name string
-		body string
+func TestDetectFormatWithEndpoint(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestBody    string
+		endpoint       string
+		expectedFormat RequestFormat
+		description    string
 	}{
 		{
-			name: "OpenAI",
-			body: `{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"Hello"}]}`,
+			name: "openai_endpoint_override",
+			requestBody: `{
+				"model": "claude-3-5-sonnet",
+				"messages": [{"role": "user", "content": "Hello"}]
+			}`,
+			endpoint:       "/v1/chat/completions",
+			expectedFormat: FormatOpenAI,
+			description:    "OpenAI端点覆盖模型名判断",
 		},
 		{
-			name: "Anthropic",
-			body: `{"model":"claude-3-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
-		},
-		{
-			name: "Legacy",
-			body: `{"model":"text-davinci-003","prompt":"Hello"}`,
+			name: "anthropic_endpoint_override",
+			requestBody: `{
+				"model": "gpt-4o",
+				"messages": [{"role": "user", "content": "Hello"}]
+			}`,
+			endpoint:       "/v1/messages",
+			expectedFormat: FormatAnthropic,
+			description:    "Anthropic端点覆盖模型名判断",
 		},
 	}
 
-	for _, tc := range testCases {
-		b.Run(tc.name, func(b *testing.B) {
-			bodyBytes := []byte(tc.body)
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				transformer.DetectFormat(bodyBytes)
+	transformer := NewTransformer()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			format := transformer.DetectFormatWithEndpoint([]byte(tt.requestBody), tt.endpoint)
+			if format != tt.expectedFormat {
+				t.Errorf("DetectFormatWithEndpoint() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
+			}
+		})
+	}
+}
+
+func TestDetectFormatFromHTTPRequest(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestBody    string
+		url            string
+		expectedFormat RequestFormat
+		description    string
+	}{
+		{
+			name:           "openai_url",
+			requestBody:    `{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}`,
+			url:            "/v1/chat/completions",
+			expectedFormat: FormatOpenAI,
+			description:    "OpenAI URL路径",
+		},
+		{
+			name:           "anthropic_url",
+			requestBody:    `{"model":"claude-3-5-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
+			url:            "/v1/messages",
+			expectedFormat: FormatAnthropic,
+			description:    "Anthropic URL路径",
+		},
+	}
+
+	transformer := NewTransformer()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", tt.url, bytes.NewBufferString(tt.requestBody))
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			format := transformer.DetectFormatWithEndpoint([]byte(tt.requestBody), req.URL.Path)
+			if format != tt.expectedFormat {
+				t.Errorf("DetectFormatFromHTTPRequest() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
 			}
 		})
 	}

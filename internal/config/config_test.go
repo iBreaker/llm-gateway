@@ -26,8 +26,8 @@ func TestConfigManager_LoadDefaultConfig(t *testing.T) {
 	if config.Server.Host != "0.0.0.0" {
 		t.Errorf("Default server host = %v, want 0.0.0.0", config.Server.Host)
 	}
-	if config.Server.Port != 8080 {
-		t.Errorf("Default server port = %d, want 8080", config.Server.Port)
+	if config.Server.Port != 3847 {
+		t.Errorf("Default server port = %d, want 3847", config.Server.Port)
 	}
 	if config.Server.Timeout != 30 {
 		t.Errorf("Default server timeout = %d, want 30", config.Server.Timeout)
@@ -69,12 +69,12 @@ func TestConfigManager_SaveAndLoad(t *testing.T) {
 		},
 		UpstreamAccounts: []types.UpstreamAccount{
 			{
-				ID:       "test-upstream-1",
-				Name:     "Test Upstream",
-				Type:     types.UpstreamTypeAPIKey,
-				Provider: types.ProviderAnthropic,
-				APIKey:   "sk-ant-test",
-				Status:   "active",
+				ID:        "test-upstream-1",
+				Name:      "Test Upstream",
+				Type:      types.UpstreamTypeAPIKey,
+				Provider:  types.ProviderAnthropic,
+				APIKey:    "sk-ant-test",
+				Status:    "active",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
@@ -403,12 +403,12 @@ func TestConfigManager_Get(t *testing.T) {
 
 // contains 检查字符串是否包含子字符串
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    (len(s) > len(substr) && 
-		     (s[:len(substr)] == substr || 
-		      s[len(s)-len(substr):] == substr || 
-		      indexOfSubstring(s, substr) >= 0)))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					indexOfSubstring(s, substr) >= 0)))
 }
 
 // indexOfSubstring 查找子字符串在字符串中的位置

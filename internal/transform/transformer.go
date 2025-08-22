@@ -37,13 +37,7 @@ func (t *Transformer) DetectFormatWithEndpoint(requestBody []byte, endpoint stri
 		return FormatUnknown
 	}
 
-	// 检查Anthropic特有字段
-	if _, hasSystem := data["system"]; hasSystem {
-		// system字段是Anthropic格式的特征
-		return FormatAnthropic
-	}
-
-	// 基于端点路径判断
+	// 基于端点路径判断（优先级最高）
 	if endpoint == "/v1/messages" {
 		// Anthropic的原生端点
 		return FormatAnthropic
@@ -51,6 +45,23 @@ func (t *Transformer) DetectFormatWithEndpoint(requestBody []byte, endpoint stri
 	if endpoint == "/v1/chat/completions" {
 		// OpenAI的标准端点
 		return FormatOpenAI
+	}
+
+	// 检查Anthropic特有字段
+	if _, hasSystem := data["system"]; hasSystem {
+		// system字段是Anthropic格式的特征
+		return FormatAnthropic
+	}
+
+	// 检查模型名称来识别格式
+	if model, hasModel := data["model"].(string); hasModel {
+		modelLower := strings.ToLower(model)
+		if strings.Contains(modelLower, "claude") {
+			return FormatAnthropic
+		}
+		if strings.Contains(modelLower, "gpt") {
+			return FormatOpenAI
+		}
 	}
 
 	// 检查是否有messages字段（两种格式都支持）
@@ -94,11 +105,11 @@ func (t *Transformer) TransformResponse(response *types.ProxyResponse, targetFor
 // transformOpenAIRequest 转换OpenAI格式请求
 func (t *Transformer) transformOpenAIRequest(requestBody []byte) (*types.ProxyRequest, error) {
 	var openaiReq struct {
-		Model       string              `json:"model"`
-		Messages    []types.Message     `json:"messages"`
-		MaxTokens   int                 `json:"max_tokens,omitempty"`
-		Temperature float64             `json:"temperature,omitempty"`
-		Stream      bool                `json:"stream,omitempty"`
+		Model       string          `json:"model"`
+		Messages    []types.Message `json:"messages"`
+		MaxTokens   int             `json:"max_tokens,omitempty"`
+		Temperature float64         `json:"temperature,omitempty"`
+		Stream      bool            `json:"stream,omitempty"`
 	}
 
 	if err := json.Unmarshal(requestBody, &openaiReq); err != nil {
@@ -124,11 +135,11 @@ type FlexibleMessage struct {
 // transformAnthropicRequest 转换Anthropic格式请求
 func (t *Transformer) transformAnthropicRequest(requestBody []byte) (*types.ProxyRequest, error) {
 	var anthropicReq struct {
-		Model       string             `json:"model"`
-		Messages    []FlexibleMessage  `json:"messages"`
-		MaxTokens   int                `json:"max_tokens,omitempty"`
-		Temperature float64            `json:"temperature,omitempty"`
-		Stream      bool               `json:"stream,omitempty"`
+		Model       string            `json:"model"`
+		Messages    []FlexibleMessage `json:"messages"`
+		MaxTokens   int               `json:"max_tokens,omitempty"`
+		Temperature float64           `json:"temperature,omitempty"`
+		Stream      bool              `json:"stream,omitempty"`
 	}
 
 	if err := json.Unmarshal(requestBody, &anthropicReq); err != nil {
@@ -141,7 +152,7 @@ func (t *Transformer) transformAnthropicRequest(requestBody []byte) (*types.Prox
 		standardMsg := types.Message{
 			Role: msg.Role,
 		}
-		
+
 		// 处理content字段 - 支持string或array格式
 		switch content := msg.Content.(type) {
 		case string:
@@ -169,10 +180,9 @@ func (t *Transformer) transformAnthropicRequest(requestBody []byte) (*types.Prox
 				standardMsg.Content = fmt.Sprintf("%v", content)
 			}
 		}
-		
+
 		standardMessages = append(standardMessages, standardMsg)
 	}
-
 
 	return &types.ProxyRequest{
 		Model:          anthropicReq.Model,
@@ -193,9 +203,9 @@ func (t *Transformer) transformToOpenAIResponse(response *types.ProxyResponse) (
 func (t *Transformer) transformToAnthropicResponse(response *types.ProxyResponse) ([]byte, error) {
 	// 构建真正的Anthropic响应格式
 	anthropicResp := map[string]interface{}{
-		"id":   response.ID,
-		"type": "message",
-		"role": "assistant",
+		"id":    response.ID,
+		"type":  "message",
+		"role":  "assistant",
 		"model": response.Model,
 		"content": []map[string]interface{}{
 			{
@@ -203,23 +213,23 @@ func (t *Transformer) transformToAnthropicResponse(response *types.ProxyResponse
 				"text": "", // 从choices中提取
 			},
 		},
-		"stop_reason": "end_turn",
+		"stop_reason":   "end_turn",
 		"stop_sequence": nil,
 		"usage": map[string]interface{}{
 			"input_tokens":  response.Usage.PromptTokens,
 			"output_tokens": response.Usage.CompletionTokens,
 		},
 	}
-	
+
 	// 提取消息内容
 	if len(response.Choices) > 0 && response.Choices[0].Message.Content != "" {
 		anthropicResp["content"] = []map[string]interface{}{
 			{
-				"type": "text", 
+				"type": "text",
 				"text": response.Choices[0].Message.Content,
 			},
 		}
-		
+
 		// 转换结束原因
 		switch response.Choices[0].FinishReason {
 		case "stop":
@@ -230,7 +240,7 @@ func (t *Transformer) transformToAnthropicResponse(response *types.ProxyResponse
 			anthropicResp["stop_reason"] = "end_turn"
 		}
 	}
-	
+
 	return json.Marshal(anthropicResp)
 }
 
@@ -238,7 +248,7 @@ func (t *Transformer) transformToAnthropicResponse(response *types.ProxyResponse
 func (t *Transformer) TransformToAnthropicRequest(request *types.ProxyRequest) ([]byte, error) {
 	var systemPrompt string
 	var messages []types.Message
-	
+
 	// 分离系统消息和普通消息
 	for _, msg := range request.Messages {
 		if msg.Role == "system" {
@@ -251,26 +261,26 @@ func (t *Transformer) TransformToAnthropicRequest(request *types.ProxyRequest) (
 			messages = append(messages, msg)
 		}
 	}
-	
+
 	anthropicReq := map[string]interface{}{
-		"model":     request.Model,
-		"messages":  messages, // 不包含system消息
+		"model":      request.Model,
+		"messages":   messages, // 不包含system消息
 		"max_tokens": request.MaxTokens,
 	}
-	
+
 	// 设置顶层system参数
 	if systemPrompt != "" {
 		anthropicReq["system"] = systemPrompt
 	}
-	
+
 	if request.Temperature != 0 {
 		anthropicReq["temperature"] = request.Temperature
 	}
-	
+
 	if request.Stream {
 		anthropicReq["stream"] = request.Stream
 	}
-	
+
 	return json.Marshal(anthropicReq)
 }
 
@@ -280,19 +290,19 @@ func (t *Transformer) TransformToOpenAIRequest(request *types.ProxyRequest) ([]b
 		"model":    request.Model,
 		"messages": request.Messages,
 	}
-	
+
 	if request.MaxTokens > 0 {
 		openaiReq["max_tokens"] = request.MaxTokens
 	}
-	
+
 	if request.Temperature != 0 {
 		openaiReq["temperature"] = request.Temperature
 	}
-	
+
 	if request.Stream {
 		openaiReq["stream"] = request.Stream
 	}
-	
+
 	return json.Marshal(openaiReq)
 }
 
@@ -301,7 +311,7 @@ func (t *Transformer) InjectSystemPrompt(request *types.ProxyRequest, provider t
 	// 对Anthropic账号注入Claude Code系统提示词 - 与Rust实现保持一致
 	if provider == types.ProviderAnthropic {
 		claudeCodeIdentity := "You are Claude Code, Anthropic's official CLI for Claude."
-		
+
 		// 检查是否已包含Claude Code身份
 		hasClaudeCodeIdentity := false
 		for _, msg := range request.Messages {
@@ -312,7 +322,7 @@ func (t *Transformer) InjectSystemPrompt(request *types.ProxyRequest, provider t
 				}
 			}
 		}
-		
+
 		// 只有在不存在Claude Code身份时才注入
 		if !hasClaudeCodeIdentity {
 			// 检查是否已有system消息
@@ -325,7 +335,7 @@ func (t *Transformer) InjectSystemPrompt(request *types.ProxyRequest, provider t
 					break
 				}
 			}
-			
+
 			// 如果没有system消息，添加一个
 			if !hasSystem {
 				systemMsg := types.Message{
