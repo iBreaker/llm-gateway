@@ -1,0 +1,30 @@
+{
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are an expert software architect"
+    },
+    {
+      "role": "user", 
+      "content": [
+        {
+          "type": "text",
+          "text": "Design a microservices architecture"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "I'll help you design a microservices architecture."
+    },
+    {
+      "role": "user",
+      "content": "Focus on scalability"
+    }
+  ],
+  "max_tokens": 2000,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "stream": true
+}

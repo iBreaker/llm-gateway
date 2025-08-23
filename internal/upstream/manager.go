@@ -212,6 +212,8 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 		case types.ProviderAnthropic:
 			headers["x-api-key"] = account.APIKey
 			headers["anthropic-version"] = "2023-06-01"
+			// Claude Code必需的beta标识
+			headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 		case types.ProviderOpenAI:
 			headers["Authorization"] = "Bearer " + account.APIKey
 		default:

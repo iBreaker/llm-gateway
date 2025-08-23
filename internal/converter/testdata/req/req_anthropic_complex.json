@@ -1,0 +1,39 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude, an AI assistant created by Anthropic",
+      "cache_control": {
+        "type": "ephemeral"
+      }
+    },
+    {
+      "type": "text", 
+      "text": "Additional context: The user is a software developer."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Help me debug this code:"
+        },
+        {
+          "type": "text", 
+          "text": "def hello():\n    print('Hello world')\n    return true"
+        }
+      ]
+    }
+  ],
+  "max_tokens": 1500,
+  "temperature": 0.1,
+  "stream": false,
+  "metadata": {
+    "user_id": "dev-user-789",
+    "task_type": "code_review",
+    "priority": "high"
+  }
+}

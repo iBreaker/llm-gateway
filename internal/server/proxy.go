@@ -108,7 +108,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	h.converter.InjectSystemPrompt(proxyReq, upstreamAccount.Provider, upstreamAccount.Type)
 
 	// 8. 根据stream参数选择处理方式
-	if proxyReq.Stream {
+	if proxyReq.Stream != nil && *proxyReq.Stream {
 		// 流式响应处理
 		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime)
 	} else {

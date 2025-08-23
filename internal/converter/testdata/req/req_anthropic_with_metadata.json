@@ -1,0 +1,18 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "system": "You are a helpful assistant specialized in programming",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Write a simple Python function"
+    }
+  ],
+  "max_tokens": 2000,
+  "temperature": 0.3,
+  "stream": true,
+  "metadata": {
+    "user_id": "user-12345",
+    "session_id": "session-abc123",
+    "custom_field": "programming-help"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are a helpful assistant",
+      "cache_control": {
+        "type": "ephemeral"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the weather like?"
+    },
+    {
+      "role": "assistant", 
+      "content": "I don't have access to real-time weather data."
+    },
+    {
+      "role": "user",
+      "content": "Thanks anyway"
+    }
+  ],
+  "max_tokens": 500,
+  "temperature": 0.5
+}

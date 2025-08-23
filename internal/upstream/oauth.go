@@ -375,6 +375,8 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 	req.Header.Set("User-Agent", "claude-cli/1.0.56 (external, cli)")
 	req.Header.Set("Referer", "https://claude.ai/")
 	req.Header.Set("Origin", "https://claude.ai")
+	// 添加Claude Code必需的beta标识
+	req.Header.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14")
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {

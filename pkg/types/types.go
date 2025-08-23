@@ -1,6 +1,11 @@
 package types
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Provider 枚举 - LLM提供商
 type Provider string
@@ -31,16 +36,16 @@ const (
 
 // GatewayAPIKey - Gateway API Key结构 (用于客户端访问Gateway)
 type GatewayAPIKey struct {
-	ID          string              `json:"id" yaml:"id"`
-	Name        string              `json:"name" yaml:"name"`
-	KeyHash     string              `json:"key_hash" yaml:"key_hash"`
-	Permissions []Permission        `json:"permissions" yaml:"permissions"`
-	Status      string              `json:"status" yaml:"status"` // active, disabled
-	RateLimit   *RateLimitConfig    `json:"rate_limit,omitempty" yaml:"rate_limit,omitempty"`
-	Usage       *KeyUsageStats      `json:"usage,omitempty" yaml:"usage,omitempty"`
-	CreatedAt   time.Time           `json:"created_at" yaml:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at" yaml:"updated_at"`
-	ExpiresAt   *time.Time          `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
+	ID          string           `json:"id" yaml:"id"`
+	Name        string           `json:"name" yaml:"name"`
+	KeyHash     string           `json:"key_hash" yaml:"key_hash"`
+	Permissions []Permission     `json:"permissions" yaml:"permissions"`
+	Status      string           `json:"status" yaml:"status"` // active, disabled
+	RateLimit   *RateLimitConfig `json:"rate_limit,omitempty" yaml:"rate_limit,omitempty"`
+	Usage       *KeyUsageStats   `json:"usage,omitempty" yaml:"usage,omitempty"`
+	CreatedAt   time.Time        `json:"created_at" yaml:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at" yaml:"updated_at"`
+	ExpiresAt   *time.Time       `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
 }
 
 // RateLimitConfig - 限流配置
@@ -62,23 +67,23 @@ type KeyUsageStats struct {
 
 // UpstreamAccount - 上游账号结构 (用于调用LLM服务)
 type UpstreamAccount struct {
-	ID              string                `json:"id" yaml:"id"`
-	Name            string                `json:"name" yaml:"name"`
-	Type            UpstreamType          `json:"type" yaml:"type"`
-	Status          string                `json:"status" yaml:"status"` // active, disabled, error
-	Provider        Provider              `json:"provider" yaml:"provider"`
-	BaseURL         string                `json:"base_url,omitempty" yaml:"base_url,omitempty"`
-	APIKey          string                `json:"api_key,omitempty" yaml:"api_key,omitempty"`
-	ClientID        string                `json:"client_id,omitempty" yaml:"client_id,omitempty"`
-	ClientSecret    string                `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
-	AccessToken     string                `json:"access_token,omitempty" yaml:"access_token,omitempty"`
-	RefreshToken    string                `json:"refresh_token,omitempty" yaml:"refresh_token,omitempty"`
-	ExpiresAt       *time.Time            `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
-	Usage           *UpstreamUsageStats   `json:"usage,omitempty" yaml:"usage,omitempty"`
-	LastHealthCheck *time.Time            `json:"last_health_check,omitempty" yaml:"last_health_check,omitempty"`
-	HealthStatus    string                `json:"health_status,omitempty" yaml:"health_status,omitempty"`
-	CreatedAt       time.Time             `json:"created_at" yaml:"created_at"`
-	UpdatedAt       time.Time             `json:"updated_at" yaml:"updated_at"`
+	ID              string              `json:"id" yaml:"id"`
+	Name            string              `json:"name" yaml:"name"`
+	Type            UpstreamType        `json:"type" yaml:"type"`
+	Status          string              `json:"status" yaml:"status"` // active, disabled, error
+	Provider        Provider            `json:"provider" yaml:"provider"`
+	BaseURL         string              `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	APIKey          string              `json:"api_key,omitempty" yaml:"api_key,omitempty"`
+	ClientID        string              `json:"client_id,omitempty" yaml:"client_id,omitempty"`
+	ClientSecret    string              `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
+	AccessToken     string              `json:"access_token,omitempty" yaml:"access_token,omitempty"`
+	RefreshToken    string              `json:"refresh_token,omitempty" yaml:"refresh_token,omitempty"`
+	ExpiresAt       *time.Time          `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
+	Usage           *UpstreamUsageStats `json:"usage,omitempty" yaml:"usage,omitempty"`
+	LastHealthCheck *time.Time          `json:"last_health_check,omitempty" yaml:"last_health_check,omitempty"`
+	HealthStatus    string              `json:"health_status,omitempty" yaml:"health_status,omitempty"`
+	CreatedAt       time.Time           `json:"created_at" yaml:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at" yaml:"updated_at"`
 }
 
 // UpstreamUsageStats - 上游账号使用统计
@@ -95,20 +100,23 @@ type UpstreamUsageStats struct {
 
 // ProxyRequest - 统一的请求结构
 type ProxyRequest struct {
-	Model          string    `json:"model"`
-	Messages       []Message `json:"messages"`
-	MaxTokens      int       `json:"max_tokens,omitempty"`
-	Temperature    float64   `json:"temperature,omitempty"`
-	Stream         bool      `json:"stream,omitempty"`
-	OriginalFormat string    `json:"-"` // 原始请求格式
-	GatewayKeyID   string    `json:"-"` // 发起请求的Gateway API Key ID
-	UpstreamID     string    `json:"-"` // 选中的上游账号ID
+	Model            string                 `json:"model"`
+	Messages         []Message              `json:"messages"`
+	MaxTokens        int                    `json:"max_tokens,omitempty"`
+	Temperature      float64                `json:"temperature,omitempty"`
+	Stream           *bool                  `json:"stream,omitempty"`
+	TopP             *float64               `json:"top_p,omitempty"`
+	OriginalFormat   string                 `json:"-"`                    // 原始请求格式
+	OriginalSystem   *SystemField           `json:"-"`                    // 原始system字段格式
+	OriginalMetadata map[string]interface{} `json:"-"`                    // 原始metadata字段
+	GatewayKeyID     string                 `json:"-"`                    // 发起请求的Gateway API Key ID
+	UpstreamID       string                 `json:"-"`                    // 选中的上游账号ID
 }
 
 // Message - 通用消息结构
 type Message struct {
-	Role    string `json:"role"`    // system, user, assistant
-	Content string `json:"content"`
+	Role    string      `json:"role"` // system, user, assistant
+	Content interface{} `json:"content"`
 }
 
 // ProxyResponse - 统一的响应结构
@@ -173,7 +181,8 @@ type OpenAIRequest struct {
 	Messages    []Message `json:"messages"`
 	MaxTokens   int       `json:"max_tokens,omitempty"`
 	Temperature float64   `json:"temperature,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Stream      *bool     `json:"stream,omitempty"`
+	TopP        *float64  `json:"top_p,omitempty"`
 }
 
 // FlexibleMessage - 支持多种content格式的消息结构
@@ -182,13 +191,75 @@ type FlexibleMessage struct {
 	Content interface{} `json:"content"`
 }
 
+// SystemField - 处理Anthropic system字段的两种格式
+type SystemField struct {
+	isString bool
+	stringValue string
+	arrayValue []SystemBlock
+}
+
+// SystemBlock - system数组中的单个块
+type SystemBlock struct {
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
+	CacheControl map[string]interface{} `json:"cache_control,omitempty"`
+}
+
+// UnmarshalJSON 自定义反序列化方法
+func (s *SystemField) UnmarshalJSON(data []byte) error {
+	// 尝试作为字符串解析
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		s.isString = true
+		s.stringValue = str
+		return nil
+	}
+	
+	// 尝试作为数组解析
+	var blocks []SystemBlock
+	if err := json.Unmarshal(data, &blocks); err == nil {
+		s.isString = false
+		s.arrayValue = blocks
+		return nil
+	}
+	
+	return fmt.Errorf("system field must be either string or array")
+}
+
+// MarshalJSON 自定义序列化方法 - 保持原始格式
+func (s SystemField) MarshalJSON() ([]byte, error) {
+	if s.isString {
+		// 保持字符串格式输出
+		return json.Marshal(s.stringValue)
+	}
+	return json.Marshal(s.arrayValue)
+}
+
+// ToString 转换为字符串格式
+func (s *SystemField) ToString() string {
+	if s.isString {
+		return s.stringValue
+	}
+	
+	// 将数组格式转换为字符串
+	var parts []string
+	for _, block := range s.arrayValue {
+		if block.Type == "text" {
+			parts = append(parts, block.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // AnthropicRequest - Anthropic API请求格式
 type AnthropicRequest struct {
-	Model       string            `json:"model"`
-	Messages    []FlexibleMessage `json:"messages"`
-	MaxTokens   int               `json:"max_tokens,omitempty"`
-	Temperature float64           `json:"temperature,omitempty"`
-	Stream      bool              `json:"stream,omitempty"`
+	Model       string                 `json:"model"`
+	Messages    []FlexibleMessage      `json:"messages"`
+	MaxTokens   int                    `json:"max_tokens,omitempty"`
+	Temperature float64                `json:"temperature,omitempty"`
+	Stream      *bool                  `json:"stream,omitempty"`
+	System      *SystemField           `json:"system,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // API响应结构体
@@ -215,4 +286,64 @@ type AnthropicResponse struct {
 	StopReason   string                  `json:"stop_reason"`
 	StopSequence interface{}             `json:"stop_sequence"`
 	Usage        AnthropicUsage          `json:"usage"`
+}
+
+// OpenAI 响应结构体
+type OpenAIResponse struct {
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Created int64          `json:"created"`
+	Model   string         `json:"model"`
+	Choices []OpenAIChoice `json:"choices"`
+	Usage   OpenAIUsage    `json:"usage"`
+}
+
+type OpenAIChoice struct {
+	Index        int     `json:"index"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason"`
+}
+
+type OpenAIUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// 流式响应结构体
+type OpenAIStreamChunk struct {
+	ID      string               `json:"id"`
+	Object  string               `json:"object"`
+	Created int64                `json:"created"`
+	Model   string               `json:"model"`
+	Choices []OpenAIStreamChoice `json:"choices"`
+}
+
+type OpenAIStreamChoice struct {
+	Index        int               `json:"index"`
+	Delta        OpenAIStreamDelta `json:"delta"`
+	FinishReason *string           `json:"finish_reason"`
+}
+
+type OpenAIStreamDelta struct {
+	Role    string `json:"role,omitempty"`
+	Content string `json:"content,omitempty"`
+}
+
+// Anthropic 流式事件结构体
+type AnthropicContentBlockDelta struct {
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	Index int    `json:"index"`
+}
+
+type AnthropicStreamEvent struct {
+	Type  string               `json:"type"`
+	Index int                  `json:"index"`
+	Delta AnthropicStreamDelta `json:"delta"`
+}
+
+type AnthropicStreamDelta struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
