@@ -136,9 +136,10 @@ type ProxyResponse struct {
 
 // ResponseChoice - 响应选项
 type ResponseChoice struct {
-	Index        int     `json:"index"`
-	Message      Message `json:"message"`
-	FinishReason string  `json:"finish_reason"`
+	Index        int         `json:"index"`
+	Message      Message     `json:"message"`
+	Logprobs     interface{} `json:"logprobs"`
+	FinishReason string      `json:"finish_reason"`
 }
 
 // ResponseUsage - 响应使用统计
@@ -275,8 +276,11 @@ type AnthropicRequest struct {
 
 // AnthropicContentBlock - Anthropic响应中的内容块
 type AnthropicContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type  string      `json:"type"`
+	Text  string      `json:"text,omitempty"`
+	ID    string      `json:"id,omitempty"`    // tool_use类型的ID
+	Name  string      `json:"name,omitempty"`  // tool_use类型的工具名称
+	Input interface{} `json:"input,omitempty"` // tool_use类型的输入参数
 }
 
 // AnthropicUsage - Anthropic API使用统计

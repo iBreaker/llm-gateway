@@ -1,0 +1,13 @@
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{"content":"I'll help you with that. Let me use a tool to get the information."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_mixed123","type":"function","function":{"name":"search_web","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"latest news\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mixed","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4-turbo","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

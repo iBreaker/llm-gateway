@@ -1,0 +1,13 @@
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"你好"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"世界"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"! 🌍"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":" Testing émojis and spëcial chars ñ"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-unicode","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

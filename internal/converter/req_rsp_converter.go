@@ -255,19 +255,80 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 
 	// 提取消息内容和结束原因
 	if len(response.Choices) > 0 {
-		anthropicResp.Content = []types.AnthropicContentBlock{
-			{
-				Type: "text",
-				Text: contentToString(response.Choices[0].Message.Content),
-			},
+		choice := response.Choices[0]
+		var contentBlocks []types.AnthropicContentBlock
+		
+		// 如果原始内容已经是数组格式且来自Anthropic，直接使用
+		if contentArray, ok := choice.Message.Content.([]interface{}); ok {
+			// 原始格式是数组，尝试转换为AnthropicContentBlock
+			for _, item := range contentArray {
+				if blockMap, ok := item.(map[string]interface{}); ok {
+					block := types.AnthropicContentBlock{
+						Type: fmt.Sprintf("%v", blockMap["type"]),
+					}
+					
+					if text, exists := blockMap["text"]; exists {
+						block.Text = fmt.Sprintf("%v", text)
+					}
+					if id, exists := blockMap["id"]; exists {
+						block.ID = fmt.Sprintf("%v", id)
+					}
+					if name, exists := blockMap["name"]; exists {
+						block.Name = fmt.Sprintf("%v", name)
+					}
+					if input, exists := blockMap["input"]; exists {
+						block.Input = input
+					}
+					
+					contentBlocks = append(contentBlocks, block)
+				}
+			}
+		} else if len(choice.Message.ToolCalls) > 0 {
+			// 从OpenAI格式转换
+			// 先添加文本内容（如果有）
+			if choice.Message.Content != nil {
+				textContent := contentToString(choice.Message.Content)
+				if textContent != "" {
+					contentBlocks = append(contentBlocks, types.AnthropicContentBlock{
+						Type: "text",
+						Text: textContent,
+					})
+				}
+			}
+			
+			// 添加tool_use块
+			for _, toolCall := range choice.Message.ToolCalls {
+				if toolCall != nil {
+					if funcData, ok := toolCall["function"].(map[string]interface{}); ok {
+						contentBlocks = append(contentBlocks, types.AnthropicContentBlock{
+							Type:  "tool_use",
+							ID:    fmt.Sprintf("%v", toolCall["id"]),
+							Name:  fmt.Sprintf("%v", funcData["name"]),
+							Input: funcData["arguments"],
+						})
+					}
+				}
+			}
+		} else {
+			// 普通文本响应
+			contentBlocks = []types.AnthropicContentBlock{
+				{
+					Type: "text",
+					Text: contentToString(choice.Message.Content),
+				},
+			}
 		}
+		
+		anthropicResp.Content = contentBlocks
 
 		// 转换结束原因
-		switch response.Choices[0].FinishReason {
+		switch choice.FinishReason {
 		case "stop":
 			anthropicResp.StopReason = "end_turn"
 		case "length":
 			anthropicResp.StopReason = "max_tokens"
+		case "tool_calls":
+			anthropicResp.StopReason = "tool_use"
 		default:
 			anthropicResp.StopReason = "end_turn"
 		}
@@ -285,9 +346,50 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 	}
 
 	// 转换为统一的ProxyResponse格式
-	var content string
-	if len(anthropicResp.Content) > 0 {
+	var content interface{}
+	var toolCalls []map[string]interface{}
+	
+	// 处理复杂的content格式，保持原始结构
+	if len(anthropicResp.Content) == 1 && anthropicResp.Content[0].Type == "text" {
+		// 单纯文本响应
 		content = anthropicResp.Content[0].Text
+	} else if len(anthropicResp.Content) > 0 {
+		// 复杂内容或包含tool_use，将anthropicResp.Content转换为interface{}数组
+		var contentArray []interface{}
+		for _, block := range anthropicResp.Content {
+			blockMap := map[string]interface{}{
+				"type": block.Type,
+			}
+			
+			if block.Text != "" {
+				blockMap["text"] = block.Text
+			}
+			if block.ID != "" {
+				blockMap["id"] = block.ID
+			}
+			if block.Name != "" {
+				blockMap["name"] = block.Name
+			}
+			if block.Input != nil {
+				blockMap["input"] = block.Input
+			}
+			
+			contentArray = append(contentArray, blockMap)
+			
+			// 同时为OpenAI兼容性提取tool_calls
+			if block.Type == "tool_use" {
+				toolCall := map[string]interface{}{
+					"id":   block.ID,
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":      block.Name,
+						"arguments": block.Input,
+					},
+				}
+				toolCalls = append(toolCalls, toolCall)
+			}
+		}
+		content = contentArray
 	}
 
 	// 转换结束原因
@@ -314,8 +416,9 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 			{
 				Index: 0,
 				Message: types.Message{
-					Role:    "assistant",
-					Content: content,
+					Role:      "assistant",
+					Content:   content,
+					ToolCalls: toolCalls,
 				},
 				FinishReason: finishReason,
 			},
@@ -332,10 +435,31 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 
 // parseOpenAIResponse 解析OpenAI API响应为内部格式
 func (c *RequestResponseConverter) parseOpenAIResponse(responseBody []byte) (*types.ProxyResponse, error) {
+	// 先解析为通用map以保持原始字段（包括null值）
+	var rawResp map[string]interface{}
+	if err := json.Unmarshal(responseBody, &rawResp); err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAI response as raw map: %w", err)
+	}
+	
+	// 再解析为ProxyResponse结构体
 	var proxyResp types.ProxyResponse
 	if err := json.Unmarshal(responseBody, &proxyResp); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)
 	}
+	
+	// 处理choices中可能丢失的logprobs字段
+	if rawChoices, ok := rawResp["choices"].([]interface{}); ok {
+		for i, rawChoice := range rawChoices {
+			if i < len(proxyResp.Choices) {
+				if choiceMap, ok := rawChoice.(map[string]interface{}); ok {
+					if logprobs, exists := choiceMap["logprobs"]; exists {
+						proxyResp.Choices[i].Logprobs = logprobs
+					}
+				}
+			}
+		}
+	}
+	
 	return &proxyResp, nil
 }
 
