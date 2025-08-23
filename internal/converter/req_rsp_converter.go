@@ -492,7 +492,7 @@ func (c *RequestResponseConverter) BuildAnthropicRequest(request *types.ProxyReq
 		MaxTokens:   request.MaxTokens,
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
-		Tools:       request.Tools,
+		Tools:       convertToAnthropicTools(request.Tools),
 		ToolChoice:  request.ToolChoice,
 	}
 
@@ -524,7 +524,7 @@ func (c *RequestResponseConverter) BuildOpenAIRequest(request *types.ProxyReques
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
 		TopP:        request.TopP,
-		Tools:       request.Tools,
+		Tools:       convertToOpenAITools(request.Tools),
 		ToolChoice:  request.ToolChoice,
 	}
 
@@ -573,4 +573,77 @@ func (c *RequestResponseConverter) InjectSystemPrompt(request *types.ProxyReques
 			}
 		}
 	}
+}
+
+// convertToAnthropicTools 将工具转换为Anthropic格式
+func convertToAnthropicTools(tools []map[string]interface{}) []map[string]interface{} {
+	if tools == nil {
+		return nil
+	}
+	
+	var anthropicTools []map[string]interface{}
+	
+	for _, toolMap := range tools {
+		
+		// 检查是否是OpenAI格式的工具
+		if toolMap["type"] == "function" {
+			if function, ok := toolMap["function"].(map[string]interface{}); ok {
+				// 转换为Anthropic格式
+				anthropicTool := map[string]interface{}{
+					"name":        function["name"],
+					"description": function["description"],
+				}
+				
+				// 转换parameters为input_schema
+				if parameters, ok := function["parameters"]; ok {
+					anthropicTool["input_schema"] = parameters
+				}
+				
+				anthropicTools = append(anthropicTools, anthropicTool)
+			} else {
+				anthropicTools = append(anthropicTools, toolMap)
+			}
+		} else {
+			// 已经是Anthropic格式或其他格式，直接保留
+			anthropicTools = append(anthropicTools, toolMap)
+		}
+	}
+	
+	return anthropicTools
+}
+
+// convertToOpenAITools 将工具转换为OpenAI格式
+func convertToOpenAITools(tools []map[string]interface{}) []map[string]interface{} {
+	if tools == nil {
+		return nil
+	}
+	
+	var openaiTools []map[string]interface{}
+	
+	for _, toolMap := range tools {
+		
+		// 检查是否是Anthropic格式的工具
+		if _, hasName := toolMap["name"]; hasName {
+			if _, hasInputSchema := toolMap["input_schema"]; hasInputSchema {
+				// 转换为OpenAI格式
+				openaiTool := map[string]interface{}{
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":        toolMap["name"],
+						"description": toolMap["description"],
+						"parameters":  toolMap["input_schema"],
+					},
+				}
+				
+				openaiTools = append(openaiTools, openaiTool)
+			} else {
+				openaiTools = append(openaiTools, toolMap)
+			}
+		} else {
+			// 已经是OpenAI格式或其他格式，直接保留
+			openaiTools = append(openaiTools, toolMap)
+		}
+	}
+	
+	return openaiTools
 }

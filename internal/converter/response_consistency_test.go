@@ -152,10 +152,11 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 			// 确定格式和提供商
 			var provider types.Provider
 			var targetFormat RequestFormat
-			if filepath.Base(tc.filename)[4:12] == "anthropic" {
+			filename := filepath.Base(tc.filename)
+			if len(filename) > 13 && filename[4:13] == "anthropic" {
 				provider = types.ProviderAnthropic
 				targetFormat = FormatAnthropic
-			} else if filepath.Base(tc.filename)[4:10] == "openai" {
+			} else if len(filename) > 10 && filename[4:10] == "openai" {
 				provider = types.ProviderOpenAI
 				targetFormat = FormatOpenAI
 			}

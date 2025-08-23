@@ -1,0 +1,18 @@
+{
+  "id": "msg_01test456",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "The capital of Japan is Tokyo."
+    }
+  ],
+  "model": "claude-3-sonnet-20240229",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 9
+  }
+}

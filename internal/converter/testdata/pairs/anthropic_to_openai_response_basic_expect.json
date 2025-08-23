@@ -1,0 +1,22 @@
+{
+  "id": "msg_01test456",
+  "object": "chat.completion",
+  "created": 1677652288,
+  "model": "claude-3-sonnet-20240229",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of Japan is Tokyo."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 9,
+    "total_tokens": 21
+  }
+}

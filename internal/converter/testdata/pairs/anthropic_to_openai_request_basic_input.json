@@ -1,0 +1,12 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is the capital of Japan?"
+    }
+  ],
+  "system": "You are a helpful assistant.",
+  "max_tokens": 150,
+  "temperature": 0.5
+}

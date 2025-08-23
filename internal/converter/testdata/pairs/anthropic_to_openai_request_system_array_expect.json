@@ -1,0 +1,14 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a code review expert.\n\nFocus on best practices and security."
+    },
+    {
+      "role": "user",
+      "content": "Analyze this code"
+    }
+  ],
+  "max_tokens": 200
+}
