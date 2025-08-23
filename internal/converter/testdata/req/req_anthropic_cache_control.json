@@ -1,0 +1,69 @@
+{
+    "model": "claude-sonnet-4-20250514",
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# claudeMd\nCodebase and user instructions are shown below.\n</system-reminder>\n"
+                },
+                {
+                    "type": "text",
+                    "text": "ping baidu.com",
+                    "cache_control": {
+                        "type": "ephemeral"
+                    }
+                }
+            ]
+        }
+    ],
+    "temperature": 1,
+    "system": [
+        {
+            "type": "text",
+            "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+            "cache_control": {
+                "type": "ephemeral"
+            }
+        },
+        {
+            "type": "text",
+            "text": "\nYou are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.\n\n",
+            "cache_control": {
+                "type": "ephemeral"
+            }
+        }
+    ],
+    "tools": [
+        {
+            "name": "Task",
+            "description": "Launch a new agent to handle complex, multi-step tasks autonomously.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "A short (3-5 word) description of the task"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "The task for the agent to perform"
+                    },
+                    "subagent_type": {
+                        "type": "string",
+                        "description": "The type of specialized agent to use for this task"
+                    }
+                },
+                "required": ["description", "prompt", "subagent_type"],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+        }
+    ],
+    "metadata": {
+        "user_id": "user_cbd53d3a1c01576990560dd1cf2fc652d58d4cd302b518d1dd"
+    },
+    "max_tokens": 32000,
+    "stream": true
+}
