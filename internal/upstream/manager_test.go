@@ -8,8 +8,68 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
+// MockUpstreamConfigManager 实现ConfigManager接口用于测试
+type MockUpstreamConfigManager struct {
+	accounts map[string]*types.UpstreamAccount
+}
+
+func NewMockUpstreamConfigManager() *MockUpstreamConfigManager {
+	return &MockUpstreamConfigManager{
+		accounts: make(map[string]*types.UpstreamAccount),
+	}
+}
+
+func (m *MockUpstreamConfigManager) CreateUpstreamAccount(account *types.UpstreamAccount) error {
+	m.accounts[account.ID] = account
+	return nil
+}
+
+func (m *MockUpstreamConfigManager) GetUpstreamAccount(accountID string) (*types.UpstreamAccount, error) {
+	account, exists := m.accounts[accountID]
+	if !exists {
+		return nil, fmt.Errorf("account not found: %s", accountID)
+	}
+	return account, nil
+}
+
+func (m *MockUpstreamConfigManager) ListUpstreamAccounts() []*types.UpstreamAccount {
+	accounts := make([]*types.UpstreamAccount, 0, len(m.accounts))
+	for _, account := range m.accounts {
+		accounts = append(accounts, account)
+	}
+	return accounts
+}
+
+func (m *MockUpstreamConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*types.UpstreamAccount {
+	accounts := make([]*types.UpstreamAccount, 0)
+	for _, account := range m.accounts {
+		if account.Provider == provider && account.Status == "active" {
+			accounts = append(accounts, account)
+		}
+	}
+	return accounts
+}
+
+func (m *MockUpstreamConfigManager) UpdateUpstreamAccount(accountID string, updater func(*types.UpstreamAccount) error) error {
+	account, exists := m.accounts[accountID]
+	if !exists {
+		return fmt.Errorf("account not found: %s", accountID)
+	}
+	return updater(account)
+}
+
+func (m *MockUpstreamConfigManager) DeleteUpstreamAccount(accountID string) error {
+	_, exists := m.accounts[accountID]
+	if !exists {
+		return fmt.Errorf("account not found: %s", accountID)
+	}
+	delete(m.accounts, accountID)
+	return nil
+}
+
 func TestUpstreamManager_AddAccount(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	tests := []struct {
 		name    string
@@ -84,7 +144,8 @@ func TestUpstreamManager_AddAccount(t *testing.T) {
 }
 
 func TestUpstreamManager_ListActiveAccounts(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加不同状态的账号
 	account1 := &types.UpstreamAccount{
@@ -117,9 +178,10 @@ func TestUpstreamManager_ListActiveAccounts(t *testing.T) {
 	activeAnthropic := mgr.ListActiveAccounts(types.ProviderAnthropic)
 	if len(activeAnthropic) != 1 {
 		t.Errorf("ListActiveAccounts(Anthropic) length = %d, want 1", len(activeAnthropic))
-	}
-	if activeAnthropic[0].Name != "active-anthropic" {
-		t.Errorf("ListActiveAccounts(Anthropic)[0].Name = %v, want active-anthropic", activeAnthropic[0].Name)
+	} else {
+		if activeAnthropic[0].Name != "active-anthropic" {
+			t.Errorf("ListActiveAccounts(Anthropic)[0].Name = %v, want active-anthropic", activeAnthropic[0].Name)
+		}
 	}
 
 	activeOpenAI := mgr.ListActiveAccounts(types.ProviderOpenAI)
@@ -134,7 +196,8 @@ func TestUpstreamManager_ListActiveAccounts(t *testing.T) {
 }
 
 func TestUpstreamManager_UpdateAccountStatus(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个账号
 	account := &types.UpstreamAccount{
@@ -168,7 +231,8 @@ func TestUpstreamManager_UpdateAccountStatus(t *testing.T) {
 }
 
 func TestUpstreamManager_UpdateAccountHealth(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个账号
 	account := &types.UpstreamAccount{
@@ -213,7 +277,8 @@ func TestUpstreamManager_UpdateAccountHealth(t *testing.T) {
 }
 
 func TestUpstreamManager_RecordSuccess(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个账号
 	account := &types.UpstreamAccount{
@@ -256,7 +321,8 @@ func TestUpstreamManager_RecordSuccess(t *testing.T) {
 }
 
 func TestUpstreamManager_RecordError(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个账号
 	account := &types.UpstreamAccount{
@@ -295,7 +361,8 @@ func TestUpstreamManager_RecordError(t *testing.T) {
 }
 
 func TestUpstreamManager_UpdateOAuthTokens(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个OAuth账号
 	account := &types.UpstreamAccount{
@@ -352,7 +419,8 @@ func TestUpstreamManager_UpdateOAuthTokens(t *testing.T) {
 }
 
 func TestUpstreamManager_IsTokenExpired(t *testing.T) {
-	mgr := NewUpstreamManager()
+	configMgr := NewMockUpstreamConfigManager()
+	mgr := NewUpstreamManager(configMgr)
 
 	// 添加一个OAuth账号
 	account := &types.UpstreamAccount{
@@ -375,8 +443,10 @@ func TestUpstreamManager_IsTokenExpired(t *testing.T) {
 
 	// 设置未来的过期时间
 	futureTime := time.Now().Add(1 * time.Hour)
-	account.ExpiresAt = &futureTime
-	mgr.accounts[account.ID] = account
+	err = mgr.UpdateOAuthTokens(account.ID, account.AccessToken, account.RefreshToken, futureTime)
+	if err != nil {
+		t.Fatalf("UpdateOAuthTokens() error = %v", err)
+	}
 
 	expired, err = mgr.IsTokenExpired(account.ID)
 	if err != nil {
@@ -388,8 +458,10 @@ func TestUpstreamManager_IsTokenExpired(t *testing.T) {
 
 	// 设置过去的过期时间
 	pastTime := time.Now().Add(-1 * time.Hour)
-	account.ExpiresAt = &pastTime
-	mgr.accounts[account.ID] = account
+	err = mgr.UpdateOAuthTokens(account.ID, account.AccessToken, account.RefreshToken, pastTime)
+	if err != nil {
+		t.Fatalf("UpdateOAuthTokens() error = %v", err)
+	}
 
 	expired, err = mgr.IsTokenExpired(account.ID)
 	if err != nil {

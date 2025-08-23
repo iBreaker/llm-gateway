@@ -235,12 +235,21 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 			needRefresh = true
 		}
 		
+		// 如果没有refresh token，也无法刷新
+		if needRefresh && account.RefreshToken == "" {
+			return nil, fmt.Errorf("OAuth token已过期且无refresh token，需要重新授权: ./llm-gateway oauth start %s", upstreamID)
+		}
+		
 		// 2. 如果需要刷新，调用自动刷新逻辑
 		if needRefresh {
 			if err := m.autoRefreshToken(account); err != nil {
 				return nil, fmt.Errorf("auto refresh token failed: %w", err)
 			}
-			// 3. 刷新成功后，使用更新后的内存中的token信息
+			// 3. 刷新成功后，重新获取更新后的account信息
+			account, err = m.configMgr.GetUpstreamAccount(upstreamID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get updated account after refresh: %w", err)
+			}
 		}
 		
 		// OAuth总是使用Bearer认证

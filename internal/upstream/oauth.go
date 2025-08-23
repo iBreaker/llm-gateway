@@ -233,17 +233,30 @@ func (m *OAuthManager) RefreshToken(upstreamID string) error {
 
 	tokenResp, err := m.exchangeCodeForToken(config.TokenURL, tokenReq)
 	if err != nil {
+		// 如果refresh token失效，标记账号状态为需要重新授权
+		if strings.Contains(err.Error(), "invalid_grant") || 
+		   strings.Contains(err.Error(), "Refresh token not found") {
+			// 清除失效的token信息，但保留账号配置
+			m.upstreamMgr.UpdateOAuthTokens(upstreamID, "", "", time.Time{})
+			return fmt.Errorf("refresh token已失效，需要重新进行OAuth授权: ./llm-gateway oauth start %s", upstreamID)
+		}
 		return fmt.Errorf("刷新token失败: %w", err)
 	}
 
 	// 计算新的过期时间
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
+	// 更新账号token信息 - 如果响应中没有新的refresh token，使用原来的
+	newRefreshToken := tokenResp.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = account.RefreshToken
+	}
+
 	// 更新账号token信息
 	return m.upstreamMgr.UpdateOAuthTokens(
 		upstreamID,
 		tokenResp.AccessToken,
-		tokenResp.RefreshToken,
+		newRefreshToken,
 		expiresAt,
 	)
 }
