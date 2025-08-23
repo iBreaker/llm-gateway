@@ -239,7 +239,7 @@ func (m *OAuthManager) RefreshToken(upstreamID string) error {
 		if strings.Contains(err.Error(), "invalid_grant") ||
 			strings.Contains(err.Error(), "Refresh token not found") {
 			// 清除失效的token信息，但保留账号配置
-			m.upstreamMgr.UpdateOAuthTokens(upstreamID, "", "", time.Time{})
+			_ = m.upstreamMgr.UpdateOAuthTokens(upstreamID, "", "", time.Time{})
 			return fmt.Errorf("refresh token已失效，需要重新进行OAuth授权: ./llm-gateway oauth start %s", upstreamID)
 		}
 		return fmt.Errorf("刷新token失败: %w", err)
@@ -382,7 +382,7 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 	if err != nil {
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

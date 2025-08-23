@@ -170,9 +170,9 @@ func TestUpstreamManager_ListActiveAccounts(t *testing.T) {
 		Status:   "active",
 	}
 
-	mgr.AddAccount(account1)
-	mgr.AddAccount(account2)
-	mgr.AddAccount(account3)
+	_ = mgr.AddAccount(account1)
+	_ = mgr.AddAccount(account2)
+	_ = mgr.AddAccount(account3)
 
 	// 测试ListActiveAccounts
 	activeAnthropic := mgr.ListActiveAccounts(types.ProviderAnthropic)
@@ -206,7 +206,7 @@ func TestUpstreamManager_UpdateAccountStatus(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 更新状态
 	err := mgr.UpdateAccountStatus(account.ID, "disabled")
@@ -241,7 +241,7 @@ func TestUpstreamManager_UpdateAccountHealth(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 更新健康状态为healthy
 	err := mgr.UpdateAccountHealth(account.ID, true)
@@ -287,7 +287,7 @@ func TestUpstreamManager_RecordSuccess(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 记录成功请求
 	latency := 150 * time.Millisecond
@@ -331,7 +331,7 @@ func TestUpstreamManager_RecordError(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 记录错误请求
 	testErr := fmt.Errorf("test error")
@@ -372,7 +372,7 @@ func TestUpstreamManager_UpdateOAuthTokens(t *testing.T) {
 		ClientID:     "test-client",
 		ClientSecret: "test-secret",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 更新OAuth tokens
 	accessToken := "new-access-token"
@@ -410,7 +410,7 @@ func TestUpstreamManager_UpdateOAuthTokens(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(apiKeyAccount)
+	_ = mgr.AddAccount(apiKeyAccount)
 
 	err = mgr.UpdateOAuthTokens(apiKeyAccount.ID, accessToken, refreshToken, expiresAt)
 	if err == nil {
@@ -430,7 +430,7 @@ func TestUpstreamManager_IsTokenExpired(t *testing.T) {
 		ClientID:     "test-client",
 		ClientSecret: "test-secret",
 	}
-	mgr.AddAccount(account)
+	_ = mgr.AddAccount(account)
 
 	// 测试没有过期时间的情况
 	expired, err := mgr.IsTokenExpired(account.ID)
@@ -478,7 +478,7 @@ func TestUpstreamManager_IsTokenExpired(t *testing.T) {
 		Provider: types.ProviderAnthropic,
 		APIKey:   "sk-ant-test",
 	}
-	mgr.AddAccount(apiKeyAccount)
+	_ = mgr.AddAccount(apiKeyAccount)
 
 	_, err = mgr.IsTokenExpired(apiKeyAccount.ID)
 	if err == nil {

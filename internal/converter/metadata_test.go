@@ -132,7 +132,7 @@ func TestMetadataPreservation(t *testing.T) {
 			expectError: false,
 			checkFunc: func(t *testing.T, rebuilt []byte) {
 				var result map[string]interface{}
-				json.Unmarshal(rebuilt, &result)
+				_ = json.Unmarshal(rebuilt, &result)
 
 				// 检查system格式保持
 				system := result["system"]
@@ -163,7 +163,7 @@ func TestMetadataPreservation(t *testing.T) {
 			expectError: false,
 			checkFunc: func(t *testing.T, rebuilt []byte) {
 				var result map[string]interface{}
-				json.Unmarshal(rebuilt, &result)
+				_ = json.Unmarshal(rebuilt, &result)
 
 				// 检查system数组格式保持
 				system := result["system"]
@@ -226,7 +226,7 @@ func TestSystemFieldPreservation(t *testing.T) {
 			}`,
 			expect: func(t *testing.T, rebuilt []byte) {
 				var result map[string]interface{}
-				json.Unmarshal(rebuilt, &result)
+				_ = json.Unmarshal(rebuilt, &result)
 
 				system := result["system"]
 				if systemStr, ok := system.(string); ok {
@@ -248,7 +248,7 @@ func TestSystemFieldPreservation(t *testing.T) {
 			}`,
 			expect: func(t *testing.T, rebuilt []byte) {
 				var result map[string]interface{}
-				json.Unmarshal(rebuilt, &result)
+				_ = json.Unmarshal(rebuilt, &result)
 
 				system := result["system"]
 				if systemArray, ok := system.([]interface{}); ok {

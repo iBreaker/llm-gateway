@@ -842,7 +842,7 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 
 	// 读取用户输入的authorization code
 	var code string
-	fmt.Scanln(&code)
+	_, _ = fmt.Scanln(&code)
 
 	if code == "" {
 		fmt.Printf("⚠️  授权流程已跳过\n")

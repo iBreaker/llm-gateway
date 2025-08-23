@@ -275,7 +275,7 @@ func (p *StreamResponseProcessor) ProcessStream(
 	writer func(event string, tokens int),
 ) error {
 	scanner := bufio.NewScanner(responseBody)
-	var firstEvent bool = true
+	firstEvent := true
 
 	for scanner.Scan() {
 		line := scanner.Text()

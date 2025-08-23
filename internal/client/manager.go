@@ -155,6 +155,6 @@ func hashKey(key string) string {
 // generateID 生成唯一ID
 func generateID(prefix string) string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	return fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(bytes))
 }

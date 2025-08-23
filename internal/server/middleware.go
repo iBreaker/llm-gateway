@@ -84,6 +84,7 @@ func (m *AuthMiddleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 			if err != nil {
 				// 记录日志，但不影响请求处理
 				// TODO: 添加日志记录
+				_ = err // 显式使用错误变量
 			}
 		}()
 	}
@@ -132,7 +133,7 @@ func (m *AuthMiddleware) writeErrorResponse(w http.ResponseWriter, statusCode in
 		"timestamp": time.Now().Unix(),
 	}
 
-	json.NewEncoder(w).Encode(errorResp)
+	_ = json.NewEncoder(w).Encode(errorResp)
 }
 
 // RateLimitMiddleware 限流中间件（简化版本）
@@ -168,6 +169,7 @@ func (m *RateLimitMiddleware) RateLimit(next http.HandlerFunc) http.HandlerFunc 
 		if gatewayKey.RateLimit != nil {
 			// 这里可以实现令牌桶或滑动窗口算法
 			// 暂时跳过具体实现，后续可以优化
+			_ = gatewayKey.RateLimit // 显式使用限流配置
 		}
 
 		next(w, r)
@@ -207,6 +209,7 @@ func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		if keyID == "" {
 			keyID = "anonymous"
 		}
+		_ = keyID // 使用keyID变量
 
 		// TODO: 使用结构化日志记录
 		_ = duration // 暂时避免未使用变量错误

@@ -337,7 +337,7 @@ func TestConfigManager_Reload(t *testing.T) {
 			Port: 8080,
 		},
 	}
-	mgr.Save(initialConfig)
+	_ = mgr.Save(initialConfig)
 
 	// 加载配置
 	config1, err := mgr.Load()
@@ -352,7 +352,7 @@ func TestConfigManager_Reload(t *testing.T) {
 			Port: 9090,
 		},
 	}
-	mgr.Save(modifiedConfig)
+	_ = mgr.Save(modifiedConfig)
 
 	// 重新加载
 	config2, err := mgr.Reload()

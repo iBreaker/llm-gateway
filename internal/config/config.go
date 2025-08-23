@@ -164,19 +164,19 @@ func (m *ConfigManager) validateUpstreamAccount(account *types.UpstreamAccount, 
 // validateGatewayKey 验证Gateway API Key配置
 func (m *ConfigManager) validateGatewayKey(key *types.GatewayAPIKey, index int) error {
 	if key.ID == "" {
-		return fmt.Errorf("Gateway API Key[%d] ID不能为空", index)
+		return fmt.Errorf("gateway API Key[%d] ID不能为空", index)
 	}
 
 	if key.Name == "" {
-		return fmt.Errorf("Gateway API Key[%d] 名称不能为空", index)
+		return fmt.Errorf("gateway API Key[%d] 名称不能为空", index)
 	}
 
 	if key.KeyHash == "" {
-		return fmt.Errorf("Gateway API Key[%d] 密钥哈希不能为空", index)
+		return fmt.Errorf("gateway API Key[%d] 密钥哈希不能为空", index)
 	}
 
 	if len(key.Permissions) == 0 {
-		return fmt.Errorf("Gateway API Key[%d] 权限不能为空", index)
+		return fmt.Errorf("gateway API Key[%d] 权限不能为空", index)
 	}
 
 	return nil
@@ -224,7 +224,7 @@ func (m *ConfigManager) CreateGatewayKey(key *types.GatewayAPIKey) error {
 	// 检查ID是否已存在
 	for _, existingKey := range m.config.GatewayKeys {
 		if existingKey.ID == key.ID {
-			return fmt.Errorf("Gateway API Key ID已存在: %s", key.ID)
+			return fmt.Errorf("gateway API Key ID已存在: %s", key.ID)
 		}
 	}
 
@@ -251,7 +251,7 @@ func (m *ConfigManager) GetGatewayKey(keyID string) (*types.GatewayAPIKey, error
 		}
 	}
 
-	return nil, fmt.Errorf("Gateway API Key不存在: %s", keyID)
+	return nil, fmt.Errorf("gateway API Key不存在: %s", keyID)
 }
 
 // ListGatewayKeys 列出所有Gateway API Key
@@ -294,7 +294,7 @@ func (m *ConfigManager) UpdateGatewayKey(keyID string, updater func(*types.Gatew
 		}
 	}
 
-	return fmt.Errorf("Gateway API Key不存在: %s", keyID)
+	return fmt.Errorf("gateway API Key不存在: %s", keyID)
 }
 
 // DeleteGatewayKey 删除Gateway API Key
@@ -316,7 +316,7 @@ func (m *ConfigManager) DeleteGatewayKey(keyID string) error {
 		}
 	}
 
-	return fmt.Errorf("Gateway API Key不存在: %s", keyID)
+	return fmt.Errorf("gateway API Key不存在: %s", keyID)
 }
 
 // ===== Upstream Accounts CRUD =====
@@ -457,14 +457,14 @@ func (m *ConfigManager) GetConfigPath() string {
 func (m *ConfigManager) applyEnvironmentConfig(config *types.Config) {
 	// 设置HTTP代理环境变量
 	if config.Environment.HTTPProxy != "" {
-		os.Setenv("HTTP_PROXY", config.Environment.HTTPProxy)
+		_ = os.Setenv("HTTP_PROXY", config.Environment.HTTPProxy)
 	}
 
 	if config.Environment.HTTPSProxy != "" {
-		os.Setenv("HTTPS_PROXY", config.Environment.HTTPSProxy)
+		_ = os.Setenv("HTTPS_PROXY", config.Environment.HTTPSProxy)
 	}
 
 	if config.Environment.NoProxy != "" {
-		os.Setenv("NO_PROXY", config.Environment.NoProxy)
+		_ = os.Setenv("NO_PROXY", config.Environment.NoProxy)
 	}
 }

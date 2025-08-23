@@ -73,7 +73,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		h.writeErrorResponse(w, http.StatusBadRequest, "invalid_request_body", "Failed to read request body")
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// 2. 检测请求格式
 	requestFormat := h.converter.DetectFormatWithEndpoint(requestBody, clientEndpoint)
@@ -141,7 +141,7 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 	// 返回响应
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(transformedBytes)
+	_, _ = w.Write(transformedBytes)
 }
 
 // handleStreamResponse 处理流式响应
@@ -187,7 +187,7 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 		logger.Debug("上游请求失败: %v", err)
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	logger.Debug("收到上游响应，状态码: %d", resp.StatusCode)
 
@@ -225,14 +225,14 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 		logger.Debug("处理事件，Tokens: %d, Event长度: %d", tokens, len(event))
 		if event == "[DONE]" {
 			logger.Debug("发送[DONE]事件")
-			fmt.Fprintf(w, "data: [DONE]\n\n")
+			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 		} else {
 			// 检查是否已经是完整的SSE格式（包含event:行）
 			if strings.HasPrefix(event, "event: ") {
 				logger.Debug("发送完整SSE事件")
-				fmt.Fprintf(w, "%s\n\n", event)
+				_, _ = fmt.Fprintf(w, "%s\n\n", event)
 			} else {
-				fmt.Fprintf(w, "data: %s\n\n", event)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", event)
 			}
 		}
 		flusher.Flush()
@@ -262,7 +262,7 @@ func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flus
 	}
 
 	errorBytes, _ := json.Marshal(errorEvent)
-	fmt.Fprintf(w, "data: %s\n\n", string(errorBytes))
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", string(errorBytes))
 	flusher.Flush()
 }
 
@@ -301,7 +301,7 @@ func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, reques
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// 3. 读取响应
 	responseBody, err := io.ReadAll(resp.Body)
@@ -396,7 +396,7 @@ func (h *ProxyHandler) handleUpstreamError(w http.ResponseWriter, account *types
 func (h *ProxyHandler) recordSuccess(keyID, upstreamID string, latency time.Duration, tokensUsed int) {
 	// 更新Gateway Key统计
 	if keyID != "" {
-		h.gatewayKeyMgr.UpdateKeyUsage(keyID, true, latency)
+		_ = h.gatewayKeyMgr.UpdateKeyUsage(keyID, true, latency)
 	}
 
 	// 更新上游账号统计
@@ -419,5 +419,5 @@ func (h *ProxyHandler) writeErrorResponse(w http.ResponseWriter, statusCode int,
 		"timestamp": time.Now().Unix(),
 	}
 
-	json.NewEncoder(w).Encode(errorResp)
+	_ = json.NewEncoder(w).Encode(errorResp)
 }

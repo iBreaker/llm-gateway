@@ -116,7 +116,7 @@ func (s *HTTPServer) loggingMiddleware(next http.Handler) http.Handler {
 func (s *HTTPServer) writeJSONResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // handleHealth 健康检查处理器

@@ -503,7 +503,7 @@ func (c *RequestResponseConverter) BuildAnthropicRequest(request *types.ProxyReq
 		systemField := &types.SystemField{}
 		// 转义双引号并创建JSON格式的字符串
 		jsonStr := `"` + strings.ReplaceAll(systemPrompt, `"`, `\"`) + `"`
-		systemField.UnmarshalJSON([]byte(jsonStr))
+		_ = systemField.UnmarshalJSON([]byte(jsonStr))
 		anthropicReq.System = systemField
 	}
 

@@ -190,8 +190,8 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 // 检查响应基础字段
 func checkResponseBasicFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	basicFields := []string{"id", "model"}
 
@@ -213,8 +213,8 @@ func checkResponseBasicFields(t *testing.T, original, rebuilt []byte) {
 // 检查Anthropic响应特定字段
 func checkAnthropicResponseSpecificFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	anthropicFields := []string{"type", "role", "stop_reason", "stop_sequence", "usage"}
 
@@ -236,8 +236,8 @@ func checkAnthropicResponseSpecificFields(t *testing.T, original, rebuilt []byte
 // 检查Anthropic工具使用字段
 func checkAnthropicToolUseFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	// 检查content数组中的tool_use
 	origContent, origExists := origObj["content"]
@@ -265,8 +265,8 @@ func checkAnthropicMultipleToolsFields(t *testing.T, original, rebuilt []byte) {
 // 检查OpenAI响应特定字段
 func checkOpenAIResponseSpecificFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	openaiFields := []string{"object", "created", "choices", "usage"}
 
@@ -288,8 +288,8 @@ func checkOpenAIResponseSpecificFields(t *testing.T, original, rebuilt []byte) {
 // 检查OpenAI工具调用字段
 func checkOpenAIToolCallFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	// 检查choices中的tool_calls
 	origChoices, origExists := origObj["choices"]

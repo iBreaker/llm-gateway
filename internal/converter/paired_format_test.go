@@ -47,11 +47,12 @@ func TestPairedFormatConversions(t *testing.T) {
 
 			// 执行转换
 			var actualData []byte
-			if tc.DataType == "request" {
+			switch tc.DataType {
+			case "request":
 				actualData, err = executeRequestConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
-			} else if tc.DataType == "response_stream" {
+			case "response_stream":
 				actualData, err = executeStreamResponseConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
-			} else {
+			default:
 				actualData, err = executeResponseConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
 			}
 

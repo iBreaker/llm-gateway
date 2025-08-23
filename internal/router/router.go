@@ -101,14 +101,14 @@ func (r *RequestRouter) selectHealthFirst(accounts []*types.UpstreamAccount) (*t
 
 // MarkUpstreamError 标记上游账号错误
 func (r *RequestRouter) MarkUpstreamError(upstreamID string, err error) {
-	r.upstreamMgr.UpdateAccountHealth(upstreamID, false)
-	r.upstreamMgr.RecordError(upstreamID, err)
+	_ = r.upstreamMgr.UpdateAccountHealth(upstreamID, false)
+	_ = r.upstreamMgr.RecordError(upstreamID, err)
 }
 
 // MarkUpstreamSuccess 标记上游账号成功
 func (r *RequestRouter) MarkUpstreamSuccess(upstreamID string, latency time.Duration, tokensUsed int64) {
-	r.upstreamMgr.UpdateAccountHealth(upstreamID, true)
-	r.upstreamMgr.RecordSuccess(upstreamID, latency, tokensUsed)
+	_ = r.upstreamMgr.UpdateAccountHealth(upstreamID, true)
+	_ = r.upstreamMgr.RecordSuccess(upstreamID, latency, tokensUsed)
 }
 
 // GetUpstreamStats 获取上游账号统计信息

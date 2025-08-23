@@ -197,8 +197,8 @@ func deepEqual(a, b interface{}) bool {
 // 检查system字段保留
 func checkSystemFieldPreservation(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	origSystem, origExists := origObj["system"]
 	rebuiltSystem, rebuiltExists := rebuiltObj["system"]
@@ -227,8 +227,8 @@ func checkSystemFieldPreservation(t *testing.T, original, rebuilt []byte) {
 // 检查metadata字段保留
 func checkMetadataPreservation(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	origMetadata, origExists := origObj["metadata"]
 	rebuiltMetadata, rebuiltExists := rebuiltObj["metadata"]
@@ -250,8 +250,8 @@ func checkMetadataPreservation(t *testing.T, original, rebuilt []byte) {
 // 检查cache_control字段保留
 func checkCacheControlPreservation(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	// 检查system数组中的cache_control
 	if origSystem, exists := origObj["system"]; exists {
@@ -284,8 +284,8 @@ func checkCacheControlPreservation(t *testing.T, original, rebuilt []byte) {
 // 检查基础字段保留
 func checkBasicFieldsPreservation(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	basicFields := []string{"model", "max_tokens", "temperature", "stream"}
 
@@ -307,8 +307,8 @@ func checkBasicFieldsPreservation(t *testing.T, original, rebuilt []byte) {
 // 检查复杂content字段保留
 func checkComplexContentPreservation(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
-	json.Unmarshal(original, &origObj)
-	json.Unmarshal(rebuilt, &rebuiltObj)
+	_ = json.Unmarshal(original, &origObj)
+	_ = json.Unmarshal(rebuilt, &rebuiltObj)
 
 	origMessages, origExists := origObj["messages"]
 	rebuiltMessages, rebuiltExists := rebuiltObj["messages"]
