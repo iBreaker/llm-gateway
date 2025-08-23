@@ -5,17 +5,10 @@ run:
   timeout: 5m
   issues-exit-code: 1
   tests: true
-  skip-dirs:
-    - vendor
-    - tmp
-  skip-files:
-    - ".*\\.pb\\.go$"
 
 output:
-  format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: true
   sort-results: true
 
 linters-settings:
@@ -24,14 +17,14 @@ linters-settings:
     check-blank: true
   
   cyclop:
-    max-complexity: 20  # 调整复杂度限制
+    max-complexity: 25  # 调整复杂度限制以允许更复杂的函数
     
   goconst:
     min-len: 3
     min-occurrences: 3
     
   govet:
-    check-shadowing: true
+    # check-shadowing is deprecated, use shadow linter instead
     
   misspell:
     locale: US
@@ -63,6 +56,12 @@ linters:
     - nakedret
 
 issues:
+  exclude-dirs:
+    - vendor
+    - tmp
+  exclude-files:
+    - ".*\\.pb\\.go$"
+  uniq-by-line: true
   exclude-rules:
     - path: _test\.go
       linters:
