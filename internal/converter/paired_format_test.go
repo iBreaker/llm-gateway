@@ -49,6 +49,8 @@ func TestPairedFormatConversions(t *testing.T) {
 			var actualData []byte
 			if tc.DataType == "request" {
 				actualData, err = executeRequestConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
+			} else if tc.DataType == "response_stream" {
+				actualData, err = executeStreamResponseConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
 			} else {
 				actualData, err = executeResponseConversion(conv, inputData, tc.SourceFormat, tc.TargetFormat)
 			}
@@ -78,13 +80,22 @@ func TestPairedFormatConversions(t *testing.T) {
 
 // discoverPairTestCases 自动发现测试对
 func discoverPairTestCases(dir string) ([]PairTestCase, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*_input.json"))
+	// 发现JSON格式的测试文件
+	jsonFiles, err := filepath.Glob(filepath.Join(dir, "*_input.json"))
+	if err != nil {
+		return nil, err
+	}
+	
+	// 发现流式响应的测试文件
+	streamFiles, err := filepath.Glob(filepath.Join(dir, "*_input.txt"))
 	if err != nil {
 		return nil, err
 	}
 
 	var testCases []PairTestCase
-	for _, inputFile := range files {
+	
+	// 处理JSON测试文件
+	for _, inputFile := range jsonFiles {
 		// 构造期望文件路径
 		expectFile := strings.Replace(inputFile, "_input.json", "_expect.json", 1)
 		
@@ -102,6 +113,28 @@ func discoverPairTestCases(dir string) ([]PairTestCase, error) {
 			SourceFormat: sourceFormat,
 			TargetFormat: targetFormat,
 			DataType:     dataType,
+		})
+	}
+	
+	// 处理流式响应测试文件
+	for _, inputFile := range streamFiles {
+		// 构造期望文件路径
+		expectFile := strings.Replace(inputFile, "_input.txt", "_expect.txt", 1)
+		
+		// 解析文件名获取测试信息（去掉.txt扩展名）
+		basename := strings.TrimSuffix(filepath.Base(inputFile), "_input.txt") + "_input.json"
+		testName, sourceFormat, targetFormat, dataType, err := parseTestFileName(basename)
+		if err != nil {
+			continue // 跳过无法解析的文件
+		}
+
+		testCases = append(testCases, PairTestCase{
+			Name:         testName + "_stream",
+			InputFile:    inputFile,
+			ExpectFile:   expectFile,
+			SourceFormat: sourceFormat,
+			TargetFormat: targetFormat,
+			DataType:     dataType + "_stream", // 标记为流式
 		})
 	}
 
