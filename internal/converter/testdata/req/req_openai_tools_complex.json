@@ -1,0 +1,57 @@
+{
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant with access to various tools"
+    },
+    {
+      "role": "user",
+      "content": "I need to get the weather for multiple cities and do some calculations"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather information for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City name"
+            },
+            "units": {
+              "type": "string",
+              "enum": ["metric", "imperial"],
+              "default": "metric"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    },
+    {
+      "type": "function", 
+      "function": {
+        "name": "calculator",
+        "description": "Perform mathematical calculations",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "Mathematical operation to perform"
+            }
+          },
+          "required": ["operation"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "max_tokens": 1500,
+  "temperature": 0.3
+}

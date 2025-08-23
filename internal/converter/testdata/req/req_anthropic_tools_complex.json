@@ -1,0 +1,64 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 2000,
+  "system": "You are a helpful assistant that can access various tools to help users",
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get weather information",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "Location name"
+          }
+        },
+        "required": ["location"]
+      }
+    },
+    {
+      "name": "calculate",
+      "description": "Perform mathematical calculations",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "Mathematical expression to evaluate"
+          }
+        },
+        "required": ["expression"]
+      }
+    },
+    {
+      "name": "search_web",
+      "description": "Search for information on the web",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum number of results",
+            "default": 5
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the weather in New York and also calculate 25 * 30?"
+    }
+  ],
+  "metadata": {
+    "user_id": "tool-user-123",
+    "session_id": "tools-session-456"
+  }
+}

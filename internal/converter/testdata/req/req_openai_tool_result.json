@@ -1,0 +1,67 @@
+{
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the weather in Boston?"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_abc123",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"location\": \"Boston\", \"units\": \"metric\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_abc123",
+      "name": "get_weather",
+      "content": "The weather in Boston is 18°C with light rain. Humidity is 75% and wind speed is 12 km/h."
+    },
+    {
+      "role": "user",
+      "content": "Convert that temperature to Fahrenheit"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather information",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {"type": "string"},
+            "units": {"type": "string", "enum": ["metric", "imperial"]}
+          },
+          "required": ["location"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "convert_temperature",
+        "description": "Convert temperature between units",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "temperature": {"type": "number"},
+            "from_unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+            "to_unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+          },
+          "required": ["temperature", "from_unit", "to_unit"]
+        }
+      }
+    }
+  ],
+  "max_tokens": 1000
+}

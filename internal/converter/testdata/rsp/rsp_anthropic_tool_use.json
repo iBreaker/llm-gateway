@@ -1,0 +1,27 @@
+{
+  "id": "msg_01Aq9w958O2pMawxgdqz",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "I'll help you get the weather information for Tokyo."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01A09q90qw90lkasdjfl",
+      "name": "get_weather",
+      "input": {
+        "location": "Tokyo",
+        "unit": "celsius"
+      }
+    }
+  ],
+  "model": "claude-3-sonnet-20240229",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 372,
+    "output_tokens": 77
+  }
+}

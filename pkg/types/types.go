@@ -100,23 +100,28 @@ type UpstreamUsageStats struct {
 
 // ProxyRequest - 统一的请求结构
 type ProxyRequest struct {
-	Model            string                 `json:"model"`
-	Messages         []Message              `json:"messages"`
-	MaxTokens        int                    `json:"max_tokens,omitempty"`
-	Temperature      float64                `json:"temperature,omitempty"`
-	Stream           *bool                  `json:"stream,omitempty"`
-	TopP             *float64               `json:"top_p,omitempty"`
-	OriginalFormat   string                 `json:"-"`                    // 原始请求格式
-	OriginalSystem   *SystemField           `json:"-"`                    // 原始system字段格式
-	OriginalMetadata map[string]interface{} `json:"-"`                    // 原始metadata字段
-	GatewayKeyID     string                 `json:"-"`                    // 发起请求的Gateway API Key ID
-	UpstreamID       string                 `json:"-"`                    // 选中的上游账号ID
+	Model            string                   `json:"model"`
+	Messages         []Message                `json:"messages"`
+	MaxTokens        int                      `json:"max_tokens,omitempty"`
+	Temperature      float64                  `json:"temperature,omitempty"`
+	Stream           *bool                    `json:"stream,omitempty"`
+	TopP             *float64                 `json:"top_p,omitempty"`
+	Tools            []map[string]interface{} `json:"tools,omitempty"`
+	ToolChoice       interface{}              `json:"tool_choice,omitempty"`
+	OriginalFormat   string                   `json:"-"`                    // 原始请求格式
+	OriginalSystem   *SystemField             `json:"-"`                    // 原始system字段格式
+	OriginalMetadata map[string]interface{}   `json:"-"`                    // 原始metadata字段
+	GatewayKeyID     string                   `json:"-"`                    // 发起请求的Gateway API Key ID
+	UpstreamID       string                   `json:"-"`                    // 选中的上游账号ID
 }
 
 // Message - 通用消息结构
 type Message struct {
-	Role    string      `json:"role"` // system, user, assistant
-	Content interface{} `json:"content"`
+	Role       string                     `json:"role"` // system, user, assistant
+	Content    interface{}                `json:"content"`
+	ToolCalls  []map[string]interface{}   `json:"tool_calls,omitempty"`   // OpenAI工具调用
+	ToolCallID *string                    `json:"tool_call_id,omitempty"` // OpenAI工具调用ID
+	Name       *string                    `json:"name,omitempty"`         // OpenAI工具名称
 }
 
 // ProxyResponse - 统一的响应结构
@@ -177,12 +182,14 @@ type EnvironmentConfig struct {
 
 // OpenAIRequest - OpenAI API请求格式
 type OpenAIRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	Stream      *bool     `json:"stream,omitempty"`
-	TopP        *float64  `json:"top_p,omitempty"`
+	Model       string                   `json:"model"`
+	Messages    []Message                `json:"messages"`
+	MaxTokens   int                      `json:"max_tokens,omitempty"`
+	Temperature float64                  `json:"temperature,omitempty"`
+	Stream      *bool                    `json:"stream,omitempty"`
+	TopP        *float64                 `json:"top_p,omitempty"`
+	Tools       []map[string]interface{} `json:"tools,omitempty"`
+	ToolChoice  interface{}              `json:"tool_choice,omitempty"`
 }
 
 // FlexibleMessage - 支持多种content格式的消息结构
@@ -253,13 +260,15 @@ func (s *SystemField) ToString() string {
 
 // AnthropicRequest - Anthropic API请求格式
 type AnthropicRequest struct {
-	Model       string                 `json:"model"`
-	Messages    []FlexibleMessage      `json:"messages"`
-	MaxTokens   int                    `json:"max_tokens,omitempty"`
-	Temperature float64                `json:"temperature,omitempty"`
-	Stream      *bool                  `json:"stream,omitempty"`
-	System      *SystemField           `json:"system,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Model       string                   `json:"model"`
+	Messages    []FlexibleMessage        `json:"messages"`
+	MaxTokens   int                      `json:"max_tokens,omitempty"`
+	Temperature float64                  `json:"temperature,omitempty"`
+	Stream      *bool                    `json:"stream,omitempty"`
+	System      *SystemField             `json:"system,omitempty"`
+	Metadata    map[string]interface{}   `json:"metadata,omitempty"`
+	Tools       []map[string]interface{} `json:"tools,omitempty"`
+	ToolChoice  interface{}              `json:"tool_choice,omitempty"`
 }
 
 // API响应结构体

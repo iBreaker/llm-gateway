@@ -1,0 +1,34 @@
+{
+  "id": "msg_01Bx2w958O2pMawxgdqz",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "I'll get the weather information for New York and calculate 25 * 30 for you."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01A09q90qw90lkasdjfl",
+      "name": "get_weather",
+      "input": {
+        "location": "New York"
+      }
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01B10r91rx91mkbsekgm",
+      "name": "calculate",
+      "input": {
+        "expression": "25 * 30"
+      }
+    }
+  ],
+  "model": "claude-3-sonnet-20240229",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 425,
+    "output_tokens": 95
+  }
+}

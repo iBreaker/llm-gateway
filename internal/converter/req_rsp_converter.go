@@ -161,6 +161,8 @@ func (c *RequestResponseConverter) parseOpenAIRequest(requestBody []byte) (*type
 		Temperature:    openaiReq.Temperature,
 		Stream:         openaiReq.Stream,
 		TopP:           openaiReq.TopP,
+		Tools:          openaiReq.Tools,
+		ToolChoice:     openaiReq.ToolChoice,
 		OriginalFormat: string(FormatOpenAI),
 	}, nil
 }
@@ -216,6 +218,8 @@ func (c *RequestResponseConverter) parseAnthropicRequest(requestBody []byte) (*t
 		MaxTokens:        anthropicReq.MaxTokens,
 		Temperature:      anthropicReq.Temperature,
 		Stream:           anthropicReq.Stream,
+		Tools:            anthropicReq.Tools,
+		ToolChoice:       anthropicReq.ToolChoice,
 		OriginalFormat:   string(FormatAnthropic),
 		OriginalSystem:   originalSystemField,
 		OriginalMetadata: originalMetadata,
@@ -364,6 +368,8 @@ func (c *RequestResponseConverter) BuildAnthropicRequest(request *types.ProxyReq
 		MaxTokens:   request.MaxTokens,
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
+		Tools:       request.Tools,
+		ToolChoice:  request.ToolChoice,
 	}
 
 	// 优先使用原始SystemField，如果不存在则创建新的
@@ -394,6 +400,8 @@ func (c *RequestResponseConverter) BuildOpenAIRequest(request *types.ProxyReques
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
 		TopP:        request.TopP,
+		Tools:       request.Tools,
+		ToolChoice:  request.ToolChoice,
 	}
 
 	return json.Marshal(openaiReq)

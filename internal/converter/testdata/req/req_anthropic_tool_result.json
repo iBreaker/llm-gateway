@@ -1,0 +1,61 @@
+{
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get weather information",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          }
+        },
+        "required": ["location"]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the weather in Tokyo?"
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "I'll check the weather in Tokyo for you."
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_01A09q90qw90lkasdjfl",
+          "name": "get_weather",
+          "input": {
+            "location": "Tokyo"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01A09q90qw90lkasdjfl",
+          "content": [
+            {
+              "type": "text",
+              "text": "The weather in Tokyo is currently 22°C with partly cloudy skies. Wind speed is 15 km/h from the northwest."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": "Thanks! What about the temperature in Celsius vs Fahrenheit?"
+    }
+  ]
+}
