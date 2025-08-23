@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iBreaker/llm-gateway/pkg/logger"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
@@ -357,11 +358,11 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 	reqBody := formData.Encode()
 
 	// 调试信息：打印请求内容（脱敏）
-	fmt.Printf("🔍 DEBUG: Token请求URL: %s\n", tokenURL)
+	logger.Debug("Token请求URL: %s", tokenURL)
 	
 	// 脱敏处理请求体中的敏感信息
 	debugBody := maskSensitiveInfo(reqBody)
-	fmt.Printf("🔍 DEBUG: Token请求Body: %s\n", debugBody)
+	logger.Debug("Token请求Body: %s", debugBody)
 
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(reqBody))
 	if err != nil {
@@ -387,16 +388,16 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 	}
 
 	// 添加响应状态的调试信息
-	fmt.Printf("🔍 DEBUG: Token响应状态码: %d\n", resp.StatusCode)
+	logger.Debug("Token响应状态码: %d", resp.StatusCode)
 	
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("🔍 DEBUG: Token请求失败，响应内容: %s\n", string(body))
+		logger.Debug("Token请求失败，响应内容: %s", string(body))
 		return nil, fmt.Errorf("token请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
 	// 脱敏处理响应内容中的敏感信息并打印
 	debugResponse := maskSensitiveInfo(string(body))
-	fmt.Printf("🔍 DEBUG: Token响应内容: %s\n", debugResponse)
+	logger.Debug("Token响应内容: %s", debugResponse)
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {

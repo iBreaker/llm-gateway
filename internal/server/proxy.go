@@ -14,6 +14,7 @@ import (
 	"github.com/iBreaker/llm-gateway/internal/converter"
 	"github.com/iBreaker/llm-gateway/internal/router"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
+	"github.com/iBreaker/llm-gateway/pkg/logger"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
@@ -169,38 +170,38 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 
 // callUpstreamStreamAPI 调用上游流式API
 func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) error {
-	fmt.Printf("🔍 DEBUG: 开始流式请求，上游ID: %s, Provider: %s\n", account.ID, account.Provider)
+	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
 	
 	// 构建上游请求
 	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
 	if err != nil {
-		fmt.Printf("🔍 DEBUG: 构建上游请求失败: %v\n", err)
+		logger.Debug("构建上游请求失败: %v", err)
 		return fmt.Errorf("failed to build upstream request: %w", err)
 	}
 
-	fmt.Printf("🔍 DEBUG: 发送流式请求到: %s\n", upstreamReq.URL.String())
+	logger.Debug("发送流式请求到: %s", upstreamReq.URL.String())
 	
 	// 发送流式请求
 	resp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
-		fmt.Printf("🔍 DEBUG: 上游请求失败: %v\n", err)
+		logger.Debug("上游请求失败: %v", err)
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("🔍 DEBUG: 收到上游响应，状态码: %d\n", resp.StatusCode)
+	logger.Debug("收到上游响应，状态码: %d", resp.StatusCode)
 	
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("🔍 DEBUG: 上游API返回错误状态码: %d\n", resp.StatusCode)
+		logger.Debug("上游API返回错误状态码: %d", resp.StatusCode)
 		return fmt.Errorf("upstream API error: status=%d", resp.StatusCode)
 	}
 
 	// 验证Content-Type是否为流式响应
 	contentType := resp.Header.Get("Content-Type")
-	fmt.Printf("🔍 DEBUG: 响应Content-Type: %s\n", contentType)
+	logger.Debug("响应Content-Type: %s", contentType)
 	if !strings.HasPrefix(contentType, "text/event-stream") {
-		fmt.Printf("🔍 DEBUG: 非流式响应Content-Type: %s\n", contentType)
+		logger.Debug("非流式响应Content-Type: %s", contentType)
 		return fmt.Errorf("unexpected content type: %s", contentType)
 	}
 
@@ -208,7 +209,7 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 	// 这样可以避免与中间件包装器的WriteHeader冲突
 	flusher.Flush()
 
-	fmt.Printf("🔍 DEBUG: 开始处理流式响应\n")
+	logger.Debug("开始处理流式响应")
 	// 开始处理流式响应
 	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime)
 }
@@ -216,19 +217,19 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 // processStreamResponse 处理流式响应
 func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.RequestFormat, keyID, upstreamID string, startTime time.Time) error {
 	var totalTokens int
-	fmt.Printf("🔍 DEBUG: 开始处理流式响应，Provider: %s, RequestFormat: %v\n", provider, requestFormat)
+	logger.Debug("开始处理流式响应，Provider: %s, RequestFormat: %v", provider, requestFormat)
 
 	// 使用Transform模块处理流式响应
 	processor := h.converter.GetStreamResponseProcessor()
 	err := processor.ProcessStream(responseBody, provider, requestFormat, func(event string, tokens int) {
-		fmt.Printf("🔍 DEBUG: 处理事件，Tokens: %d, Event长度: %d\n", tokens, len(event))
+		logger.Debug("处理事件，Tokens: %d, Event长度: %d", tokens, len(event))
 		if event == "[DONE]" {
-			fmt.Printf("🔍 DEBUG: 发送[DONE]事件\n")
+			logger.Debug("发送[DONE]事件")
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 		} else {
 			// 检查是否已经是完整的SSE格式（包含event:行）
 			if strings.HasPrefix(event, "event: ") {
-				fmt.Printf("🔍 DEBUG: 发送完整SSE事件\n")
+				logger.Debug("发送完整SSE事件")
 				fmt.Fprintf(w, "%s\n\n", event)
 			} else {
 				fmt.Fprintf(w, "data: %s\n\n", event)
@@ -239,9 +240,9 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 	})
 
 	if err != nil {
-		fmt.Printf("🔍 DEBUG: 流式处理出现错误: %v\n", err)
+		logger.Debug("流式处理出现错误: %v", err)
 	} else {
-		fmt.Printf("🔍 DEBUG: 流式处理完成，总tokens: %d\n", totalTokens)
+		logger.Debug("流式处理完成，总tokens: %d", totalTokens)
 	}
 
 	// 记录成功统计

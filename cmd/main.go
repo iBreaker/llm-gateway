@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"github.com/iBreaker/llm-gateway/internal/app"
+	"github.com/iBreaker/llm-gateway/pkg/logger"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
 func main() {
+	// 初始化日志系统，从环境变量检测调试模式
+	logger.EnableDebugFromEnv()
+
 	// 设置默认配置文件路径
 	configPath := "./config.yaml"
 	if home, err := os.UserHomeDir(); err == nil {
