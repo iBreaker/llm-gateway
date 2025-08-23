@@ -106,9 +106,9 @@ jobs:
         go-version: ${{ env.GO_VERSION }}
         
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v7
       with:
-        version: v2.1.0
+        version: latest
         args: --timeout=5m
 
   security:
@@ -126,8 +126,8 @@ jobs:
         
     - name: Install and run gosec
       run: |
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-        gosec ./...
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@v2.20.0
+        ~/go/bin/gosec ./...
 
   integration-test:
     name: Integration Test
