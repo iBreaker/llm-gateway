@@ -126,8 +126,8 @@ jobs:
         
     - name: Install and run gosec
       run: |
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@v2.20.0
-        ~/go/bin/gosec ./...
+        curl -sfL https://raw.githubusercontent.com/securecodewarrior/gosec/main/install.sh | sh -s -- -b $GOPATH/bin v2.20.0
+        gosec ./...
 
   integration-test:
     name: Integration Test
