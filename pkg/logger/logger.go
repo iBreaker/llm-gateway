@@ -28,7 +28,7 @@ var defaultLogger *Logger
 
 func init() {
 	defaultLogger = &Logger{
-		level:  InfoLevel, // 默认Info级别
+		level:  InfoLevel,                 // 默认Info级别
 		logger: log.New(os.Stdout, "", 0), // 不使用标准前缀，我们自己格式化
 	}
 }
@@ -50,7 +50,7 @@ func (l *Logger) log(level LogLevel, prefix, format string, args ...interface{})
 
 	timestamp := time.Now().Format("15:04:05")
 	message := fmt.Sprintf(format, args...)
-	
+
 	// 格式: [时间] [级别] 消息
 	fullMessage := fmt.Sprintf("[%s] [%s] %s", timestamp, prefix, message)
 	l.logger.Println(fullMessage)

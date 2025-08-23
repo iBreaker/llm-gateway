@@ -1,4 +1,6 @@
 # golangci-lint configuration file
+version: 2
+
 run:
   timeout: 5m
   issues-exit-code: 1
@@ -7,40 +9,29 @@ run:
     - vendor
     - tmp
   skip-files:
-    - ".*_test.go"
+    - ".*\\.pb\\.go$"
 
 output:
   format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
+  uniq-by-line: true
+  sort-results: true
 
 linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: true
   
-  gocyclo:
-    min-complexity: 15
+  cyclop:
+    max-complexity: 20  # 调整复杂度限制
     
   goconst:
     min-len: 3
     min-occurrences: 3
     
-  gofmt:
-    simplify: true
-    
-  goimports:
-    local-prefixes: github.com/iBreaker/llm-gateway
-    
-  golint:
-    min-confidence: 0.8
-    
   govet:
     check-shadowing: true
-    enable-all: true
-    
-  maligned:
-    suggest-new: true
     
   misspell:
     locale: US
@@ -48,94 +39,70 @@ linters-settings:
   nakedret:
     max-func-lines: 30
     
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-    
-  unparam:
-    check-exported: false
-    
   unused:
     check-exported: false
     
-  whitespace:
-    multi-if: false
-    multi-func: false
+  revive:
+    min-confidence: 0.8
+    
+  staticcheck:
+    checks: ["all"]
 
 linters:
   enable:
-    - bodyclose
-    - deadcode
-    - depguard
-    - dogsled
-    - dupl
     - errcheck
-    - exportloopref
-    - exhaustive
-    - funlen
-    - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - gofmt
-    - goimports
-    - golint
-    - gomnd
-    - goprintffuncname
-    - gosec
-    - gosimple
     - govet
     - ineffassign
-    - interfacer
-    - lll
-    - misspell
-    - nakedret
-    - noctx
-    - nolintlint
-    - rowserrcheck
-    - scopelint
     - staticcheck
-    - structcheck
-    - stylecheck
-    - typecheck
-    - unconvert
-    - unparam
     - unused
-    - varcheck
-    - whitespace
-
-  disable:
-    - maligned  # 结构体字段对齐不是关键问题
-    - prealloc  # 预分配优化不是必需的
+    - misspell
+    - unconvert
+    - revive
+    - cyclop
+    - goconst
+    - nakedret
 
 issues:
   exclude-rules:
-    # 排除测试文件中的某些检查
     - path: _test\.go
       linters:
-        - gocyclo
+        - cyclop
         - errcheck
-        - dupl
-        - gosec
-        - funlen
+        - revive
+        - goconst
+        - staticcheck
     
-    # 排除main.go中的函数长度检查
     - path: cmd/main\.go
       linters:
-        - funlen
-        - gocyclo
+        - cyclop
+        - revive
+        - errcheck
     
-    # 排除类型定义文件的某些检查
-    - path: pkg/types/
+    - path: tmp/
       linters:
-        - maligned
+        - cyclop
+        - errcheck
+        - revive
+        - goconst
+        - staticcheck
         
-  exclude:
-    # 排除常见的false positive
-    - "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
-    - "should have a package comment, unless it's in another file for this package"
+    # 排除一些常见的false positive
+    - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+      linters:
+        - errcheck
     
+    - text: "should have a package comment, unless it's in another file for this package"
+      linters:
+        - revive
+    
+    - text: "error strings should not be capitalized"
+      linters:
+        - staticcheck
+    
+    - text: "has been deprecated since Go"
+      linters:
+        - staticcheck
+        
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false

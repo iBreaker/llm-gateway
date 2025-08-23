@@ -147,7 +147,7 @@ help:
 	@echo "  release       - 准备发布包"
 	@echo "  ci            - CI流水线"
 	@echo "  dev-setup     - 设置开发环境"
-	@echo "  quality       - 代码质量检查
-  quality-check - 运行质量检查脚本
-  integration-test - 运行集成测试"
+	@echo "  quality       - 代码质量检查"
+	@echo "  quality-check - 运行质量检查脚本"
+	@echo "  integration-test - 运行集成测试"
 	@echo "  help          - 显示此帮助信息"

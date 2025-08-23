@@ -15,7 +15,7 @@ func contentToString(content interface{}) string {
 	if content == nil {
 		return ""
 	}
-	
+
 	switch c := content.(type) {
 	case string:
 		return c
@@ -257,7 +257,7 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 	if len(response.Choices) > 0 {
 		choice := response.Choices[0]
 		var contentBlocks []types.AnthropicContentBlock
-		
+
 		// 如果原始内容已经是数组格式且来自Anthropic，直接使用
 		if contentArray, ok := choice.Message.Content.([]interface{}); ok {
 			// 原始格式是数组，尝试转换为AnthropicContentBlock
@@ -266,7 +266,7 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 					block := types.AnthropicContentBlock{
 						Type: fmt.Sprintf("%v", blockMap["type"]),
 					}
-					
+
 					if text, exists := blockMap["text"]; exists {
 						block.Text = fmt.Sprintf("%v", text)
 					}
@@ -279,7 +279,7 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 					if input, exists := blockMap["input"]; exists {
 						block.Input = input
 					}
-					
+
 					contentBlocks = append(contentBlocks, block)
 				}
 			}
@@ -295,7 +295,7 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 					})
 				}
 			}
-			
+
 			// 添加tool_use块
 			for _, toolCall := range choice.Message.ToolCalls {
 				if toolCall != nil {
@@ -318,7 +318,7 @@ func (c *RequestResponseConverter) buildAnthropicResponse(response *types.ProxyR
 				},
 			}
 		}
-		
+
 		anthropicResp.Content = contentBlocks
 
 		// 转换结束原因
@@ -348,7 +348,7 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 	// 转换为统一的ProxyResponse格式
 	var content interface{}
 	var toolCalls []map[string]interface{}
-	
+
 	// 处理复杂的content格式，保持原始结构
 	if len(anthropicResp.Content) == 1 && anthropicResp.Content[0].Type == "text" {
 		// 单纯文本响应
@@ -360,7 +360,7 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 			blockMap := map[string]interface{}{
 				"type": block.Type,
 			}
-			
+
 			if block.Text != "" {
 				blockMap["text"] = block.Text
 			}
@@ -373,9 +373,9 @@ func (c *RequestResponseConverter) parseAnthropicResponse(responseBody []byte) (
 			if block.Input != nil {
 				blockMap["input"] = block.Input
 			}
-			
+
 			contentArray = append(contentArray, blockMap)
-			
+
 			// 同时为OpenAI兼容性提取tool_calls
 			if block.Type == "tool_use" {
 				toolCall := map[string]interface{}{
@@ -440,13 +440,13 @@ func (c *RequestResponseConverter) parseOpenAIResponse(responseBody []byte) (*ty
 	if err := json.Unmarshal(responseBody, &rawResp); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response as raw map: %w", err)
 	}
-	
+
 	// 再解析为ProxyResponse结构体
 	var proxyResp types.ProxyResponse
 	if err := json.Unmarshal(responseBody, &proxyResp); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)
 	}
-	
+
 	// 处理choices中可能丢失的logprobs字段
 	if rawChoices, ok := rawResp["choices"].([]interface{}); ok {
 		for i, rawChoice := range rawChoices {
@@ -459,7 +459,7 @@ func (c *RequestResponseConverter) parseOpenAIResponse(responseBody []byte) (*ty
 			}
 		}
 	}
-	
+
 	return &proxyResp, nil
 }
 
@@ -519,7 +519,7 @@ func (c *RequestResponseConverter) BuildAnthropicRequest(request *types.ProxyReq
 func (c *RequestResponseConverter) BuildOpenAIRequest(request *types.ProxyRequest) ([]byte, error) {
 	// 过滤掉OpenAI不支持的字段（如cache_control）
 	filteredMessages := filterOpenAIMessages(request.Messages)
-	
+
 	openaiReq := types.OpenAIRequest{
 		Model:       request.Model,
 		Messages:    filteredMessages,
@@ -583,11 +583,11 @@ func convertToAnthropicTools(tools []map[string]interface{}) []map[string]interf
 	if tools == nil {
 		return nil
 	}
-	
+
 	var anthropicTools []map[string]interface{}
-	
+
 	for _, toolMap := range tools {
-		
+
 		// 检查是否是OpenAI格式的工具
 		if toolMap["type"] == "function" {
 			if function, ok := toolMap["function"].(map[string]interface{}); ok {
@@ -596,12 +596,12 @@ func convertToAnthropicTools(tools []map[string]interface{}) []map[string]interf
 					"name":        function["name"],
 					"description": function["description"],
 				}
-				
+
 				// 转换parameters为input_schema
 				if parameters, ok := function["parameters"]; ok {
 					anthropicTool["input_schema"] = parameters
 				}
-				
+
 				anthropicTools = append(anthropicTools, anthropicTool)
 			} else {
 				anthropicTools = append(anthropicTools, toolMap)
@@ -611,7 +611,7 @@ func convertToAnthropicTools(tools []map[string]interface{}) []map[string]interf
 			anthropicTools = append(anthropicTools, toolMap)
 		}
 	}
-	
+
 	return anthropicTools
 }
 
@@ -620,11 +620,11 @@ func convertToOpenAITools(tools []map[string]interface{}) []map[string]interface
 	if tools == nil {
 		return nil
 	}
-	
+
 	var openaiTools []map[string]interface{}
-	
+
 	for _, toolMap := range tools {
-		
+
 		// 检查是否是Anthropic格式的工具
 		if _, hasName := toolMap["name"]; hasName {
 			if _, hasInputSchema := toolMap["input_schema"]; hasInputSchema {
@@ -637,7 +637,7 @@ func convertToOpenAITools(tools []map[string]interface{}) []map[string]interface
 						"parameters":  toolMap["input_schema"],
 					},
 				}
-				
+
 				openaiTools = append(openaiTools, openaiTool)
 			} else {
 				openaiTools = append(openaiTools, toolMap)
@@ -647,14 +647,14 @@ func convertToOpenAITools(tools []map[string]interface{}) []map[string]interface
 			openaiTools = append(openaiTools, toolMap)
 		}
 	}
-	
+
 	return openaiTools
 }
 
 // filterOpenAIMessages 过滤掉OpenAI不支持的字段
 func filterOpenAIMessages(messages []types.Message) []types.Message {
 	var filtered []types.Message
-	
+
 	for _, msg := range messages {
 		filteredMsg := types.Message{
 			Role:       msg.Role,
@@ -665,7 +665,7 @@ func filterOpenAIMessages(messages []types.Message) []types.Message {
 		}
 		filtered = append(filtered, filteredMsg)
 	}
-	
+
 	return filtered
 }
 

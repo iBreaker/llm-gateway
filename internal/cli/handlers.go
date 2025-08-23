@@ -15,7 +15,7 @@ func (c *CLI) handleServer(args []string) error {
 
 	subcommand := args[0]
 	serverCmd := c.app.Commands["server"]
-	
+
 	if subcmd, exists := serverCmd.Subcommands[subcommand]; exists {
 		return subcmd.Handler(args[1:])
 	}
@@ -56,7 +56,7 @@ func (c *CLI) handleAPIKey(args []string) error {
 
 	subcommand := args[0]
 	apikeyCmd := c.app.Commands["apikey"]
-	
+
 	if subcmd, exists := apikeyCmd.Subcommands[subcommand]; exists {
 		return subcmd.Handler(args[1:])
 	}
@@ -70,7 +70,7 @@ func (c *CLI) handleAPIKeyAdd(args []string) error {
 	// 解析参数
 	var name string
 	var permissions string
-	
+
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--name=") {
 			name = strings.TrimPrefix(arg, "--name=")
@@ -82,7 +82,7 @@ func (c *CLI) handleAPIKeyAdd(args []string) error {
 	if name == "" {
 		return fmt.Errorf("缺少必要参数: --name")
 	}
-	
+
 	if permissions == "" {
 		permissions = "read,write" // 默认权限
 	}
@@ -90,7 +90,7 @@ func (c *CLI) handleAPIKeyAdd(args []string) error {
 	fmt.Printf("添加新的Gateway API Key:\n")
 	fmt.Printf("  名称: %s\n", name)
 	fmt.Printf("  权限: %s\n", permissions)
-	
+
 	// TODO: 连接到实际的API Key管理逻辑
 	fmt.Println("API Key添加功能待实现")
 	return nil
@@ -107,7 +107,7 @@ func (c *CLI) handleAPIKeyShow(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <key-id>")
 	}
-	
+
 	keyID := args[0]
 	fmt.Printf("显示Gateway API Key详情: %s\n", keyID)
 	// TODO: 连接到实际的API Key详情逻辑
@@ -119,7 +119,7 @@ func (c *CLI) handleAPIKeyRemove(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <key-id>")
 	}
-	
+
 	keyID := args[0]
 	fmt.Printf("删除Gateway API Key: %s\n", keyID)
 	// TODO: 连接到实际的API Key删除逻辑
@@ -131,7 +131,7 @@ func (c *CLI) handleAPIKeyDisable(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <key-id>")
 	}
-	
+
 	keyID := args[0]
 	fmt.Printf("禁用Gateway API Key: %s\n", keyID)
 	// TODO: 连接到实际的API Key禁用逻辑
@@ -149,7 +149,7 @@ func (c *CLI) handleUpstream(args []string) error {
 
 	subcommand := args[0]
 	upstreamCmd := c.app.Commands["upstream"]
-	
+
 	if subcmd, exists := upstreamCmd.Subcommands[subcommand]; exists {
 		return subcmd.Handler(args[1:])
 	}
@@ -162,7 +162,7 @@ func (c *CLI) handleUpstream(args []string) error {
 func (c *CLI) handleUpstreamAdd(args []string) error {
 	// 解析参数
 	var accountType, name, apiKey, clientID, clientSecret string
-	
+
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--type=") {
 			accountType = strings.TrimPrefix(arg, "--type=")
@@ -187,11 +187,11 @@ func (c *CLI) handleUpstreamAdd(args []string) error {
 	fmt.Printf("添加上游账号:\n")
 	fmt.Printf("  类型: %s\n", accountType)
 	fmt.Printf("  名称: %s\n", name)
-	
+
 	if accountType == "api-key" && apiKey == "" {
 		return fmt.Errorf("API Key类型账号缺少参数: --key")
 	}
-	
+
 	if accountType == "oauth" && (clientID == "" || clientSecret == "") {
 		return fmt.Errorf("OAuth类型账号缺少参数: --client-id 或 --client-secret")
 	}
@@ -212,7 +212,7 @@ func (c *CLI) handleUpstreamShow(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("显示上游账号详情: %s\n", upstreamID)
 	// TODO: 连接到实际的上游账号详情逻辑
@@ -224,7 +224,7 @@ func (c *CLI) handleUpstreamRemove(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("删除上游账号: %s\n", upstreamID)
 	// TODO: 连接到实际的上游账号删除逻辑
@@ -236,7 +236,7 @@ func (c *CLI) handleUpstreamEnable(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("启用上游账号: %s\n", upstreamID)
 	// TODO: 连接到实际的上游账号启用逻辑
@@ -248,7 +248,7 @@ func (c *CLI) handleUpstreamDisable(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("禁用上游账号: %s\n", upstreamID)
 	// TODO: 连接到实际的上游账号禁用逻辑
@@ -266,7 +266,7 @@ func (c *CLI) handleOAuth(args []string) error {
 
 	subcommand := args[0]
 	oauthCmd := c.app.Commands["oauth"]
-	
+
 	if subcmd, exists := oauthCmd.Subcommands[subcommand]; exists {
 		return subcmd.Handler(args[1:])
 	}
@@ -280,7 +280,7 @@ func (c *CLI) handleOAuthStart(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("启动OAuth授权流程: %s\n", upstreamID)
 	// TODO: 连接到实际的OAuth启动逻辑
@@ -290,7 +290,7 @@ func (c *CLI) handleOAuthStart(args []string) error {
 
 func (c *CLI) handleOAuthCallback(args []string) error {
 	var code, upstreamID string
-	
+
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--code=") {
 			code = strings.TrimPrefix(arg, "--code=")
@@ -316,7 +316,7 @@ func (c *CLI) handleOAuthRefresh(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("刷新OAuth token: %s\n", upstreamID)
 	// TODO: 连接到实际的OAuth刷新逻辑
@@ -328,7 +328,7 @@ func (c *CLI) handleOAuthStatus(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("缺少参数: <upstream-id>")
 	}
-	
+
 	upstreamID := args[0]
 	fmt.Printf("查看OAuth状态: %s\n", upstreamID)
 	// TODO: 连接到实际的OAuth状态查询逻辑

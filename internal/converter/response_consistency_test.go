@@ -2,35 +2,35 @@ package converter
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"github.com/iBreaker/llm-gateway/pkg/types"
+	"os"
 	"path/filepath"
 	"testing"
-	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
 // TestResponseConsistency 测试响应的一致性：原始 -> 中间格式 -> 原始
 func TestResponseConsistency(t *testing.T) {
 	conv := NewRequestResponseConverter()
-	
+
 	// 读取所有响应测试文件
 	rspFiles, err := filepath.Glob("testdata/rsp/rsp_*.json")
 	if err != nil {
 		t.Fatalf("读取响应测试文件失败: %v", err)
 	}
-	
+
 	if len(rspFiles) == 0 {
 		t.Skip("未找到响应测试文件")
 	}
-	
+
 	for _, rspFile := range rspFiles {
 		filename := filepath.Base(rspFile)
 		t.Run(filename, func(t *testing.T) {
 			// 读取原始响应
-			originalData, err := ioutil.ReadFile(rspFile)
+			originalData, err := os.ReadFile(rspFile)
 			if err != nil {
 				t.Fatalf("读取文件失败: %v", err)
 			}
-			
+
 			// 根据文件名确定格式
 			var provider types.Provider
 			var targetFormat RequestFormat
@@ -44,13 +44,13 @@ func TestResponseConsistency(t *testing.T) {
 					targetFormat = FormatOpenAI
 				}
 			}
-			
+
 			if provider == "" {
 				t.Fatalf("无法确定响应格式: %s", filename)
 			}
-			
+
 			t.Logf("检测到格式: %s, 提供商: %s", targetFormat, provider)
-			
+
 			// 步骤1: 原始响应 -> 中间格式 (ProxyResponse)
 			var proxyResp *types.ProxyResponse
 			switch provider {
@@ -61,17 +61,17 @@ func TestResponseConsistency(t *testing.T) {
 			default:
 				t.Fatalf("不支持的提供商: %s", provider)
 			}
-			
+
 			if err != nil {
 				t.Fatalf("解析响应失败: %v", err)
 			}
-			
+
 			// 步骤2: 中间格式 -> 原始格式
 			rebuiltData, err := conv.TransformResponse(proxyResp, targetFormat)
 			if err != nil {
 				t.Fatalf("重建响应失败: %v", err)
 			}
-			
+
 			// 步骤3: 比较一致性
 			if !isJSONEqual(t, originalData, rebuiltData, filename) {
 				t.Errorf("响应不一致")
@@ -85,7 +85,7 @@ func TestResponseConsistency(t *testing.T) {
 // TestSpecificResponseFieldPreservation 测试响应特定字段保留
 func TestSpecificResponseFieldPreservation(t *testing.T) {
 	conv := NewRequestResponseConverter()
-	
+
 	testCases := []struct {
 		name     string
 		filename string
@@ -140,15 +140,15 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// 读取测试文件
-			originalData, err := ioutil.ReadFile(tc.filename)
+			originalData, err := os.ReadFile(tc.filename)
 			if err != nil {
 				t.Fatalf("读取文件失败: %v", err)
 			}
-			
+
 			// 确定格式和提供商
 			var provider types.Provider
 			var targetFormat RequestFormat
@@ -160,7 +160,7 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 				provider = types.ProviderOpenAI
 				targetFormat = FormatOpenAI
 			}
-			
+
 			// 解析和重建
 			var proxyResp *types.ProxyResponse
 			switch provider {
@@ -169,16 +169,16 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 			case types.ProviderOpenAI:
 				proxyResp, err = conv.parseOpenAIResponse(originalData)
 			}
-			
+
 			if err != nil {
 				t.Fatalf("解析响应失败: %v", err)
 			}
-			
+
 			rebuiltData, err := conv.TransformResponse(proxyResp, targetFormat)
 			if err != nil {
 				t.Fatalf("重建响应失败: %v", err)
 			}
-			
+
 			// 执行所有检查
 			for _, check := range tc.checks {
 				check(t, originalData, rebuiltData)
@@ -192,18 +192,18 @@ func checkResponseBasicFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
 	json.Unmarshal(original, &origObj)
 	json.Unmarshal(rebuilt, &rebuiltObj)
-	
+
 	basicFields := []string{"id", "model"}
-	
+
 	for _, field := range basicFields {
 		origValue, origExists := origObj[field]
 		rebuiltValue, rebuiltExists := rebuiltObj[field]
-		
+
 		if origExists != rebuiltExists {
 			t.Errorf("%s字段存在性不一致: 原始=%v, 重建=%v", field, origExists, rebuiltExists)
 			continue
 		}
-		
+
 		if origExists && !deepEqual(origValue, rebuiltValue) {
 			t.Errorf("%s字段值不一致: 原始=%v, 重建=%v", field, origValue, rebuiltValue)
 		}
@@ -215,18 +215,18 @@ func checkAnthropicResponseSpecificFields(t *testing.T, original, rebuilt []byte
 	var origObj, rebuiltObj map[string]interface{}
 	json.Unmarshal(original, &origObj)
 	json.Unmarshal(rebuilt, &rebuiltObj)
-	
+
 	anthropicFields := []string{"type", "role", "stop_reason", "stop_sequence", "usage"}
-	
+
 	for _, field := range anthropicFields {
 		origValue, origExists := origObj[field]
 		rebuiltValue, rebuiltExists := rebuiltObj[field]
-		
+
 		if origExists != rebuiltExists {
 			t.Errorf("Anthropic %s字段存在性不一致: 原始=%v, 重建=%v", field, origExists, rebuiltExists)
 			continue
 		}
-		
+
 		if origExists && !deepEqual(origValue, rebuiltValue) {
 			t.Errorf("Anthropic %s字段值不一致: 原始=%v, 重建=%v", field, origValue, rebuiltValue)
 		}
@@ -238,16 +238,16 @@ func checkAnthropicToolUseFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
 	json.Unmarshal(original, &origObj)
 	json.Unmarshal(rebuilt, &rebuiltObj)
-	
+
 	// 检查content数组中的tool_use
 	origContent, origExists := origObj["content"]
 	rebuiltContent, rebuiltExists := rebuiltObj["content"]
-	
+
 	if origExists != rebuiltExists {
 		t.Errorf("content字段存在性不一致")
 		return
 	}
-	
+
 	if origExists {
 		if !deepEqual(origContent, rebuiltContent) {
 			t.Errorf("content字段不一致")
@@ -267,18 +267,18 @@ func checkOpenAIResponseSpecificFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
 	json.Unmarshal(original, &origObj)
 	json.Unmarshal(rebuilt, &rebuiltObj)
-	
+
 	openaiFields := []string{"object", "created", "choices", "usage"}
-	
+
 	for _, field := range openaiFields {
 		origValue, origExists := origObj[field]
 		rebuiltValue, rebuiltExists := rebuiltObj[field]
-		
+
 		if origExists != rebuiltExists {
 			t.Errorf("OpenAI %s字段存在性不一致: 原始=%v, 重建=%v", field, origExists, rebuiltExists)
 			continue
 		}
-		
+
 		if origExists && !deepEqual(origValue, rebuiltValue) {
 			t.Errorf("OpenAI %s字段值不一致: 原始=%v, 重建=%v", field, origValue, rebuiltValue)
 		}
@@ -290,16 +290,16 @@ func checkOpenAIToolCallFields(t *testing.T, original, rebuilt []byte) {
 	var origObj, rebuiltObj map[string]interface{}
 	json.Unmarshal(original, &origObj)
 	json.Unmarshal(rebuilt, &rebuiltObj)
-	
+
 	// 检查choices中的tool_calls
 	origChoices, origExists := origObj["choices"]
 	rebuiltChoices, rebuiltExists := rebuiltObj["choices"]
-	
+
 	if origExists != rebuiltExists {
 		t.Errorf("choices字段存在性不一致")
 		return
 	}
-	
+
 	if origExists {
 		if !deepEqual(origChoices, rebuiltChoices) {
 			t.Errorf("choices字段不一致，可能包含tool_calls差异")

@@ -3,7 +3,7 @@ package converter
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,13 +34,13 @@ func TestPairedFormatConversions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			// 读取输入文件
-			inputData, err := ioutil.ReadFile(tc.InputFile)
+			inputData, err := os.ReadFile(tc.InputFile)
 			if err != nil {
 				t.Fatalf("读取输入文件失败: %v", err)
 			}
 
 			// 读取期望输出文件
-			expectData, err := ioutil.ReadFile(tc.ExpectFile)
+			expectData, err := os.ReadFile(tc.ExpectFile)
 			if err != nil {
 				t.Fatalf("读取期望文件失败: %v", err)
 			}
@@ -85,7 +85,7 @@ func discoverPairTestCases(dir string) ([]PairTestCase, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 发现流式响应的测试文件
 	streamFiles, err := filepath.Glob(filepath.Join(dir, "*_input.txt"))
 	if err != nil {
@@ -93,12 +93,12 @@ func discoverPairTestCases(dir string) ([]PairTestCase, error) {
 	}
 
 	var testCases []PairTestCase
-	
+
 	// 处理JSON测试文件
 	for _, inputFile := range jsonFiles {
 		// 构造期望文件路径
 		expectFile := strings.Replace(inputFile, "_input.json", "_expect.json", 1)
-		
+
 		// 解析文件名获取测试信息
 		basename := filepath.Base(inputFile)
 		testName, sourceFormat, targetFormat, dataType, err := parseTestFileName(basename)
@@ -115,12 +115,12 @@ func discoverPairTestCases(dir string) ([]PairTestCase, error) {
 			DataType:     dataType,
 		})
 	}
-	
+
 	// 处理流式响应测试文件
 	for _, inputFile := range streamFiles {
 		// 构造期望文件路径
 		expectFile := strings.Replace(inputFile, "_input.txt", "_expect.txt", 1)
-		
+
 		// 解析文件名获取测试信息（去掉.txt扩展名）
 		basename := strings.TrimSuffix(filepath.Base(inputFile), "_input.txt") + "_input.json"
 		testName, sourceFormat, targetFormat, dataType, err := parseTestFileName(basename)
@@ -147,7 +147,7 @@ func parseTestFileName(filename string) (string, RequestFormat, RequestFormat, s
 	// 移除 _input.json 后缀
 	name := strings.TrimSuffix(filename, "_input.json")
 	parts := strings.Split(name, "_")
-	
+
 	if len(parts) < 5 {
 		return "", "", "", "", fmt.Errorf("invalid filename format: %s", filename)
 	}
@@ -201,7 +201,7 @@ func parseTestFileName(filename string) (string, RequestFormat, RequestFormat, s
 	scenario := strings.Join(remainingParts[2:], "_")
 
 	testName := fmt.Sprintf("%s_to_%s_%s_%s", source, target, dataType, scenario)
-	
+
 	return testName, sourceFormat, targetFormat, dataType, nil
 }
 
@@ -260,14 +260,14 @@ func validateConversionResult(expectData, actualData []byte, tc PairTestCase) er
 	if tc.DataType == "response_stream" {
 		return validateStreamResponse(expectData, actualData, tc)
 	}
-	
+
 	// 非流式响应使用JSON对比
 	var expect, actual map[string]interface{}
-	
+
 	if err := json.Unmarshal(expectData, &expect); err != nil {
 		return fmt.Errorf("解析期望数据失败: %w", err)
 	}
-	
+
 	if err := json.Unmarshal(actualData, &actual); err != nil {
 		return fmt.Errorf("解析实际数据失败: %w", err)
 	}
@@ -294,7 +294,7 @@ func validateConversionResult(expectData, actualData []byte, tc PairTestCase) er
 // validateAnthropicRequestFields 验证Anthropic请求字段
 func validateAnthropicRequestFields(expect, actual map[string]interface{}) error {
 	requiredFields := []string{"model", "messages"}
-	
+
 	for _, field := range requiredFields {
 		if _, exists := actual[field]; !exists {
 			return fmt.Errorf("缺少必要字段: %s", field)
@@ -319,7 +319,7 @@ func validateAnthropicRequestFields(expect, actual map[string]interface{}) error
 // validateAnthropicResponseFields 验证Anthropic响应字段
 func validateAnthropicResponseFields(expect, actual map[string]interface{}) error {
 	requiredFields := []string{"id", "type", "role", "content", "model"}
-	
+
 	for _, field := range requiredFields {
 		if _, exists := actual[field]; !exists {
 			return fmt.Errorf("缺少必要字段: %s", field)
@@ -332,7 +332,7 @@ func validateAnthropicResponseFields(expect, actual map[string]interface{}) erro
 // validateOpenAIRequestFields 验证OpenAI请求字段
 func validateOpenAIRequestFields(expect, actual map[string]interface{}) error {
 	requiredFields := []string{"model", "messages"}
-	
+
 	for _, field := range requiredFields {
 		if _, exists := actual[field]; !exists {
 			return fmt.Errorf("缺少必要字段: %s", field)
@@ -345,7 +345,7 @@ func validateOpenAIRequestFields(expect, actual map[string]interface{}) error {
 // validateOpenAIResponseFields 验证OpenAI响应字段
 func validateOpenAIResponseFields(expect, actual map[string]interface{}) error {
 	requiredFields := []string{"id", "object", "model", "choices"}
-	
+
 	for _, field := range requiredFields {
 		if _, exists := actual[field]; !exists {
 			return fmt.Errorf("缺少必要字段: %s", field)
@@ -359,10 +359,10 @@ func validateOpenAIResponseFields(expect, actual map[string]interface{}) error {
 func executeStreamResponseConversion(conv *RequestResponseConverter, input []byte, sourceFormat, targetFormat RequestFormat) ([]byte, error) {
 	// 创建输入读取器
 	inputReader := strings.NewReader(string(input))
-	
+
 	// 创建输出缓冲区
 	var outputBuffer strings.Builder
-	
+
 	// 确定源提供商
 	var sourceProvider types.Provider
 	switch sourceFormat {
@@ -373,10 +373,10 @@ func executeStreamResponseConversion(conv *RequestResponseConverter, input []byt
 	default:
 		return nil, fmt.Errorf("不支持的源格式: %s", sourceFormat)
 	}
-	
+
 	// 创建流式处理器
 	processor := conv.GetStreamResponseProcessor()
-	
+
 	// 处理流式响应
 	err := processor.ProcessStream(inputReader, sourceProvider, targetFormat, func(event string, tokens int) {
 		if event == "[DONE]" {
@@ -397,18 +397,18 @@ func executeStreamResponseConversion(conv *RequestResponseConverter, input []byt
 					outputBuffer.WriteString("\n\n")
 				}
 			} else {
-				// OpenAI格式只需要data: 
+				// OpenAI格式只需要data:
 				outputBuffer.WriteString("data: ")
 				outputBuffer.WriteString(event)
 				outputBuffer.WriteString("\n\n")
 			}
 		}
 	})
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("流式转换失败: %w", err)
 	}
-	
+
 	return []byte(outputBuffer.String()), nil
 }
 
@@ -416,20 +416,20 @@ func executeStreamResponseConversion(conv *RequestResponseConverter, input []byt
 func validateStreamResponse(expectData, actualData []byte, tc PairTestCase) error {
 	expectStr := strings.TrimSpace(string(expectData))
 	actualStr := strings.TrimSpace(string(actualData))
-	
+
 	// 简化验证：检查是否包含关键的内容片段
 	expectLines := strings.Split(expectStr, "\n")
 	actualLines := strings.Split(actualStr, "\n")
-	
+
 	// 提取期望的文本内容
 	expectedContentPieces := extractStreamContent(expectLines)
 	actualContentPieces := extractStreamContent(actualLines)
-	
+
 	// 验证内容片段是否匹配
 	if len(expectedContentPieces) != len(actualContentPieces) {
 		return fmt.Errorf("内容片段数量不匹配: 期望=%d, 实际=%d", len(expectedContentPieces), len(actualContentPieces))
 	}
-	
+
 	for i, expectedPiece := range expectedContentPieces {
 		if i < len(actualContentPieces) {
 			if expectedPiece != actualContentPieces[i] {
@@ -437,7 +437,7 @@ func validateStreamResponse(expectData, actualData []byte, tc PairTestCase) erro
 			}
 		}
 	}
-	
+
 	// 验证格式特定的结构
 	switch tc.TargetFormat {
 	case FormatOpenAI:
@@ -457,14 +457,14 @@ func validateStreamResponse(expectData, actualData []byte, tc PairTestCase) erro
 			return fmt.Errorf("Anthropic流式响应缺少必要的事件类型")
 		}
 	}
-	
+
 	return nil
 }
 
 // extractStreamContent 从流式响应中提取文本内容片段
 func extractStreamContent(lines []string) []string {
 	var contentPieces []string
-	
+
 	for _, line := range lines {
 		if strings.HasPrefix(line, "data: ") {
 			// OpenAI格式
@@ -497,7 +497,7 @@ func extractStreamContent(lines []string) []string {
 			}
 		}
 	}
-	
+
 	return contentPieces
 }
 
@@ -507,16 +507,16 @@ func formatJSON(data []byte) string {
 	if strings.Contains(string(data), "data: ") || strings.Contains(string(data), "event: ") {
 		return string(data)
 	}
-	
+
 	var obj interface{}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return string(data)
 	}
-	
+
 	formatted, err := json.MarshalIndent(obj, "", "  ")
 	if err != nil {
 		return string(data)
 	}
-	
+
 	return string(formatted)
 }

@@ -7,31 +7,31 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/iBreaker/llm-gateway/pkg/types"
 	"github.com/iBreaker/llm-gateway/internal/client"
-	"github.com/iBreaker/llm-gateway/internal/router"
 	"github.com/iBreaker/llm-gateway/internal/converter"
+	"github.com/iBreaker/llm-gateway/internal/router"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
+	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
 // HTTPServer HTTP服务器
 type HTTPServer struct {
-	mux           *http.ServeMux
-	config        *types.ServerConfig
-	clientMgr     *client.GatewayKeyManager
-	upstreamMgr   *upstream.UpstreamManager
-	router        *router.RequestRouter
-	converter     *converter.RequestResponseConverter
-	server        *http.Server
-	authMW        *AuthMiddleware
-	rateLimitMW   *RateLimitMiddleware
-	proxyHandler  *ProxyHandler
+	mux          *http.ServeMux
+	config       *types.ServerConfig
+	clientMgr    *client.GatewayKeyManager
+	upstreamMgr  *upstream.UpstreamManager
+	router       *router.RequestRouter
+	converter    *converter.RequestResponseConverter
+	server       *http.Server
+	authMW       *AuthMiddleware
+	rateLimitMW  *RateLimitMiddleware
+	proxyHandler *ProxyHandler
 }
 
 // NewServer 创建新的HTTP服务器
 func NewServer(
-	config *types.ServerConfig, 
-	clientMgr *client.GatewayKeyManager, 
+	config *types.ServerConfig,
+	clientMgr *client.GatewayKeyManager,
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
 	converter *converter.RequestResponseConverter,
@@ -41,7 +41,7 @@ func NewServer(
 	// 创建中间件
 	authMW := NewAuthMiddleware(clientMgr)
 	rateLimitMW := NewRateLimitMiddleware(clientMgr)
-	
+
 	// 创建代理处理器
 	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter)
 
@@ -65,7 +65,7 @@ func NewServer(
 func (s *HTTPServer) setupRoutes() {
 	// 健康检查路由（无需认证）
 	s.mux.HandleFunc("/health", CORSMiddleware(LoggingMiddleware(s.handleHealth)))
-	
+
 	// API代理路由（需要完整的中间件链）
 	s.mux.HandleFunc("/v1/chat/completions", s.withMiddleware(s.proxyHandler.HandleChatCompletions))
 	s.mux.HandleFunc("/v1/completions", s.withMiddleware(s.proxyHandler.HandleCompletions))
@@ -91,7 +91,7 @@ func (s *HTTPServer) Start() error {
 		Addr:    addr,
 		Handler: s.loggingMiddleware(s.mux),
 	}
-	
+
 	fmt.Printf("启动 LLM Gateway 服务器，地址: %s\n", addr)
 	return s.server.ListenAndServe()
 }
@@ -131,4 +131,3 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"service": "llm-gateway",
 	})
 }
-

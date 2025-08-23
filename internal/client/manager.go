@@ -41,7 +41,7 @@ func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permissio
 
 	// 计算hash
 	keyHash := hashKey(rawKey)
-	
+
 	// 生成ID
 	keyID := generateID("gw")
 
@@ -58,7 +58,7 @@ func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permissio
 			TotalRequests:      0,
 			SuccessfulRequests: 0,
 			ErrorRequests:      0,
-			LastUsedAt:        time.Now(),
+			LastUsedAt:         time.Now(),
 		},
 	}
 
@@ -73,16 +73,16 @@ func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permissio
 // ValidateKey 验证Gateway API Key（业务逻辑）
 func (m *GatewayKeyManager) ValidateKey(rawKey string) (*types.GatewayAPIKey, error) {
 	keyHash := hashKey(rawKey)
-	
+
 	// 从ConfigManager获取所有key
 	keys := m.configMgr.ListGatewayKeys()
-	
+
 	for _, key := range keys {
 		if key.KeyHash == keyHash && key.Status == "active" {
 			return key, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("无效的API密钥")
 }
 
@@ -116,7 +116,7 @@ func (m *GatewayKeyManager) UpdateKeyUsage(keyID string, success bool, latency t
 		if key.Usage == nil {
 			key.Usage = &types.KeyUsageStats{}
 		}
-		
+
 		key.Usage.TotalRequests++
 		if success {
 			key.Usage.SuccessfulRequests++
@@ -125,14 +125,14 @@ func (m *GatewayKeyManager) UpdateKeyUsage(keyID string, success bool, latency t
 			now := time.Now()
 			key.Usage.LastErrorAt = &now
 		}
-		
+
 		key.Usage.LastUsedAt = time.Now()
-		
+
 		// 更新平均延迟
 		if key.Usage.TotalRequests > 0 {
 			key.Usage.AvgLatency = (key.Usage.AvgLatency*float64(key.Usage.TotalRequests-1) + float64(latency.Milliseconds())) / float64(key.Usage.TotalRequests)
 		}
-		
+
 		return nil
 	})
 }

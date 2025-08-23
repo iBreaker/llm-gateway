@@ -30,7 +30,7 @@ func NewOAuthManager(upstreamMgr *UpstreamManager) *OAuthManager {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment, // 自动读取HTTP_PROXY/HTTPS_PROXY环境变量
 	}
-	
+
 	return &OAuthManager{
 		upstreamMgr:   upstreamMgr,
 		pkceVerifiers: make(map[string]string),
@@ -74,11 +74,11 @@ func generatePKCE() (codeVerifier, codeChallenge string, err error) {
 	if err != nil {
 		return "", "", fmt.Errorf("生成code_verifier失败: %w", err)
 	}
-	
+
 	// 生成code_challenge (SHA256哈希后base64url编码)
 	hash := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge = base64.RawURLEncoding.EncodeToString(hash[:])
-	
+
 	return codeVerifier, codeChallenge, nil
 }
 
@@ -89,7 +89,7 @@ func (m *OAuthManager) getAnthropicConfig() AnthropicOAuthConfig {
 		TokenURL:    "https://console.anthropic.com/v1/oauth/token",
 		ClientID:    AnthropicClientID,
 		RedirectURI: "https://console.anthropic.com/oauth/code/callback", // 使用官方回调地址，会显示code
-		Scope:       ScopesFull, // 使用完整scope
+		Scope:       ScopesFull,                                          // 使用完整scope
 	}
 }
 
@@ -109,23 +109,23 @@ func (m *OAuthManager) StartOAuthFlow(upstreamID string) (string, error) {
 	}
 
 	config := m.getAnthropicConfig()
-	
+
 	// 生成PKCE参数
 	codeVerifier, codeChallenge, err := generatePKCE()
 	if err != nil {
 		return "", fmt.Errorf("生成PKCE参数失败: %w", err)
 	}
-	
+
 	// 生成随机state参数
 	state, err := generateRandomString()
 	if err != nil {
 		return "", fmt.Errorf("生成state参数失败: %w", err)
 	}
-	
+
 	// 存储code_verifier和state用于后续验证
 	m.pkceVerifiers[upstreamID] = codeVerifier
 	// TODO: 也需要存储state用于验证
-	
+
 	// 构建授权URL - 按照工作示例的确切顺序
 	params := url.Values{}
 	params.Add("code", "true")
@@ -198,10 +198,10 @@ func (m *OAuthManager) HandleCallback(upstreamID string, code string) error {
 		tokenResp.RefreshToken,
 		expiresAt,
 	)
-	
+
 	// 清理存储的code_verifier (无论成功还是失败都要清理)
 	delete(m.pkceVerifiers, upstreamID)
-	
+
 	return err
 }
 
@@ -236,8 +236,8 @@ func (m *OAuthManager) RefreshToken(upstreamID string) error {
 	tokenResp, err := m.exchangeCodeForToken(config.TokenURL, tokenReq)
 	if err != nil {
 		// 如果refresh token失效，标记账号状态为需要重新授权
-		if strings.Contains(err.Error(), "invalid_grant") || 
-		   strings.Contains(err.Error(), "Refresh token not found") {
+		if strings.Contains(err.Error(), "invalid_grant") ||
+			strings.Contains(err.Error(), "Refresh token not found") {
 			// 清除失效的token信息，但保留账号配置
 			m.upstreamMgr.UpdateOAuthTokens(upstreamID, "", "", time.Time{})
 			return fmt.Errorf("refresh token已失效，需要重新进行OAuth授权: ./llm-gateway oauth start %s", upstreamID)
@@ -306,13 +306,13 @@ type TokenResponse struct {
 func maskSensitiveInfo(data string) string {
 	sensitiveKeys := []string{
 		"refresh_token",
-		"access_token", 
+		"access_token",
 		"code",
 		"code_verifier",
 		"client_secret",
 		"api_key",
 	}
-	
+
 	result := data
 	for _, key := range sensitiveKeys {
 		// 匹配 key=value 格式 (用于URL编码格式)
@@ -325,7 +325,7 @@ func maskSensitiveInfo(data string) string {
 			value := parts[1]
 			return parts[0] + "=" + maskValue(value)
 		})
-		
+
 		// 匹配 JSON 格式 "key":"value"
 		re2 := regexp.MustCompile(fmt.Sprintf(`("%s":\s*")([^"]+)(")`, key))
 		result = re2.ReplaceAllStringFunc(result, func(match string) string {
@@ -359,7 +359,7 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 
 	// 调试信息：打印请求内容（脱敏）
 	logger.Debug("Token请求URL: %s", tokenURL)
-	
+
 	// 脱敏处理请求体中的敏感信息
 	debugBody := maskSensitiveInfo(reqBody)
 	logger.Debug("Token请求Body: %s", debugBody)
@@ -391,7 +391,7 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 
 	// 添加响应状态的调试信息
 	logger.Debug("Token响应状态码: %d", resp.StatusCode)
-	
+
 	if resp.StatusCode != http.StatusOK {
 		logger.Debug("Token请求失败，响应内容: %s", string(body))
 		return nil, fmt.Errorf("token请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))

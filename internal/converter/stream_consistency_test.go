@@ -26,10 +26,10 @@ func TestStreamConsistency(t *testing.T) {
 
 		t.Run(file.Name(), func(t *testing.T) {
 			filePath := filepath.Join(testDir, file.Name())
-			
+
 			// 解析文件名获取源格式和提供商信息
 			sourceFormat, sourceProvider := parseStreamFileName(file.Name())
-			
+
 			// 确定目标格式（转换到另一种格式）
 			var targetFormat RequestFormat
 			if sourceFormat == FormatOpenAI {
@@ -57,7 +57,7 @@ func TestStreamConsistency(t *testing.T) {
 				t.Errorf("Stream转换验证失败: %v", err)
 				t.Logf("原始事件数: %d", len(originalEvents))
 				t.Logf("转换事件数: %d", len(convertedEvents))
-				
+
 				// 显示前几个事件用于调试
 				for i, event := range convertedEvents {
 					if i < 3 {
@@ -96,10 +96,10 @@ func readStreamFile(filePath string) ([]StreamEvent, error) {
 
 	var events []StreamEvent
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// 跳过空行
 		if line == "" {
 			continue
@@ -108,7 +108,7 @@ func readStreamFile(filePath string) ([]StreamEvent, error) {
 		if strings.HasPrefix(line, "event: ") {
 			// Anthropic风格的命名事件
 			eventType := line[7:] // 移除"event: "前缀
-			
+
 			// 读取下一行的data
 			if scanner.Scan() {
 				dataLine := strings.TrimSpace(scanner.Text())
@@ -139,13 +139,13 @@ func readStreamFile(filePath string) ([]StreamEvent, error) {
 func convertStreamEvents(events []StreamEvent, sourceProvider types.Provider, targetFormat RequestFormat) ([]string, error) {
 	converter := NewStreamEventConverter()
 	var convertedEvents []string
-	
+
 	for i, event := range events {
 		isFirst := (i == 0)
-		
+
 		var convertedEvent string
 		var err error
-		
+
 		if event.Data == "[DONE]" {
 			// 处理OpenAI的结束标记
 			if targetFormat == FormatOpenAI {
@@ -161,11 +161,11 @@ func convertStreamEvents(events []StreamEvent, sourceProvider types.Provider, ta
 			// 数据事件（OpenAI风格）
 			convertedEvent, _, err = converter.ConvertStreamEvent(event.Data, sourceProvider, targetFormat, isFirst)
 		}
-		
+
 		if err != nil {
 			return nil, fmt.Errorf("转换事件失败[%d]: %w", i, err)
 		}
-		
+
 		// 只记录非空的转换结果
 		if convertedEvent != "" {
 			convertedEvents = append(convertedEvents, convertedEvent)
@@ -189,12 +189,12 @@ func validateStreamConversion(originalEvents []StreamEvent, convertedEvents []st
 			break
 		}
 	}
-	
+
 	// 基本验证：如果有实际内容，转换后应该有事件输出
 	if len(convertedEvents) == 0 && hasRealContent {
 		return fmt.Errorf("转换后没有生成任何事件，但原始事件包含内容")
 	}
-	
+
 	// 如果没有实际内容且没有转换输出，这是可以接受的
 	if len(convertedEvents) == 0 {
 		return nil
@@ -222,7 +222,7 @@ func validateStreamConversion(originalEvents []StreamEvent, convertedEvents []st
 		if event == "[DONE]" {
 			continue // [DONE]不是JSON
 		}
-		
+
 		// 检查是否是有效JSON（简单验证）
 		if !strings.HasPrefix(event, "{") || !strings.HasSuffix(event, "}") {
 			return fmt.Errorf("事件[%d]不是有效的JSON格式: %s", i, event)
@@ -237,52 +237,52 @@ func TestStreamEventTypes(t *testing.T) {
 	converter := NewStreamEventConverter()
 
 	testCases := []struct {
-		name        string
-		eventType   string
-		data        string
+		name         string
+		eventType    string
+		data         string
 		targetFormat RequestFormat
-		expectEmpty bool
+		expectEmpty  bool
 	}{
 		{
-			name:        "message_start到OpenAI",
-			eventType:   "message_start",
-			data:        `{"type":"message_start","message":{"id":"msg_123","model":"claude-3-sonnet"}}`,
+			name:         "message_start到OpenAI",
+			eventType:    "message_start",
+			data:         `{"type":"message_start","message":{"id":"msg_123","model":"claude-3-sonnet"}}`,
 			targetFormat: FormatOpenAI,
-			expectEmpty: false,
+			expectEmpty:  false,
 		},
 		{
-			name:        "content_block_delta到OpenAI",
-			eventType:   "content_block_delta",
-			data:        `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}`,
+			name:         "content_block_delta到OpenAI",
+			eventType:    "content_block_delta",
+			data:         `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}`,
 			targetFormat: FormatOpenAI,
-			expectEmpty: false,
+			expectEmpty:  false,
 		},
 		{
-			name:        "message_stop到OpenAI",
-			eventType:   "message_stop",
-			data:        `{"type":"message_stop"}`,
+			name:         "message_stop到OpenAI",
+			eventType:    "message_stop",
+			data:         `{"type":"message_stop"}`,
 			targetFormat: FormatOpenAI,
-			expectEmpty: false,
+			expectEmpty:  false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result, _, err := converter.ConvertNamedEvent(tc.eventType, tc.data, tc.targetFormat, true)
-			
+
 			if err != nil {
 				t.Errorf("转换失败: %v", err)
 				return
 			}
-			
+
 			if tc.expectEmpty && result != "" {
 				t.Errorf("期望空结果，但得到: %s", result)
 			}
-			
+
 			if !tc.expectEmpty && result == "" {
 				t.Errorf("期望非空结果，但得到空字符串")
 			}
-			
+
 			if result != "" {
 				t.Logf("转换结果: %s", result)
 			}
@@ -294,7 +294,7 @@ func TestStreamEventTypes(t *testing.T) {
 func TestStreamProcessor(t *testing.T) {
 	converter := NewStreamEventConverter()
 	processor := NewStreamResponseProcessor(converter)
-	
+
 	testCases := []struct {
 		name         string
 		input        string
@@ -312,22 +312,22 @@ data: [DONE]`,
 			targetFormat: FormatAnthropic,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := strings.NewReader(tc.input)
 			var events []string
 			var totalTokens int
-			
+
 			err := processor.ProcessStream(reader, tc.provider, tc.targetFormat, func(event string, tokens int) {
 				events = append(events, event)
 				totalTokens += tokens
 			})
-			
+
 			if err != nil {
 				t.Errorf("处理stream失败: %v", err)
 			}
-			
+
 			t.Logf("处理了 %d 个事件，总tokens: %d", len(events), totalTokens)
 			for i, event := range events {
 				t.Logf("事件[%d]: %s", i, event)

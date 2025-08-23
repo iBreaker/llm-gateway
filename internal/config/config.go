@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gopkg.in/yaml.v2"
 	"github.com/iBreaker/llm-gateway/pkg/types"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // ConfigManager 配置管理器
@@ -53,10 +53,10 @@ func (m *ConfigManager) loadUnsafe() (*types.Config, error) {
 	}
 
 	m.config = &config
-	
+
 	// 应用环境变量配置
 	m.applyEnvironmentConfig(&config)
-	
+
 	return &config, nil
 }
 
@@ -216,21 +216,21 @@ func (m *ConfigManager) Reload() (*types.Config, error) {
 func (m *ConfigManager) CreateGatewayKey(key *types.GatewayAPIKey) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	// 检查ID是否已存在
 	for _, existingKey := range m.config.GatewayKeys {
 		if existingKey.ID == key.ID {
 			return fmt.Errorf("Gateway API Key ID已存在: %s", key.ID)
 		}
 	}
-	
+
 	// 添加到配置
 	m.config.GatewayKeys = append(m.config.GatewayKeys, *key)
-	
+
 	// 自动保存到文件
 	return m.saveUnsafe(m.config)
 }
@@ -239,18 +239,18 @@ func (m *ConfigManager) CreateGatewayKey(key *types.GatewayAPIKey) error {
 func (m *ConfigManager) GetGatewayKey(keyID string) (*types.GatewayAPIKey, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	if m.config == nil {
 		return nil, fmt.Errorf("配置未加载")
 	}
-	
+
 	for _, key := range m.config.GatewayKeys {
 		if key.ID == keyID {
 			keyCopy := key // 避免返回内部数据的引用
 			return &keyCopy, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("Gateway API Key不存在: %s", keyID)
 }
 
@@ -258,18 +258,18 @@ func (m *ConfigManager) GetGatewayKey(keyID string) (*types.GatewayAPIKey, error
 func (m *ConfigManager) ListGatewayKeys() []*types.GatewayAPIKey {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	if m.config == nil {
 		return []*types.GatewayAPIKey{}
 	}
-	
+
 	// 返回副本避免外部修改内部数据
 	keys := make([]*types.GatewayAPIKey, len(m.config.GatewayKeys))
 	for i, key := range m.config.GatewayKeys {
 		keyCopy := key
 		keys[i] = &keyCopy
 	}
-	
+
 	return keys
 }
 
@@ -277,23 +277,23 @@ func (m *ConfigManager) ListGatewayKeys() []*types.GatewayAPIKey {
 func (m *ConfigManager) UpdateGatewayKey(keyID string, updater func(*types.GatewayAPIKey) error) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	for i, key := range m.config.GatewayKeys {
 		if key.ID == keyID {
 			// 应用更新函数
 			if err := updater(&m.config.GatewayKeys[i]); err != nil {
 				return err
 			}
-			
+
 			// 自动保存到文件
 			return m.saveUnsafe(m.config)
 		}
 	}
-	
+
 	return fmt.Errorf("Gateway API Key不存在: %s", keyID)
 }
 
@@ -301,21 +301,21 @@ func (m *ConfigManager) UpdateGatewayKey(keyID string, updater func(*types.Gatew
 func (m *ConfigManager) DeleteGatewayKey(keyID string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	for i, key := range m.config.GatewayKeys {
 		if key.ID == keyID {
 			// 从切片中删除
 			m.config.GatewayKeys = append(m.config.GatewayKeys[:i], m.config.GatewayKeys[i+1:]...)
-			
+
 			// 自动保存到文件
 			return m.saveUnsafe(m.config)
 		}
 	}
-	
+
 	return fmt.Errorf("Gateway API Key不存在: %s", keyID)
 }
 
@@ -325,21 +325,21 @@ func (m *ConfigManager) DeleteGatewayKey(keyID string) error {
 func (m *ConfigManager) CreateUpstreamAccount(account *types.UpstreamAccount) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	// 检查ID是否已存在
 	for _, existingAccount := range m.config.UpstreamAccounts {
 		if existingAccount.ID == account.ID {
 			return fmt.Errorf("上游账号ID已存在: %s", account.ID)
 		}
 	}
-	
+
 	// 添加到配置
 	m.config.UpstreamAccounts = append(m.config.UpstreamAccounts, *account)
-	
+
 	// 自动保存到文件
 	return m.saveUnsafe(m.config)
 }
@@ -348,18 +348,18 @@ func (m *ConfigManager) CreateUpstreamAccount(account *types.UpstreamAccount) er
 func (m *ConfigManager) GetUpstreamAccount(accountID string) (*types.UpstreamAccount, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	if m.config == nil {
 		return nil, fmt.Errorf("配置未加载")
 	}
-	
+
 	for _, account := range m.config.UpstreamAccounts {
 		if account.ID == accountID {
 			accountCopy := account // 避免返回内部数据的引用
 			return &accountCopy, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("上游账号不存在: %s", accountID)
 }
 
@@ -367,18 +367,18 @@ func (m *ConfigManager) GetUpstreamAccount(accountID string) (*types.UpstreamAcc
 func (m *ConfigManager) ListUpstreamAccounts() []*types.UpstreamAccount {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	if m.config == nil {
 		return []*types.UpstreamAccount{}
 	}
-	
+
 	// 返回副本避免外部修改内部数据
 	accounts := make([]*types.UpstreamAccount, len(m.config.UpstreamAccounts))
 	for i, account := range m.config.UpstreamAccounts {
 		accountCopy := account
 		accounts[i] = &accountCopy
 	}
-	
+
 	return accounts
 }
 
@@ -386,11 +386,11 @@ func (m *ConfigManager) ListUpstreamAccounts() []*types.UpstreamAccount {
 func (m *ConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*types.UpstreamAccount {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	if m.config == nil {
 		return []*types.UpstreamAccount{}
 	}
-	
+
 	var activeAccounts []*types.UpstreamAccount
 	for _, account := range m.config.UpstreamAccounts {
 		if account.Provider == provider && account.Status == "active" {
@@ -398,7 +398,7 @@ func (m *ConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*t
 			activeAccounts = append(activeAccounts, &accountCopy)
 		}
 	}
-	
+
 	return activeAccounts
 }
 
@@ -406,23 +406,23 @@ func (m *ConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*t
 func (m *ConfigManager) UpdateUpstreamAccount(accountID string, updater func(*types.UpstreamAccount) error) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	for i, account := range m.config.UpstreamAccounts {
 		if account.ID == accountID {
 			// 应用更新函数
 			if err := updater(&m.config.UpstreamAccounts[i]); err != nil {
 				return err
 			}
-			
+
 			// 自动保存到文件
 			return m.saveUnsafe(m.config)
 		}
 	}
-	
+
 	return fmt.Errorf("上游账号不存在: %s", accountID)
 }
 
@@ -430,21 +430,21 @@ func (m *ConfigManager) UpdateUpstreamAccount(accountID string, updater func(*ty
 func (m *ConfigManager) DeleteUpstreamAccount(accountID string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.config == nil {
 		return fmt.Errorf("配置未加载")
 	}
-	
+
 	for i, account := range m.config.UpstreamAccounts {
 		if account.ID == accountID {
 			// 从切片中删除
 			m.config.UpstreamAccounts = append(m.config.UpstreamAccounts[:i], m.config.UpstreamAccounts[i+1:]...)
-			
+
 			// 自动保存到文件
 			return m.saveUnsafe(m.config)
 		}
 	}
-	
+
 	return fmt.Errorf("上游账号不存在: %s", accountID)
 }
 
@@ -459,11 +459,11 @@ func (m *ConfigManager) applyEnvironmentConfig(config *types.Config) {
 	if config.Environment.HTTPProxy != "" {
 		os.Setenv("HTTP_PROXY", config.Environment.HTTPProxy)
 	}
-	
+
 	if config.Environment.HTTPSProxy != "" {
 		os.Setenv("HTTPS_PROXY", config.Environment.HTTPSProxy)
 	}
-	
+
 	if config.Environment.NoProxy != "" {
 		os.Setenv("NO_PROXY", config.Environment.NoProxy)
 	}

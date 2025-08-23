@@ -28,9 +28,9 @@ func (m *AuthMiddleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 		// 支持两种认证方式：
 		// 1. Authorization: Bearer <token>  (Gateway标准格式)
 		// 2. x-api-key: <token>            (Anthropic原生格式)
-		
+
 		var token string
-		
+
 		// 首先检查 x-api-key 头部（Anthropic原生格式）
 		if apiKey := r.Header.Get("x-api-key"); apiKey != "" {
 			token = apiKey
@@ -51,7 +51,7 @@ func (m *AuthMiddleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 			// 提取token
 			token = strings.TrimPrefix(authHeader, "Bearer ")
 		}
-		
+
 		if token == "" {
 			m.writeErrorResponse(w, http.StatusUnauthorized, "empty_token", "Authorization token cannot be empty")
 			return
@@ -194,23 +194,23 @@ func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
+
 		// 创建ResponseWriter包装器来捕获状态码
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-		
+
 		next(wrapped, r)
-		
+
 		duration := time.Since(start)
-		
+
 		// 记录请求日志
 		keyID := r.Header.Get("X-Gateway-Key-ID")
 		if keyID == "" {
 			keyID = "anonymous"
 		}
-		
+
 		// TODO: 使用结构化日志记录
 		_ = duration // 暂时避免未使用变量错误
-		// log.Printf("[%s] %s %s - %d - %v - key:%s", 
+		// log.Printf("[%s] %s %s - %d - %v - key:%s",
 		//     r.Method, r.URL.Path, r.RemoteAddr, wrapped.statusCode, duration, keyID)
 	}
 }

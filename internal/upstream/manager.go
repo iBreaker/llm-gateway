@@ -40,7 +40,7 @@ func (m *UpstreamManager) AddAccount(account *types.UpstreamAccount) error {
 		account.CreatedAt = time.Now()
 	}
 	account.UpdatedAt = time.Now()
-	
+
 	// 初始化使用统计
 	if account.Usage == nil {
 		account.Usage = &types.UpstreamUsageStats{
@@ -58,7 +58,7 @@ func (m *UpstreamManager) AddAccount(account *types.UpstreamAccount) error {
 	if account.Status == "" {
 		account.Status = "active"
 	}
-	
+
 	if account.HealthStatus == "" {
 		account.HealthStatus = "unknown"
 	}
@@ -205,7 +205,7 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 		return nil, err
 	}
 	headers := make(map[string]string)
-	
+
 	switch account.Type {
 	case types.UpstreamTypeAPIKey:
 		switch account.Provider {
@@ -219,12 +219,12 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 		default:
 			headers["Authorization"] = "Bearer " + account.APIKey
 		}
-		
+
 	case types.UpstreamTypeOAuth:
 		if account.AccessToken == "" {
 			return nil, fmt.Errorf("OAuth account missing access token")
 		}
-		
+
 		// 1. 提前5分钟刷新token，避免在请求过程中过期
 		needRefresh := false
 		if account.ExpiresAt != nil {
@@ -236,12 +236,12 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 			// 如果没有过期时间，认为已过期需要刷新
 			needRefresh = true
 		}
-		
+
 		// 如果没有refresh token，也无法刷新
 		if needRefresh && account.RefreshToken == "" {
 			return nil, fmt.Errorf("OAuth token已过期且无refresh token，需要重新授权: ./llm-gateway oauth start %s", upstreamID)
 		}
-		
+
 		// 2. 如果需要刷新，调用自动刷新逻辑
 		if needRefresh {
 			if err := m.autoRefreshToken(account); err != nil {
@@ -253,10 +253,10 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 				return nil, fmt.Errorf("failed to get updated account after refresh: %w", err)
 			}
 		}
-		
+
 		// OAuth总是使用Bearer认证
 		headers["Authorization"] = "Bearer " + account.AccessToken
-		
+
 		// Anthropic OAuth需要特殊处理
 		if account.Provider == types.ProviderAnthropic {
 			// 设置API版本头部
@@ -264,11 +264,11 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 			// 设置OAuth特有的beta标志
 			headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 		}
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", account.Type)
 	}
-	
+
 	return headers, nil
 }
 
@@ -278,7 +278,7 @@ func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error
 	if account.RefreshToken == "" {
 		return fmt.Errorf("no refresh token available for account %s", account.ID)
 	}
-	
+
 	// 2. 创建OAuth管理器实例并调用刷新方法
 	// RefreshToken内部会调用UpdateOAuthTokens更新配置中的数据
 	oauthMgr := NewOAuthManager(m)

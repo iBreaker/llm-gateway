@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iBreaker/llm-gateway/pkg/types"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
+	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
 // BalanceStrategy 负载均衡策略
@@ -65,10 +65,10 @@ func (r *RequestRouter) selectRoundRobin(provider types.Provider, accounts []*ty
 	if index >= len(accounts) {
 		index = 0
 	}
-	
+
 	selected := accounts[index]
 	r.rrIndex[provider] = (index + 1) % len(accounts)
-	
+
 	return selected, nil
 }
 
@@ -87,13 +87,13 @@ func (r *RequestRouter) selectHealthFirst(accounts []*types.UpstreamAccount) (*t
 			healthyAccounts = append(healthyAccounts, account)
 		}
 	}
-	
+
 	// 如果有健康的账号，从中随机选择
 	if len(healthyAccounts) > 0 {
 		index := rand.Intn(len(healthyAccounts))
 		return healthyAccounts[index], nil
 	}
-	
+
 	// 如果没有健康的账号，从所有账号中选择
 	index := rand.Intn(len(accounts))
 	return accounts[index], nil
@@ -115,13 +115,13 @@ func (r *RequestRouter) MarkUpstreamSuccess(upstreamID string, latency time.Dura
 func (r *RequestRouter) GetUpstreamStats() map[string]*types.UpstreamUsageStats {
 	accounts := r.upstreamMgr.ListAccounts()
 	stats := make(map[string]*types.UpstreamUsageStats)
-	
+
 	for _, account := range accounts {
 		if account.Usage != nil {
 			stats[account.ID] = account.Usage
 		}
 	}
-	
+
 	return stats
 }
 
@@ -129,6 +129,6 @@ func (r *RequestRouter) GetUpstreamStats() map[string]*types.UpstreamUsageStats 
 func (r *RequestRouter) SetStrategy(strategy BalanceStrategy) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	
+
 	r.strategy = strategy
 }

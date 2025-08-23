@@ -6,8 +6,8 @@ import (
 
 // CLI 命令行接口
 type CLI struct {
-	app     *App
-	appCtx  interface{} // 应用程序上下文，使用接口避免循环依赖
+	app    *App
+	appCtx interface{} // 应用程序上下文，使用接口避免循环依赖
 }
 
 // App 应用程序
@@ -243,11 +243,11 @@ func (c *CLI) printUsage() {
 	fmt.Printf("  %s <command> [arguments]\n", c.app.Name)
 	fmt.Println()
 	fmt.Println("可用命令:")
-	
+
 	for _, cmd := range c.app.Commands {
 		fmt.Printf("  %-10s %s\n", cmd.Name, cmd.Description)
 	}
-	
+
 	fmt.Println()
 	fmt.Printf("使用 '%s <command> --help' 查看命令的详细帮助\n", c.app.Name)
 }
@@ -256,7 +256,7 @@ func (c *CLI) printUsage() {
 func (c *CLI) printCommandUsage(cmd *Command) {
 	fmt.Printf("用法: %s\n", cmd.Usage)
 	fmt.Printf("描述: %s\n", cmd.Description)
-	
+
 	if len(cmd.Subcommands) > 0 {
 		fmt.Println()
 		fmt.Println("子命令:")

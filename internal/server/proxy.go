@@ -171,7 +171,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 // callUpstreamStreamAPI 调用上游流式API
 func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) error {
 	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
-	
+
 	// 构建上游请求
 	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
 	if err != nil {
@@ -180,7 +180,7 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 	}
 
 	logger.Debug("发送流式请求到: %s", upstreamReq.URL.String())
-	
+
 	// 发送流式请求
 	resp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
@@ -190,7 +190,7 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 	defer resp.Body.Close()
 
 	logger.Debug("收到上游响应，状态码: %d", resp.StatusCode)
-	
+
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
 		logger.Debug("上游API返回错误状态码: %d", resp.StatusCode)

@@ -3,7 +3,7 @@ package converter
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
@@ -25,50 +25,50 @@ func TestCrossFormatRequests(t *testing.T) {
 
 	testCases := []CrossFormatTestCase{
 		{
-			Name:         "OpenAI基础请求转Anthropic",
-			InputFile:    "testdata/req/req_openai_basic.json",
-			InputFormat:  FormatOpenAI,
-			OutputFormat: FormatAnthropic,
+			Name:           "OpenAI基础请求转Anthropic",
+			InputFile:      "testdata/req/req_openai_basic.json",
+			InputFormat:    FormatOpenAI,
+			OutputFormat:   FormatAnthropic,
 			ExpectedFields: []string{"model", "messages", "max_tokens"},
 			ValidationFunc: validateOpenAIToAnthropicRequest,
 		},
 		{
-			Name:         "OpenAI工具调用转Anthropic",
-			InputFile:    "testdata/req/req_openai_tools_basic.json",
-			InputFormat:  FormatOpenAI,
-			OutputFormat: FormatAnthropic,
+			Name:           "OpenAI工具调用转Anthropic",
+			InputFile:      "testdata/req/req_openai_tools_basic.json",
+			InputFormat:    FormatOpenAI,
+			OutputFormat:   FormatAnthropic,
 			ExpectedFields: []string{"model", "messages", "tools"},
 			ValidationFunc: validateOpenAIToAnthropicToolRequest,
 		},
 		{
-			Name:         "Anthropic基础请求转OpenAI",
-			InputFile:    "testdata/req/req_anthropic_basic.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic基础请求转OpenAI",
+			InputFile:      "testdata/req/req_anthropic_basic.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"model", "messages"},
 			ValidationFunc: validateAnthropicToOpenAIRequest,
 		},
 		{
-			Name:         "Anthropic工具调用转OpenAI",
-			InputFile:    "testdata/req/req_anthropic_tools_basic.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic工具调用转OpenAI",
+			InputFile:      "testdata/req/req_anthropic_tools_basic.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"model", "messages", "tools"},
 			ValidationFunc: validateAnthropicToOpenAIToolRequest,
 		},
 		{
-			Name:         "Anthropic复杂system转OpenAI",
-			InputFile:    "testdata/req/req_anthropic_system_array.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic复杂system转OpenAI",
+			InputFile:      "testdata/req/req_anthropic_system_array.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"model", "messages"},
 			ValidationFunc: validateAnthropicSystemToOpenAI,
 		},
 		{
-			Name:         "Anthropic cache_control转OpenAI",
-			InputFile:    "testdata/req/req_anthropic_cache_control.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic cache_control转OpenAI",
+			InputFile:      "testdata/req/req_anthropic_cache_control.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"model", "messages", "tools"},
 			ValidationFunc: validateAnthropicCacheControlToOpenAI,
 		},
@@ -77,7 +77,7 @@ func TestCrossFormatRequests(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			// 读取输入文件
-			inputData, err := ioutil.ReadFile(tc.InputFile)
+			inputData, err := os.ReadFile(tc.InputFile)
 			if err != nil {
 				t.Fatalf("读取输入文件失败: %v", err)
 			}
@@ -287,7 +287,7 @@ func validateAnthropicToOpenAIToolRequest(input, output []byte) error {
 				if tool["type"] != "function" {
 					return fmt.Errorf("OpenAI工具type应为function")
 				}
-				
+
 				if function, ok := tool["function"].(map[string]interface{}); ok {
 					if _, hasName := function["name"]; !hasName {
 						return fmt.Errorf("OpenAI工具function缺少name字段")
@@ -391,34 +391,34 @@ func TestCrossFormatResponses(t *testing.T) {
 
 	testCases := []CrossFormatTestCase{
 		{
-			Name:         "OpenAI响应转Anthropic",
-			InputFile:    "testdata/rsp/rsp_openai_basic.json",
-			InputFormat:  FormatOpenAI,
-			OutputFormat: FormatAnthropic,
+			Name:           "OpenAI响应转Anthropic",
+			InputFile:      "testdata/rsp/rsp_openai_basic.json",
+			InputFormat:    FormatOpenAI,
+			OutputFormat:   FormatAnthropic,
 			ExpectedFields: []string{"id", "type", "role", "content", "model"},
 			ValidationFunc: validateOpenAIToAnthropicResponse,
 		},
 		{
-			Name:         "OpenAI工具调用响应转Anthropic",
-			InputFile:    "testdata/rsp/rsp_openai_tool_call.json",
-			InputFormat:  FormatOpenAI,
-			OutputFormat: FormatAnthropic,
+			Name:           "OpenAI工具调用响应转Anthropic",
+			InputFile:      "testdata/rsp/rsp_openai_tool_call.json",
+			InputFormat:    FormatOpenAI,
+			OutputFormat:   FormatAnthropic,
 			ExpectedFields: []string{"id", "type", "role", "content", "model"},
 			ValidationFunc: validateOpenAIToolCallToAnthropicResponse,
 		},
 		{
-			Name:         "Anthropic响应转OpenAI",
-			InputFile:    "testdata/rsp/rsp_anthropic_basic.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic响应转OpenAI",
+			InputFile:      "testdata/rsp/rsp_anthropic_basic.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"id", "object", "created", "model", "choices"},
 			ValidationFunc: validateAnthropicToOpenAIResponse,
 		},
 		{
-			Name:         "Anthropic工具使用响应转OpenAI",
-			InputFile:    "testdata/rsp/rsp_anthropic_tool_use.json",
-			InputFormat:  FormatAnthropic,
-			OutputFormat: FormatOpenAI,
+			Name:           "Anthropic工具使用响应转OpenAI",
+			InputFile:      "testdata/rsp/rsp_anthropic_tool_use.json",
+			InputFormat:    FormatAnthropic,
+			OutputFormat:   FormatOpenAI,
 			ExpectedFields: []string{"id", "object", "created", "model", "choices"},
 			ValidationFunc: validateAnthropicToolUseToOpenAIResponse,
 		},
@@ -427,7 +427,7 @@ func TestCrossFormatResponses(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			// 读取输入文件
-			inputData, err := ioutil.ReadFile(tc.InputFile)
+			inputData, err := os.ReadFile(tc.InputFile)
 			if err != nil {
 				t.Fatalf("读取输入文件失败: %v", err)
 			}
