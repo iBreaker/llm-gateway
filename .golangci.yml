@@ -1,0 +1,141 @@
+# golangci-lint configuration file
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+    - tmp
+  skip-files:
+    - ".*_test.go"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  gocyclo:
+    min-complexity: 15
+    
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+    
+  gofmt:
+    simplify: true
+    
+  goimports:
+    local-prefixes: github.com/iBreaker/llm-gateway
+    
+  golint:
+    min-confidence: 0.8
+    
+  govet:
+    check-shadowing: true
+    enable-all: true
+    
+  maligned:
+    suggest-new: true
+    
+  misspell:
+    locale: US
+    
+  nakedret:
+    max-func-lines: 30
+    
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+    
+  unparam:
+    check-exported: false
+    
+  unused:
+    check-exported: false
+    
+  whitespace:
+    multi-if: false
+    multi-func: false
+
+linters:
+  enable:
+    - bodyclose
+    - deadcode
+    - depguard
+    - dogsled
+    - dupl
+    - errcheck
+    - exportloopref
+    - exhaustive
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - golint
+    - gomnd
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - rowserrcheck
+    - scopelint
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - whitespace
+
+  disable:
+    - maligned  # 结构体字段对齐不是关键问题
+    - prealloc  # 预分配优化不是必需的
+
+issues:
+  exclude-rules:
+    # 排除测试文件中的某些检查
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - funlen
+    
+    # 排除main.go中的函数长度检查
+    - path: cmd/main\.go
+      linters:
+        - funlen
+        - gocyclo
+    
+    # 排除类型定义文件的某些检查
+    - path: pkg/types/
+      linters:
+        - maligned
+        
+  exclude:
+    # 排除常见的false positive
+    - "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+    - "should have a package comment, unless it's in another file for this package"
+    
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false

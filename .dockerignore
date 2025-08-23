@@ -1,0 +1,57 @@
+# Git
+.git
+.gitignore
+
+# 构建产物
+bin/
+dist/
+*.exe
+*.so
+*.dylib
+
+# 测试
+*.test
+*.out
+coverage.html
+coverage.out
+gosec-report.json
+
+# 依赖
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+logs/
+*.log
+
+# 临时文件
+tmp/
+*.tmp
+*.temp
+
+# 配置文件（可能包含敏感信息）
+config.yaml
+*.env
+.env.*
+
+# 文档
+*.md
+docs/
+
+# CI/CD
+.github/
+.golangci.yml
+
+# Docker
+Dockerfile*
+.dockerignore
