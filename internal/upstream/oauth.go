@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -300,6 +301,52 @@ type TokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 }
 
+// maskSensitiveInfo 脱敏处理敏感信息
+func maskSensitiveInfo(data string) string {
+	sensitiveKeys := []string{
+		"refresh_token",
+		"access_token", 
+		"code",
+		"code_verifier",
+		"client_secret",
+		"api_key",
+	}
+	
+	result := data
+	for _, key := range sensitiveKeys {
+		// 匹配 key=value 格式 (用于URL编码格式)
+		re1 := regexp.MustCompile(fmt.Sprintf(`(%s=)([^&\s]+)`, key))
+		result = re1.ReplaceAllStringFunc(result, func(match string) string {
+			parts := strings.SplitN(match, "=", 2)
+			if len(parts) != 2 {
+				return match
+			}
+			value := parts[1]
+			return parts[0] + "=" + maskValue(value)
+		})
+		
+		// 匹配 JSON 格式 "key":"value"
+		re2 := regexp.MustCompile(fmt.Sprintf(`("%s":\s*")([^"]+)(")`, key))
+		result = re2.ReplaceAllStringFunc(result, func(match string) string {
+			parts := re2.FindStringSubmatch(match)
+			if len(parts) != 4 {
+				return match
+			}
+			return parts[1] + maskValue(parts[2]) + parts[3]
+		})
+	}
+	return result
+}
+
+// maskValue 对值进行脱敏处理
+func maskValue(value string) string {
+	if len(value) <= 8 {
+		return strings.Repeat("*", len(value))
+	}
+	// 显示前3位和后3位，中间用*替换
+	return value[:3] + strings.Repeat("*", len(value)-6) + value[len(value)-3:]
+}
+
 // exchangeCodeForToken 交换授权码获取token
 func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string]string) (*TokenResponse, error) {
 	// 使用form-encoded格式而不是JSON
@@ -309,9 +356,12 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 	}
 	reqBody := formData.Encode()
 
-	// 调试信息：打印请求内容
+	// 调试信息：打印请求内容（脱敏）
 	fmt.Printf("🔍 DEBUG: Token请求URL: %s\n", tokenURL)
-	fmt.Printf("🔍 DEBUG: Token请求Body: %s\n", reqBody)
+	
+	// 脱敏处理请求体中的敏感信息
+	debugBody := maskSensitiveInfo(reqBody)
+	fmt.Printf("🔍 DEBUG: Token请求Body: %s\n", debugBody)
 
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(reqBody))
 	if err != nil {
@@ -336,9 +386,17 @@ func (m *OAuthManager) exchangeCodeForToken(tokenURL string, tokenReq map[string
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}
 
+	// 添加响应状态的调试信息
+	fmt.Printf("🔍 DEBUG: Token响应状态码: %d\n", resp.StatusCode)
+	
 	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("🔍 DEBUG: Token请求失败，响应内容: %s\n", string(body))
 		return nil, fmt.Errorf("token请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
+
+	// 脱敏处理响应内容中的敏感信息并打印
+	debugResponse := maskSensitiveInfo(string(body))
+	fmt.Printf("🔍 DEBUG: Token响应内容: %s\n", debugResponse)
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {

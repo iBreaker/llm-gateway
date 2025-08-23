@@ -667,7 +667,13 @@ func (p *StreamResponseProcessor) ProcessStream(
 					}
 
 					if convertedEvent != "" {
-						writer(convertedEvent, tokens)
+						// 如果是Anthropic格式，需要保持完整的SSE格式（event: + data:）
+						if targetFormat == FormatAnthropic {
+							fullEvent := fmt.Sprintf("event: %s\ndata: %s", eventType, convertedEvent)
+							writer(fullEvent, tokens)
+						} else {
+							writer(convertedEvent, tokens)
+						}
 						firstEvent = false
 					}
 
