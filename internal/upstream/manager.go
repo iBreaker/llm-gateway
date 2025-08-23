@@ -2,30 +2,36 @@ package upstream
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// UpstreamManager 上游账号管理器
+// ConfigManager 配置管理器接口
+type ConfigManager interface {
+	CreateUpstreamAccount(account *types.UpstreamAccount) error
+	GetUpstreamAccount(accountID string) (*types.UpstreamAccount, error)
+	ListUpstreamAccounts() []*types.UpstreamAccount
+	ListActiveUpstreamAccounts(provider types.Provider) []*types.UpstreamAccount
+	UpdateUpstreamAccount(accountID string, updater func(*types.UpstreamAccount) error) error
+	DeleteUpstreamAccount(accountID string) error
+}
+
+// UpstreamManager 上游账号业务管理器
 type UpstreamManager struct {
-	accounts map[string]*types.UpstreamAccount
-	mutex    sync.RWMutex
+	configMgr ConfigManager
 }
 
 // NewUpstreamManager 创建新的上游账号管理器
-func NewUpstreamManager() *UpstreamManager {
+func NewUpstreamManager(configMgr ConfigManager) *UpstreamManager {
 	return &UpstreamManager{
-		accounts: make(map[string]*types.UpstreamAccount),
+		configMgr: configMgr,
 	}
 }
 
-// AddAccount 添加上游账号
+// AddAccount 添加上游账号（业务逻辑）
 func (m *UpstreamManager) AddAccount(account *types.UpstreamAccount) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
+	// 业务逻辑：设置默认值
 	if account.ID == "" {
 		account.ID = generateUpstreamID()
 	}
@@ -57,195 +63,128 @@ func (m *UpstreamManager) AddAccount(account *types.UpstreamAccount) error {
 		account.HealthStatus = "unknown"
 	}
 
-	m.accounts[account.ID] = account
-	return nil
+	// 通过ConfigManager保存
+	return m.configMgr.CreateUpstreamAccount(account)
 }
 
 // GetAccount 获取指定的上游账号
 func (m *UpstreamManager) GetAccount(upstreamID string) (*types.UpstreamAccount, error) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return nil, fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
-
-	return account, nil
+	return m.configMgr.GetUpstreamAccount(upstreamID)
 }
 
 // ListAccounts 列出所有上游账号
 func (m *UpstreamManager) ListAccounts() []*types.UpstreamAccount {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	accounts := make([]*types.UpstreamAccount, 0, len(m.accounts))
-	for _, account := range m.accounts {
-		accounts = append(accounts, account)
-	}
-
-	return accounts
+	return m.configMgr.ListUpstreamAccounts()
 }
 
 // ListActiveAccounts 列出指定提供商的活跃账号
 func (m *UpstreamManager) ListActiveAccounts(provider types.Provider) []*types.UpstreamAccount {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	var activeAccounts []*types.UpstreamAccount
-	for _, account := range m.accounts {
-		if account.Provider == provider && account.Status == "active" {
-			activeAccounts = append(activeAccounts, account)
-		}
-	}
-
-	return activeAccounts
+	return m.configMgr.ListActiveUpstreamAccounts(provider)
 }
 
 // DeleteAccount 删除上游账号
 func (m *UpstreamManager) DeleteAccount(upstreamID string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	if _, exists := m.accounts[upstreamID]; !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
-
-	delete(m.accounts, upstreamID)
-	return nil
+	return m.configMgr.DeleteUpstreamAccount(upstreamID)
 }
 
-// UpdateAccountStatus 更新上游账号状态
+// UpdateAccountStatus 更新上游账号状态（业务逻辑）
 func (m *UpstreamManager) UpdateAccountStatus(upstreamID string, status string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
-
-	account.Status = status
-	account.UpdatedAt = time.Now()
-	return nil
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		account.Status = status
+		account.UpdatedAt = time.Now()
+		return nil
+	})
 }
 
-// UpdateAccountHealth 更新上游账号健康状态
+// UpdateAccountHealth 更新上游账号健康状态（业务逻辑）
 func (m *UpstreamManager) UpdateAccountHealth(upstreamID string, healthy bool) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		now := time.Now()
+		account.LastHealthCheck = &now
 
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
+		if healthy {
+			account.HealthStatus = "healthy"
+		} else {
+			account.HealthStatus = "unhealthy"
+		}
 
-	now := time.Now()
-	account.LastHealthCheck = &now
-
-	if healthy {
-		account.HealthStatus = "healthy"
-	} else {
-		account.HealthStatus = "unhealthy"
-	}
-
-	account.UpdatedAt = now
-	return nil
+		account.UpdatedAt = now
+		return nil
+	})
 }
 
-// RecordSuccess 记录成功请求
+// RecordSuccess 记录成功请求（业务逻辑）
 func (m *UpstreamManager) RecordSuccess(upstreamID string, latency time.Duration, tokensUsed int64) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		if account.Usage == nil {
+			account.Usage = &types.UpstreamUsageStats{}
+		}
 
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
+		usage := account.Usage
+		usage.TotalRequests++
+		usage.SuccessfulRequests++
+		usage.TokensUsed += tokensUsed
+		usage.LastUsedAt = time.Now()
 
-	if account.Usage == nil {
-		account.Usage = &types.UpstreamUsageStats{}
-	}
+		// 更新平均延迟
+		if usage.TotalRequests > 0 {
+			usage.AvgLatency = (usage.AvgLatency*float64(usage.TotalRequests-1) + float64(latency.Milliseconds())) / float64(usage.TotalRequests)
+		}
 
-	usage := account.Usage
-	usage.TotalRequests++
-	usage.SuccessfulRequests++
-	usage.TokensUsed += tokensUsed
-	usage.LastUsedAt = time.Now()
+		// 更新错误率
+		if usage.TotalRequests > 0 {
+			usage.ErrorRate = float64(usage.ErrorRequests) / float64(usage.TotalRequests)
+		}
 
-	// 更新平均延迟
-	if usage.TotalRequests > 0 {
-		usage.AvgLatency = (usage.AvgLatency*float64(usage.TotalRequests-1) + float64(latency.Milliseconds())) / float64(usage.TotalRequests)
-	}
-
-	// 更新错误率
-	if usage.TotalRequests > 0 {
-		usage.ErrorRate = float64(usage.ErrorRequests) / float64(usage.TotalRequests)
-	}
-
-	return nil
+		return nil
+	})
 }
 
-// RecordError 记录错误请求
+// RecordError 记录错误请求（业务逻辑）
 func (m *UpstreamManager) RecordError(upstreamID string, err error) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		if account.Usage == nil {
+			account.Usage = &types.UpstreamUsageStats{}
+		}
 
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
+		usage := account.Usage
+		usage.TotalRequests++
+		usage.ErrorRequests++
 
-	if account.Usage == nil {
-		account.Usage = &types.UpstreamUsageStats{}
-	}
+		now := time.Now()
+		usage.LastErrorAt = &now
 
-	usage := account.Usage
-	usage.TotalRequests++
-	usage.ErrorRequests++
+		// 更新错误率
+		if usage.TotalRequests > 0 {
+			usage.ErrorRate = float64(usage.ErrorRequests) / float64(usage.TotalRequests)
+		}
 
-	now := time.Now()
-	usage.LastErrorAt = &now
-
-	// 更新错误率
-	if usage.TotalRequests > 0 {
-		usage.ErrorRate = float64(usage.ErrorRequests) / float64(usage.TotalRequests)
-	}
-
-	return nil
+		return nil
+	})
 }
 
-// UpdateOAuthTokens 更新OAuth token信息
+// UpdateOAuthTokens 更新OAuth token信息（业务逻辑）
 func (m *UpstreamManager) UpdateOAuthTokens(upstreamID, accessToken, refreshToken string, expiresAt time.Time) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		if account.Type != types.UpstreamTypeOAuth {
+			return fmt.Errorf("账号类型不是OAuth: %s", upstreamID)
+		}
 
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return fmt.Errorf("上游账号不存在: %s", upstreamID)
-	}
+		account.AccessToken = accessToken
+		account.RefreshToken = refreshToken
+		account.ExpiresAt = &expiresAt
+		account.UpdatedAt = time.Now()
+		account.Status = "active"
 
-	if account.Type != types.UpstreamTypeOAuth {
-		return fmt.Errorf("账号类型不是OAuth: %s", upstreamID)
-	}
-
-	account.AccessToken = accessToken
-	account.RefreshToken = refreshToken
-	account.ExpiresAt = &expiresAt
-	account.UpdatedAt = time.Now()
-	account.Status = "active"
-
-	return nil
+		return nil
+	})
 }
 
-// IsTokenExpired 检查OAuth token是否过期
+// IsTokenExpired 检查OAuth token是否过期（业务逻辑）
 func (m *UpstreamManager) IsTokenExpired(upstreamID string) (bool, error) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	account, exists := m.accounts[upstreamID]
-	if !exists {
-		return false, fmt.Errorf("上游账号不存在: %s", upstreamID)
+	account, err := m.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		return false, err
 	}
 
 	if account.Type != types.UpstreamTypeOAuth {
@@ -259,8 +198,12 @@ func (m *UpstreamManager) IsTokenExpired(upstreamID string) (bool, error) {
 	return time.Now().After(*account.ExpiresAt), nil
 }
 
-// GetAuthHeaders 获取上游账号的认证头部
-func (m *UpstreamManager) GetAuthHeaders(account *types.UpstreamAccount) (map[string]string, error) {
+// GetAuthHeaders 获取上游账号的认证头部（业务逻辑）
+func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, error) {
+	account, err := m.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		return nil, err
+	}
 	headers := make(map[string]string)
 	
 	switch account.Type {
@@ -318,7 +261,7 @@ func (m *UpstreamManager) GetAuthHeaders(account *types.UpstreamAccount) (map[st
 	return headers, nil
 }
 
-// autoRefreshToken 自动刷新OAuth token
+// autoRefreshToken 自动刷新OAuth token（业务逻辑）
 func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error {
 	// 1. 检查是否有refresh token
 	if account.RefreshToken == "" {
@@ -326,7 +269,7 @@ func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error
 	}
 	
 	// 2. 创建OAuth管理器实例并调用刷新方法
-	// RefreshToken内部会调用UpdateOAuthTokens更新内存中的数据
+	// RefreshToken内部会调用UpdateOAuthTokens更新配置中的数据
 	oauthMgr := NewOAuthManager(m)
 	return oauthMgr.RefreshToken(account.ID)
 }

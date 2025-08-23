@@ -182,14 +182,14 @@ func handleAPIKeyList(args []string, app *app.Application) error {
 	}
 
 	fmt.Printf("Gateway API Key列表 (共%d个):\n\n", len(keys))
-	
+
 	for _, key := range keys {
 		fmt.Printf("ID: %s\n", key.ID)
 		fmt.Printf("  名称: %s\n", key.Name)
 		fmt.Printf("  权限: %v\n", key.Permissions)
 		fmt.Printf("  状态: %s\n", key.Status)
 		fmt.Printf("  创建时间: %s\n", key.CreatedAt.Format("2006-01-02 15:04:05"))
-		
+
 		if key.Usage != nil {
 			fmt.Printf("  总请求数: %d\n", key.Usage.TotalRequests)
 			fmt.Printf("  成功请求: %d\n", key.Usage.SuccessfulRequests)
@@ -231,7 +231,7 @@ func handleAPIKeyShow(args []string, app *app.Application) error {
 		fmt.Printf("  错误请求: %d\n", key.Usage.ErrorRequests)
 		fmt.Printf("  平均延迟: %.2f ms\n", key.Usage.AvgLatency)
 		fmt.Printf("  最后使用: %s\n", key.Usage.LastUsedAt.Format("2006-01-02 15:04:05"))
-		
+
 		if key.Usage.LastErrorAt != nil {
 			fmt.Printf("  最后错误: %s\n", key.Usage.LastErrorAt.Format("2006-01-02 15:04:05"))
 		}
@@ -246,7 +246,7 @@ func handleAPIKeyRemove(args []string, app *app.Application) error {
 	}
 
 	keyID := args[0]
-	
+
 	// 检查key是否存在
 	_, err := app.GatewayKeyMgr.GetKey(keyID)
 	if err != nil {
@@ -273,7 +273,7 @@ func handleAPIKeyDisable(args []string, app *app.Application) error {
 	}
 
 	keyID := args[0]
-	
+
 	// 禁用key
 	if err := app.GatewayKeyMgr.UpdateKeyStatus(keyID, "disabled"); err != nil {
 		return fmt.Errorf("禁用API Key失败: %w", err)
@@ -616,12 +616,12 @@ func printServerUsage() {
 
 func handleServerStart(args []string, app *app.Application) error {
 	fmt.Printf("启动LLM Gateway HTTP服务器...\n")
-	
+
 	// 显示服务器配置信息
 	config := app.Config.Get()
 	fmt.Printf("监听地址: %s:%d\n", config.Server.Host, config.Server.Port)
 	fmt.Printf("请求超时: %d秒\n", config.Server.Timeout)
-	
+
 	// 显示统计信息
 	gatewayKeys := app.GatewayKeyMgr.ListKeys()
 	upstreamAccounts := app.UpstreamMgr.ListAccounts()
@@ -631,30 +631,30 @@ func handleServerStart(args []string, app *app.Application) error {
 			activeUpstreams++
 		}
 	}
-	
+
 	fmt.Printf("\n当前配置状态:\n")
 	fmt.Printf("  Gateway API Keys: %d个\n", len(gatewayKeys))
 	fmt.Printf("  上游账号总数: %d个\n", len(upstreamAccounts))
 	fmt.Printf("  活跃上游账号: %d个\n", activeUpstreams)
 	fmt.Println()
-	
+
 	// 启动HTTP服务器 (这会阻塞)
 	fmt.Println("服务器启动中，按 Ctrl+C 停止...")
 	if err := app.HTTPServer.Start(); err != nil {
 		return fmt.Errorf("启动服务器失败: %w", err)
 	}
-	
+
 	return nil
 }
 
 func handleServerStatus(args []string, app *app.Application) error {
 	config := app.Config.Get()
-	
+
 	fmt.Println("LLM Gateway 服务器状态:")
 	fmt.Printf("配置文件: %s\n", app.Config.GetConfigPath())
 	fmt.Printf("监听地址: %s:%d\n", config.Server.Host, config.Server.Port)
 	fmt.Printf("请求超时: %d秒\n", config.Server.Timeout)
-	
+
 	// Gateway API Keys统计
 	gatewayKeys := app.GatewayKeyMgr.ListKeys()
 	activeKeys := 0
@@ -663,17 +663,17 @@ func handleServerStatus(args []string, app *app.Application) error {
 			activeKeys++
 		}
 	}
-	
+
 	fmt.Printf("\nGateway API Keys:\n")
 	fmt.Printf("  总数: %d个\n", len(gatewayKeys))
 	fmt.Printf("  活跃: %d个\n", activeKeys)
-	
+
 	// 上游账号统计
 	upstreamAccounts := app.UpstreamMgr.ListAccounts()
 	providerStats := make(map[types.Provider]int)
 	activeUpstreams := 0
 	healthyUpstreams := 0
-	
+
 	for _, account := range upstreamAccounts {
 		providerStats[account.Provider]++
 		if account.Status == "active" {
@@ -683,23 +683,23 @@ func handleServerStatus(args []string, app *app.Application) error {
 			healthyUpstreams++
 		}
 	}
-	
+
 	fmt.Printf("\n上游账号:\n")
 	fmt.Printf("  总数: %d个\n", len(upstreamAccounts))
 	fmt.Printf("  活跃: %d个\n", activeUpstreams)
 	fmt.Printf("  健康: %d个\n", healthyUpstreams)
-	
+
 	if len(providerStats) > 0 {
 		fmt.Printf("  按提供商分布:\n")
 		for provider, count := range providerStats {
 			fmt.Printf("    %s: %d个\n", provider, count)
 		}
 	}
-	
+
 	// 负载均衡策略
 	fmt.Printf("\n负载均衡:\n")
 	fmt.Printf("  策略: health_first\n") // 硬编码，因为我们在app.go中设置的
-	
+
 	return nil
 }
 
@@ -762,7 +762,7 @@ func handleOAuthStatus(args []string, app *app.Application) error {
 	fmt.Printf("  账号ID: %s\n", account.ID)
 	fmt.Printf("  名称: %s\n", account.Name)
 	fmt.Printf("  提供商: %s\n", account.Provider)
-	
+
 	if account.AccessToken != "" {
 		fmt.Printf("  Token状态: ✅ 已授权\n")
 		if account.ExpiresAt != nil {
@@ -789,7 +789,7 @@ func handleOAuthRefresh(args []string, app *app.Application) error {
 	}
 
 	upstreamID := args[0]
-	
+
 	fmt.Printf("刷新OAuth token: %s\n", upstreamID)
 	if err := app.OAuthMgr.RefreshToken(upstreamID); err != nil {
 		return fmt.Errorf("刷新token失败: %w", err)
@@ -866,14 +866,14 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 
 	fmt.Printf("✅ 授权成功！\n")
 	fmt.Printf("🎉 OAuth账号 \"%s\" 已就绪并可用\n\n", account.Name)
-	
+
 	fmt.Printf("账号详情:\n")
 	fmt.Printf("  ID: %s\n", account.ID)
 	fmt.Printf("  名称: %s\n", account.Name)
 	fmt.Printf("  类型: %s\n", account.Type)
 	fmt.Printf("  提供商: %s\n", account.Provider)
 	fmt.Printf("  状态: %s ✅\n", account.Status)
-	
+
 	if account.ExpiresAt != nil {
 		fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
 	}
@@ -925,25 +925,25 @@ func printEnvironmentUsage() {
 
 func handleEnvList(args []string, app *app.Application) error {
 	config := app.Config.Get()
-	
+
 	fmt.Println("环境变量配置:")
 	fmt.Printf("  HTTP Proxy:  %s\n", config.Environment.HTTPProxy)
 	fmt.Printf("  HTTPS Proxy: %s\n", config.Environment.HTTPSProxy)
 	fmt.Printf("  No Proxy:    %s\n", config.Environment.NoProxy)
-	
+
 	fmt.Println()
 	fmt.Println("当前运行时环境变量:")
 	fmt.Printf("  HTTP_PROXY:  %s\n", os.Getenv("HTTP_PROXY"))
 	fmt.Printf("  HTTPS_PROXY: %s\n", os.Getenv("HTTPS_PROXY"))
 	fmt.Printf("  NO_PROXY:    %s\n", os.Getenv("NO_PROXY"))
-	
+
 	return nil
 }
 
 func handleEnvSet(args []string, app *app.Application) error {
 	fs := flag.NewFlagSet("env set", flag.ContinueOnError)
 	httpProxy := fs.String("http-proxy", "", "HTTP代理地址")
-	httpsProxy := fs.String("https-proxy", "", "HTTPS代理地址") 
+	httpsProxy := fs.String("https-proxy", "", "HTTPS代理地址")
 	noProxy := fs.String("no-proxy", "", "不使用代理的地址列表")
 
 	if err := fs.Parse(args); err != nil {

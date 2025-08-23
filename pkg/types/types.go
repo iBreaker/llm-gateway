@@ -25,7 +25,7 @@ const (
 type UpstreamType string
 
 const (
-	UpstreamTypeAPIKey UpstreamType = "api_key"
+	UpstreamTypeAPIKey UpstreamType = "api-key"
 	UpstreamTypeOAuth  UpstreamType = "oauth"
 )
 

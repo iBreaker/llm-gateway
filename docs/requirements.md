@@ -139,7 +139,7 @@ auth:
 accounts:
   - id: "anthropic-api-1"
     name: "生产API账号1"
-    type: "api_key"
+    type: "api-key"
     status: "active"
     api_key: "sk-ant-xxxxxxxx"
     

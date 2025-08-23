@@ -5,30 +5,34 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// GatewayKeyManager Gateway API Key管理器
+// ConfigManager 配置管理器接口
+type ConfigManager interface {
+	CreateGatewayKey(key *types.GatewayAPIKey) error
+	GetGatewayKey(keyID string) (*types.GatewayAPIKey, error)
+	ListGatewayKeys() []*types.GatewayAPIKey
+	UpdateGatewayKey(keyID string, updater func(*types.GatewayAPIKey) error) error
+	DeleteGatewayKey(keyID string) error
+}
+
+// GatewayKeyManager Gateway API Key业务管理器
 type GatewayKeyManager struct {
-	keys  map[string]*types.GatewayAPIKey
-	mutex sync.RWMutex
+	configMgr ConfigManager
 }
 
 // NewGatewayKeyManager 创建新的Gateway Key管理器
-func NewGatewayKeyManager() *GatewayKeyManager {
+func NewGatewayKeyManager(configMgr ConfigManager) *GatewayKeyManager {
 	return &GatewayKeyManager{
-		keys: make(map[string]*types.GatewayAPIKey),
+		configMgr: configMgr,
 	}
 }
 
-// CreateKey 创建新的Gateway API Key
+// CreateKey 创建新的Gateway API Key（业务逻辑）
 func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permission) (*types.GatewayAPIKey, string, error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
 	// 生成原始key
 	rawKey, err := generateRandomKey(32)
 	if err != nil {
@@ -41,6 +45,7 @@ func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permissio
 	// 生成ID
 	keyID := generateID("gw")
 
+	// 创建key对象
 	key := &types.GatewayAPIKey{
 		ID:          keyID,
 		Name:        name,
@@ -57,18 +62,22 @@ func (m *GatewayKeyManager) CreateKey(name string, permissions []types.Permissio
 		},
 	}
 
-	m.keys[keyID] = key
+	// 通过ConfigManager保存
+	if err := m.configMgr.CreateGatewayKey(key); err != nil {
+		return nil, "", fmt.Errorf("保存密钥失败: %w", err)
+	}
+
 	return key, rawKey, nil
 }
 
-// ValidateKey 验证Gateway API Key
+// ValidateKey 验证Gateway API Key（业务逻辑）
 func (m *GatewayKeyManager) ValidateKey(rawKey string) (*types.GatewayAPIKey, error) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	keyHash := hashKey(rawKey)
 	
-	for _, key := range m.keys {
+	// 从ConfigManager获取所有key
+	keys := m.configMgr.ListGatewayKeys()
+	
+	for _, key := range keys {
 		if key.KeyHash == keyHash && key.Status == "active" {
 			return key, nil
 		}
@@ -79,97 +88,53 @@ func (m *GatewayKeyManager) ValidateKey(rawKey string) (*types.GatewayAPIKey, er
 
 // GetKey 获取指定的Gateway API Key
 func (m *GatewayKeyManager) GetKey(keyID string) (*types.GatewayAPIKey, error) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	key, exists := m.keys[keyID]
-	if !exists {
-		return nil, fmt.Errorf("密钥不存在: %s", keyID)
-	}
-	
-	return key, nil
+	return m.configMgr.GetGatewayKey(keyID)
 }
 
 // ListKeys 列出所有Gateway API Key
 func (m *GatewayKeyManager) ListKeys() []*types.GatewayAPIKey {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	keys := make([]*types.GatewayAPIKey, 0, len(m.keys))
-	for _, key := range m.keys {
-		keys = append(keys, key)
-	}
-	
-	return keys
+	return m.configMgr.ListGatewayKeys()
 }
 
 // DeleteKey 删除Gateway API Key
 func (m *GatewayKeyManager) DeleteKey(keyID string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	if _, exists := m.keys[keyID]; !exists {
-		return fmt.Errorf("密钥不存在: %s", keyID)
-	}
-	
-	delete(m.keys, keyID)
-	return nil
+	return m.configMgr.DeleteGatewayKey(keyID)
 }
 
-// UpdateKeyStatus 更新Gateway API Key状态
+// UpdateKeyStatus 更新Gateway API Key状态（业务逻辑）
 func (m *GatewayKeyManager) UpdateKeyStatus(keyID string, status string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	key, exists := m.keys[keyID]
-	if !exists {
-		return fmt.Errorf("密钥不存在: %s", keyID)
-	}
-	
-	key.Status = status
-	key.UpdatedAt = time.Now()
-	return nil
+	return m.configMgr.UpdateGatewayKey(keyID, func(key *types.GatewayAPIKey) error {
+		key.Status = status
+		key.UpdatedAt = time.Now()
+		return nil
+	})
 }
 
-// UpdateKeyUsage 更新Gateway API Key使用统计
+// UpdateKeyUsage 更新Gateway API Key使用统计（业务逻辑）
 func (m *GatewayKeyManager) UpdateKeyUsage(keyID string, success bool, latency time.Duration) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	key, exists := m.keys[keyID]
-	if !exists {
-		return fmt.Errorf("密钥不存在: %s", keyID)
-	}
-	
-	if key.Usage == nil {
-		key.Usage = &types.KeyUsageStats{}
-	}
-	
-	key.Usage.TotalRequests++
-	if success {
-		key.Usage.SuccessfulRequests++
-	} else {
-		key.Usage.ErrorRequests++
-		now := time.Now()
-		key.Usage.LastErrorAt = &now
-	}
-	
-	key.Usage.LastUsedAt = time.Now()
-	
-	// 更新平均延迟
-	if key.Usage.TotalRequests > 0 {
-		key.Usage.AvgLatency = (key.Usage.AvgLatency*float64(key.Usage.TotalRequests-1) + float64(latency.Milliseconds())) / float64(key.Usage.TotalRequests)
-	}
-	
-	return nil
-}
-
-// LoadKey 从配置加载Gateway API Key
-func (m *GatewayKeyManager) LoadKey(key *types.GatewayAPIKey) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	
-	m.keys[key.ID] = key
+	return m.configMgr.UpdateGatewayKey(keyID, func(key *types.GatewayAPIKey) error {
+		if key.Usage == nil {
+			key.Usage = &types.KeyUsageStats{}
+		}
+		
+		key.Usage.TotalRequests++
+		if success {
+			key.Usage.SuccessfulRequests++
+		} else {
+			key.Usage.ErrorRequests++
+			now := time.Now()
+			key.Usage.LastErrorAt = &now
+		}
+		
+		key.Usage.LastUsedAt = time.Now()
+		
+		// 更新平均延迟
+		if key.Usage.TotalRequests > 0 {
+			key.Usage.AvgLatency = (key.Usage.AvgLatency*float64(key.Usage.TotalRequests-1) + float64(latency.Milliseconds())) / float64(key.Usage.TotalRequests)
+		}
+		
+		return nil
+	})
 }
 
 // generateRandomKey 生成随机密钥

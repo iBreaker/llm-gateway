@@ -327,7 +327,7 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	req.Header.Set("User-Agent", "LLM-Gateway/1.0")
 
 	// 5. 设置认证头部 - 调用Upstream模块处理
-	authHeaders, err := h.upstreamMgr.GetAuthHeaders(account)
+	authHeaders, err := h.upstreamMgr.GetAuthHeaders(account.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth headers: %w", err)
 	}

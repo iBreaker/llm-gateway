@@ -54,7 +54,7 @@ type KeyUsageStats struct {
 // 上游账号类型
 type UpstreamType string
 const (
-    UpstreamTypeAPIKey UpstreamType = "api_key"
+    UpstreamTypeAPIKey UpstreamType = "api-key"
     UpstreamTypeOAuth  UpstreamType = "oauth"
 )
 
