@@ -517,9 +517,12 @@ func (c *RequestResponseConverter) BuildAnthropicRequest(request *types.ProxyReq
 
 // BuildOpenAIRequest 构建OpenAI格式请求
 func (c *RequestResponseConverter) BuildOpenAIRequest(request *types.ProxyRequest) ([]byte, error) {
+	// 过滤掉OpenAI不支持的字段（如cache_control）
+	filteredMessages := filterOpenAIMessages(request.Messages)
+	
 	openaiReq := types.OpenAIRequest{
 		Model:       request.Model,
-		Messages:    request.Messages,
+		Messages:    filteredMessages,
 		MaxTokens:   request.MaxTokens,
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
@@ -646,4 +649,47 @@ func convertToOpenAITools(tools []map[string]interface{}) []map[string]interface
 	}
 	
 	return openaiTools
+}
+
+// filterOpenAIMessages 过滤掉OpenAI不支持的字段
+func filterOpenAIMessages(messages []types.Message) []types.Message {
+	var filtered []types.Message
+	
+	for _, msg := range messages {
+		filteredMsg := types.Message{
+			Role:       msg.Role,
+			Content:    filterMessageContent(msg.Content),
+			ToolCalls:  msg.ToolCalls,
+			ToolCallID: msg.ToolCallID, // 保留OpenAI的工具调用ID
+			Name:       msg.Name,       // 保留OpenAI的工具名称
+		}
+		filtered = append(filtered, filteredMsg)
+	}
+	
+	return filtered
+}
+
+// filterMessageContent 过滤消息内容中的不兼容字段
+func filterMessageContent(content interface{}) interface{} {
+	switch v := content.(type) {
+	case []interface{}:
+		var filteredArray []interface{}
+		for _, item := range v {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				// 创建新的map，排除cache_control字段
+				filtered := make(map[string]interface{})
+				for key, value := range itemMap {
+					if key != "cache_control" {
+						filtered[key] = value
+					}
+				}
+				filteredArray = append(filteredArray, filtered)
+			} else {
+				filteredArray = append(filteredArray, item)
+			}
+		}
+		return filteredArray
+	default:
+		return content
+	}
 }

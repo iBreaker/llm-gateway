@@ -256,6 +256,12 @@ func executeResponseConversion(conv *RequestResponseConverter, input []byte, sou
 
 // validateConversionResult 验证转换结果
 func validateConversionResult(expectData, actualData []byte, tc PairTestCase) error {
+	// 流式响应使用文本对比
+	if tc.DataType == "response_stream" {
+		return validateStreamResponse(expectData, actualData, tc)
+	}
+	
+	// 非流式响应使用JSON对比
 	var expect, actual map[string]interface{}
 	
 	if err := json.Unmarshal(expectData, &expect); err != nil {
@@ -349,8 +355,159 @@ func validateOpenAIResponseFields(expect, actual map[string]interface{}) error {
 	return nil
 }
 
+// executeStreamResponseConversion 执行流式响应转换
+func executeStreamResponseConversion(conv *RequestResponseConverter, input []byte, sourceFormat, targetFormat RequestFormat) ([]byte, error) {
+	// 创建输入读取器
+	inputReader := strings.NewReader(string(input))
+	
+	// 创建输出缓冲区
+	var outputBuffer strings.Builder
+	
+	// 确定源提供商
+	var sourceProvider types.Provider
+	switch sourceFormat {
+	case FormatOpenAI:
+		sourceProvider = types.ProviderOpenAI
+	case FormatAnthropic:
+		sourceProvider = types.ProviderAnthropic
+	default:
+		return nil, fmt.Errorf("不支持的源格式: %s", sourceFormat)
+	}
+	
+	// 创建流式处理器
+	processor := conv.GetStreamResponseProcessor()
+	
+	// 处理流式响应
+	err := processor.ProcessStream(inputReader, sourceProvider, targetFormat, func(event string, tokens int) {
+		if event == "[DONE]" {
+			outputBuffer.WriteString("data: [DONE]\n")
+		} else {
+			// 根据目标格式决定输出格式
+			if targetFormat == FormatAnthropic {
+				// Anthropic格式保持event: + data: 格式
+				if !strings.Contains(event, "event: ") {
+					// 如果没有event前缀，说明是转换后的data，需要确定事件类型
+					outputBuffer.WriteString("event: content_block_delta\n")
+					outputBuffer.WriteString("data: ")
+					outputBuffer.WriteString(event)
+					outputBuffer.WriteString("\n\n")
+				} else {
+					// 已经包含完整格式
+					outputBuffer.WriteString(event)
+					outputBuffer.WriteString("\n\n")
+				}
+			} else {
+				// OpenAI格式只需要data: 
+				outputBuffer.WriteString("data: ")
+				outputBuffer.WriteString(event)
+				outputBuffer.WriteString("\n\n")
+			}
+		}
+	})
+	
+	if err != nil {
+		return nil, fmt.Errorf("流式转换失败: %w", err)
+	}
+	
+	return []byte(outputBuffer.String()), nil
+}
+
+// validateStreamResponse 验证流式响应
+func validateStreamResponse(expectData, actualData []byte, tc PairTestCase) error {
+	expectStr := strings.TrimSpace(string(expectData))
+	actualStr := strings.TrimSpace(string(actualData))
+	
+	// 简化验证：检查是否包含关键的内容片段
+	expectLines := strings.Split(expectStr, "\n")
+	actualLines := strings.Split(actualStr, "\n")
+	
+	// 提取期望的文本内容
+	expectedContentPieces := extractStreamContent(expectLines)
+	actualContentPieces := extractStreamContent(actualLines)
+	
+	// 验证内容片段是否匹配
+	if len(expectedContentPieces) != len(actualContentPieces) {
+		return fmt.Errorf("内容片段数量不匹配: 期望=%d, 实际=%d", len(expectedContentPieces), len(actualContentPieces))
+	}
+	
+	for i, expectedPiece := range expectedContentPieces {
+		if i < len(actualContentPieces) {
+			if expectedPiece != actualContentPieces[i] {
+				return fmt.Errorf("内容片段不匹配[%d]: 期望='%s', 实际='%s'", i, expectedPiece, actualContentPieces[i])
+			}
+		}
+	}
+	
+	// 验证格式特定的结构
+	switch tc.TargetFormat {
+	case FormatOpenAI:
+		// 验证OpenAI格式是否包含必要的字段
+		if !strings.Contains(actualStr, "data: ") {
+			return fmt.Errorf("OpenAI流式响应缺少'data: '前缀")
+		}
+		if !strings.Contains(actualStr, "[DONE]") {
+			return fmt.Errorf("OpenAI流式响应缺少'[DONE]'标记")
+		}
+	case FormatAnthropic:
+		// 验证Anthropic格式是否包含必要的事件
+		if !strings.Contains(actualStr, "event: ") {
+			return fmt.Errorf("Anthropic流式响应缺少'event: '字段")
+		}
+		if !strings.Contains(actualStr, "message_start") && !strings.Contains(actualStr, "content_block_delta") {
+			return fmt.Errorf("Anthropic流式响应缺少必要的事件类型")
+		}
+	}
+	
+	return nil
+}
+
+// extractStreamContent 从流式响应中提取文本内容片段
+func extractStreamContent(lines []string) []string {
+	var contentPieces []string
+	
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			// OpenAI格式
+			data := line[6:] // 去掉"data: "前缀
+			if data != "[DONE]" {
+				var jsonData map[string]interface{}
+				if err := json.Unmarshal([]byte(data), &jsonData); err == nil {
+					if choices, ok := jsonData["choices"].([]interface{}); ok && len(choices) > 0 {
+						if choice, ok := choices[0].(map[string]interface{}); ok {
+							if delta, ok := choice["delta"].(map[string]interface{}); ok {
+								if content, ok := delta["content"].(string); ok && content != "" {
+									contentPieces = append(contentPieces, content)
+								}
+							}
+						}
+					}
+				}
+			}
+		} else if strings.HasPrefix(line, "data: {") {
+			// Anthropic格式的data行
+			var jsonData map[string]interface{}
+			if err := json.Unmarshal([]byte(line[6:]), &jsonData); err == nil {
+				if eventType, ok := jsonData["type"].(string); ok && eventType == "content_block_delta" {
+					if delta, ok := jsonData["delta"].(map[string]interface{}); ok {
+						if text, ok := delta["text"].(string); ok && text != "" {
+							contentPieces = append(contentPieces, text)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return contentPieces
+}
+
 // formatJSON 格式化JSON用于显示
 func formatJSON(data []byte) string {
+	// 对于流式响应，不进行JSON格式化，直接返回原始文本
+	if strings.Contains(string(data), "data: ") || strings.Contains(string(data), "event: ") {
+		return string(data)
+	}
+	
 	var obj interface{}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return string(data)
