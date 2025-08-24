@@ -160,10 +160,6 @@ func handleAPIKeyAdd(args []string, app *app.Application) error {
 		return fmt.Errorf("创建API Key失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功创建Gateway API Key:\n")
 	fmt.Printf("  ID: %s\n", key.ID)
@@ -262,10 +258,6 @@ func handleAPIKeyRemove(args []string, app *app.Application) error {
 		return fmt.Errorf("删除API Key失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功删除Gateway API Key: %s\n", keyID)
 	return nil
@@ -283,10 +275,6 @@ func handleAPIKeyDisable(args []string, app *app.Application) error {
 		return fmt.Errorf("禁用API Key失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功禁用Gateway API Key: %s\n", keyID)
 	return nil
@@ -403,10 +391,6 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 		return fmt.Errorf("添加上游账号失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功添加上游账号:\n")
 	fmt.Printf("  ID: %s\n", account.ID)
@@ -539,10 +523,6 @@ func handleUpstreamRemove(args []string, app *app.Application) error {
 		return fmt.Errorf("删除上游账号失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功删除上游账号: %s\n", upstreamID)
 	return nil
@@ -560,10 +540,6 @@ func handleUpstreamEnable(args []string, app *app.Application) error {
 		return fmt.Errorf("启用上游账号失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功启用上游账号: %s\n", upstreamID)
 	return nil
@@ -581,10 +557,6 @@ func handleUpstreamDisable(args []string, app *app.Application) error {
 		return fmt.Errorf("禁用上游账号失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("成功禁用上游账号: %s\n", upstreamID)
 	return nil
@@ -799,10 +771,6 @@ func handleOAuthRefresh(args []string, app *app.Application) error {
 		return fmt.Errorf("刷新token失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	fmt.Printf("✅ Token刷新成功\n")
 	return nil
@@ -857,10 +825,6 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 		return fmt.Errorf("处理OAuth回调失败: %w", err)
 	}
 
-	// 保存配置
-	if err := app.SaveConfig(); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
 
 	// 验证授权成功
 	account, err = app.UpstreamMgr.GetAccount(upstreamID)

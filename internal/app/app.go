@@ -58,10 +58,3 @@ func NewApplication(configPath string) (*Application, error) {
 	return app, nil
 }
 
-// SaveConfig 保存当前状态到配置文件（已废弃，ConfigManager自动保存）
-// 保留此方法以维持向后兼容性，但实际上ConfigManager已经自动处理保存
-func (app *Application) SaveConfig() error {
-	// ConfigManager的CRUD操作已经自动保存到文件
-	// 这里不需要任何操作
-	return nil
-}
