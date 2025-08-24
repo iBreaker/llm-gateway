@@ -23,8 +23,44 @@ type ProxyHandler struct {
 	gatewayKeyMgr *client.GatewayKeyManager
 	upstreamMgr   *upstream.UpstreamManager
 	router        *router.RequestRouter
-	converter     *converter.RequestResponseConverter
+	converter     *converter.Manager
 	httpClient    *http.Client
+}
+
+// httpStreamWriter HTTP流式写入器
+type httpStreamWriter struct {
+	writer      http.ResponseWriter
+	flusher     http.Flusher
+	totalTokens *int
+}
+
+// WriteChunk 写入数据块
+func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
+	if chunk.IsDone {
+		_, _ = fmt.Fprintf(w.writer, "data: [DONE]\n\n")
+	} else {
+		data, err := json.Marshal(chunk.Data)
+		if err != nil {
+			return err
+		}
+		
+		if chunk.EventType != "" {
+			_, _ = fmt.Fprintf(w.writer, "event: %s\ndata: %s\n\n", chunk.EventType, string(data))
+		} else {
+			_, _ = fmt.Fprintf(w.writer, "data: %s\n\n", string(data))
+		}
+	}
+	
+	w.flusher.Flush()
+	*w.totalTokens += chunk.Tokens
+	return nil
+}
+
+// WriteDone 写入完成信号
+func (w *httpStreamWriter) WriteDone() error {
+	_, _ = fmt.Fprintf(w.writer, "data: [DONE]\n\n")
+	w.flusher.Flush()
+	return nil
 }
 
 // NewProxyHandler 创建代理处理器
@@ -32,7 +68,7 @@ func NewProxyHandler(
 	gatewayKeyMgr *client.GatewayKeyManager,
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
-	converter *converter.RequestResponseConverter,
+	converter *converter.Manager,
 	proxyConfig *types.ProxyConfig,
 ) *ProxyHandler {
 	// 设置超时配置，使用传入的配置或默认值
@@ -100,17 +136,10 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	}
 	defer func() { _ = r.Body.Close() }()
 
-	// 2. 检测请求格式
-	requestFormat := h.converter.DetectFormatWithEndpoint(requestBody, clientEndpoint)
-	if requestFormat == converter.FormatUnknown {
-		h.writeErrorResponse(w, http.StatusBadRequest, "unsupported_format", "Unsupported request format")
-		return
-	}
-
-	// 3. 转换请求到统一格式
-	proxyReq, err := h.converter.TransformRequest(requestBody, requestFormat)
-	if err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "request_transform_error", fmt.Sprintf("Failed to transform request: %v", err))
+	// 2. 解析请求（自动检测格式）
+	proxyReq, requestFormat, err := h.converter.ParseRequest(requestBody, clientEndpoint)
+	if err != nil || !requestFormat.IsValid() {
+		h.writeErrorResponse(w, http.StatusBadRequest, "request_parse_error", fmt.Sprintf("Failed to parse request: %v", err))
 		return
 	}
 
@@ -143,7 +172,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 }
 
 // handleNonStreamResponse 处理非流式响应
-func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) {
+func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time) {
 	// 调用上游API获取原始响应
 	responseBytes, err := h.callUpstreamAPIRaw(account, request, upstreamPath)
 	if err != nil {
@@ -151,8 +180,18 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 		return
 	}
 
-	// 使用Transform模块统一处理响应转换
-	transformedBytes, err := h.converter.TransformUpstreamResponse(responseBytes, account.Provider, requestFormat)
+	// 使用Manager统一处理响应转换
+	var upstreamFormat converter.Format
+	switch account.Provider {
+	case types.ProviderAnthropic:
+		upstreamFormat = converter.FormatAnthropic
+	case types.ProviderOpenAI:
+		upstreamFormat = converter.FormatOpenAI
+	default:
+		upstreamFormat = converter.FormatOpenAI
+	}
+	
+	transformedBytes, err := h.converter.ConvertResponse(upstreamFormat, requestFormat, responseBytes)
 	if err != nil {
 		h.writeErrorResponse(w, http.StatusInternalServerError, "response_transform_error", fmt.Sprintf("Failed to transform response: %v", err))
 		return
@@ -170,7 +209,7 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 }
 
 // handleStreamResponse 处理流式响应
-func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) {
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time) {
 	// 设置SSE响应头
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -194,7 +233,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 }
 
 // callUpstreamStreamAPI 调用上游流式API
-func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.RequestFormat, keyID string, startTime time.Time) error {
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time) error {
 	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
 
 	// 构建上游请求
@@ -240,29 +279,20 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 }
 
 // processStreamResponse 处理流式响应
-func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.RequestFormat, keyID, upstreamID string, startTime time.Time) error {
+func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.Format, keyID, upstreamID string, startTime time.Time) error {
 	var totalTokens int
 	logger.Debug("开始处理流式响应，Provider: %s, RequestFormat: %v", provider, requestFormat)
 
-	// 使用Transform模块处理流式响应
-	processor := h.converter.GetStreamResponseProcessor()
-	err := processor.ProcessStream(responseBody, provider, requestFormat, func(event string, tokens int) {
-		logger.Debug("处理事件，Tokens: %d, Event长度: %d", tokens, len(event))
-		if event == "[DONE]" {
-			logger.Debug("发送[DONE]事件")
-			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
-		} else {
-			// 检查是否已经是完整的SSE格式（包含event:行）
-			if strings.HasPrefix(event, "event: ") {
-				logger.Debug("发送完整SSE事件")
-				_, _ = fmt.Fprintf(w, "%s\n\n", event)
-			} else {
-				_, _ = fmt.Fprintf(w, "data: %s\n\n", event)
-			}
-		}
-		flusher.Flush()
-		totalTokens += tokens
-	})
+	// 使用新的Manager处理流式响应
+
+	// 创建流写入器
+	writer := &httpStreamWriter{
+		writer:      w,
+		flusher:     flusher,
+		totalTokens: &totalTokens,
+	}
+
+	err := h.converter.ProcessStream(responseBody, provider, requestFormat, writer)
 
 	if err != nil {
 		logger.Debug("流式处理出现错误: %v", err)
@@ -345,18 +375,7 @@ func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, reques
 // buildUpstreamRequest 构建上游请求
 func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.ProxyRequest, path string) (*http.Request, error) {
 	// 1. 根据上游提供商转换请求格式
-	var requestBody []byte
-	var err error
-
-	switch account.Provider {
-	case types.ProviderAnthropic:
-		requestBody, err = h.converter.BuildAnthropicRequest(request)
-	case types.ProviderOpenAI:
-		requestBody, err = h.converter.BuildOpenAIRequest(request)
-	default:
-		// 默认使用内部格式（与OpenAI兼容）
-		requestBody, err = json.Marshal(request)
-	}
+	requestBody, err := h.converter.BuildUpstreamRequest(request, account.Provider)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request for upstream: %w", err)

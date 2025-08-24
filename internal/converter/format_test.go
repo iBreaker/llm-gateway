@@ -10,7 +10,7 @@ func TestDetectFormat(t *testing.T) {
 	tests := []struct {
 		name           string
 		requestBody    string
-		expectedFormat RequestFormat
+		expectedFormat Format
 		description    string
 	}{
 		{
@@ -107,11 +107,11 @@ func TestDetectFormat(t *testing.T) {
 		},
 	}
 
-	transformer := NewTransformer()
+	transformer := NewManager()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			format := transformer.DetectFormat([]byte(tt.requestBody))
+			format := transformer.DetectFormat([]byte(tt.requestBody), "")
 			if format != tt.expectedFormat {
 				t.Errorf("DetectFormat() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
 			}
@@ -124,7 +124,7 @@ func TestDetectFormatWithEndpoint(t *testing.T) {
 		name           string
 		requestBody    string
 		endpoint       string
-		expectedFormat RequestFormat
+		expectedFormat Format
 		description    string
 	}{
 		{
@@ -149,13 +149,13 @@ func TestDetectFormatWithEndpoint(t *testing.T) {
 		},
 	}
 
-	transformer := NewTransformer()
+	transformer := NewManager()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			format := transformer.DetectFormatWithEndpoint([]byte(tt.requestBody), tt.endpoint)
+			format := transformer.DetectFormat([]byte(tt.requestBody), tt.endpoint)
 			if format != tt.expectedFormat {
-				t.Errorf("DetectFormatWithEndpoint() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
+				t.Errorf("DetectFormat() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
 			}
 		})
 	}
@@ -166,7 +166,7 @@ func TestDetectFormatFromHTTPRequest(t *testing.T) {
 		name           string
 		requestBody    string
 		url            string
-		expectedFormat RequestFormat
+		expectedFormat Format
 		description    string
 	}{
 		{
@@ -185,7 +185,7 @@ func TestDetectFormatFromHTTPRequest(t *testing.T) {
 		},
 	}
 
-	transformer := NewTransformer()
+	transformer := NewManager()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -194,7 +194,7 @@ func TestDetectFormatFromHTTPRequest(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			format := transformer.DetectFormatWithEndpoint([]byte(tt.requestBody), req.URL.Path)
+			format := transformer.DetectFormat([]byte(tt.requestBody), req.URL.Path)
 			if format != tt.expectedFormat {
 				t.Errorf("DetectFormatFromHTTPRequest() = %v, want %v for %s", format, tt.expectedFormat, tt.description)
 			}

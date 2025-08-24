@@ -11,7 +11,7 @@ func TestTransformRequest(t *testing.T) {
 	tests := []struct {
 		name           string
 		input          []byte
-		expectedFormat RequestFormat
+		expectedFormat Format
 		expectedModel  string
 		expectError    bool
 	}{
@@ -47,20 +47,12 @@ func TestTransformRequest(t *testing.T) {
 		},
 	}
 
-	transformer := NewTransformer()
+	transformer := NewManager()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 先检测格式
-			format := transformer.DetectFormat(tt.input)
-			if format == FormatUnknown {
-				if !tt.expectError {
-					t.Errorf("DetectFormat() returned FormatUnknown for valid input")
-				}
-				return
-			}
-
-			proxyReq, err := transformer.TransformRequest(tt.input, format)
+			// 使用新API解析请求
+			proxyReq, _, err := transformer.ParseRequest(tt.input, "")
 
 			if tt.expectError {
 				if err == nil {
@@ -90,9 +82,8 @@ func TestTransformRequestOpenAI(t *testing.T) {
 		"temperature": 0.7
 	}`)
 
-	transformer := NewTransformer()
-	format := transformer.DetectFormat(input)
-	proxyReq, err := transformer.TransformRequest(input, format)
+	transformer := NewManager()
+	proxyReq, _, err := transformer.ParseRequest(input, "")
 
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
@@ -134,9 +125,8 @@ func TestTransformRequestAnthropic(t *testing.T) {
 		"temperature": 0.7
 	}`)
 
-	transformer := NewTransformer()
-	format := transformer.DetectFormat(input)
-	proxyReq, err := transformer.TransformRequest(input, format)
+	transformer := NewManager()
+	proxyReq, _, err := transformer.ParseRequest(input, "")
 
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
@@ -195,7 +185,7 @@ func TestTransformResponse(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		format         RequestFormat
+		format         Format
 		expectedOutput string
 	}{
 		{
@@ -210,11 +200,11 @@ func TestTransformResponse(t *testing.T) {
 		},
 	}
 
-	transformer := NewTransformer()
+	transformer := NewManager()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := transformer.TransformResponse(proxyResp, tt.format)
+			output, err := transformer.BuildClientResponse(proxyResp, tt.format)
 			if err != nil {
 				t.Fatalf("TransformResponse() error = %v", err)
 			}
@@ -282,9 +272,8 @@ func TestTransformRequestAnthropicWithTools(t *testing.T) {
 		]
 	}`)
 
-	transformer := NewTransformer()
-	format := transformer.DetectFormat(input)
-	proxyReq, err := transformer.TransformRequest(input, format)
+	transformer := NewManager()
+	proxyReq, format, err := transformer.ParseRequest(input, "")
 
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
@@ -382,9 +371,8 @@ func TestTransformRequestAnthropicComplexContent(t *testing.T) {
 		"stream": true
 	}`)
 
-	transformer := NewTransformer()
-	format := transformer.DetectFormat(input)
-	proxyReq, err := transformer.TransformRequest(input, format)
+	transformer := NewManager()
+	proxyReq, format, err := transformer.ParseRequest(input, "")
 
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
