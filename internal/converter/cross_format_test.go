@@ -5,23 +5,21 @@ import (
 	"fmt"
 	"os"
 	"testing"
-
-	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
 // CrossFormatTestCase 跨格式转换测试用例
 type CrossFormatTestCase struct {
 	Name           string
 	InputFile      string
-	InputFormat    RequestFormat
-	OutputFormat   RequestFormat
+	InputFormat    Format
+	OutputFormat   Format
 	ExpectedFields []string // 必须保留的关键字段
 	ValidationFunc func(input, output []byte) error
 }
 
 // TestCrossFormatRequests 测试跨格式请求转换: OpenAI -> Anthropic 和 Anthropic -> OpenAI
 func TestCrossFormatRequests(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	manager := NewManager()
 
 	testCases := []CrossFormatTestCase{
 		{
@@ -83,7 +81,7 @@ func TestCrossFormatRequests(t *testing.T) {
 			}
 
 			// 执行跨格式转换
-			outputData, err := executeCrossFormatTransformation(conv, inputData, tc.InputFormat, tc.OutputFormat)
+			outputData, err := manager.ConvertRequest(tc.InputFormat, tc.OutputFormat, inputData)
 			if err != nil {
 				t.Fatalf("跨格式转换失败: %v", err)
 			}
@@ -113,31 +111,6 @@ func TestCrossFormatRequests(t *testing.T) {
 	}
 }
 
-// executeCrossFormatTransformation 执行跨格式转换
-func executeCrossFormatTransformation(conv *RequestResponseConverter, input []byte, inputFormat, outputFormat RequestFormat) ([]byte, error) {
-	// 步骤1: 输入格式 -> 中间格式
-	proxyReq, err := conv.TransformRequest(input, inputFormat)
-	if err != nil {
-		return nil, fmt.Errorf("输入格式转中间格式失败: %w", err)
-	}
-
-	// 步骤2: 中间格式 -> 输出格式
-	var outputData []byte
-	switch outputFormat {
-	case FormatOpenAI:
-		outputData, err = conv.BuildOpenAIRequest(proxyReq)
-	case FormatAnthropic:
-		outputData, err = conv.BuildAnthropicRequest(proxyReq)
-	default:
-		return nil, fmt.Errorf("不支持的输出格式: %s", outputFormat)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("中间格式转输出格式失败: %w", err)
-	}
-
-	return outputData, nil
-}
 
 // validateRequiredFields 验证输出包含必要字段
 func validateRequiredFields(output []byte, requiredFields []string) error {
@@ -387,7 +360,7 @@ func validateAnthropicCacheControlToOpenAI(input, output []byte) error {
 
 // TestCrossFormatResponses 测试跨格式响应转换
 func TestCrossFormatResponses(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	manager := NewManager()
 
 	testCases := []CrossFormatTestCase{
 		{
@@ -433,7 +406,7 @@ func TestCrossFormatResponses(t *testing.T) {
 			}
 
 			// 执行跨格式响应转换
-			outputData, err := executeCrossFormatResponseTransformation(conv, inputData, tc.InputFormat, tc.OutputFormat)
+			outputData, err := manager.ConvertResponse(tc.InputFormat, tc.OutputFormat, inputData)
 			if err != nil {
 				t.Fatalf("跨格式响应转换失败: %v", err)
 			}
@@ -457,42 +430,6 @@ func TestCrossFormatResponses(t *testing.T) {
 	}
 }
 
-// executeCrossFormatResponseTransformation 执行跨格式响应转换
-func executeCrossFormatResponseTransformation(conv *RequestResponseConverter, input []byte, inputFormat, outputFormat RequestFormat) ([]byte, error) {
-	// 步骤1: 输入格式 -> 中间格式
-	var proxyResp *types.ProxyResponse
-	var err error
-
-	switch inputFormat {
-	case FormatOpenAI:
-		proxyResp, err = conv.parseOpenAIResponse(input)
-	case FormatAnthropic:
-		proxyResp, err = conv.parseAnthropicResponse(input)
-	default:
-		return nil, fmt.Errorf("不支持的输入格式: %s", inputFormat)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("解析输入响应失败: %w", err)
-	}
-
-	// 步骤2: 中间格式 -> 输出格式
-	var outputData []byte
-	switch outputFormat {
-	case FormatOpenAI:
-		outputData, err = conv.buildOpenAIResponse(proxyResp)
-	case FormatAnthropic:
-		outputData, err = conv.buildAnthropicResponse(proxyResp)
-	default:
-		return nil, fmt.Errorf("不支持的输出格式: %s", outputFormat)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("构建输出响应失败: %w", err)
-	}
-
-	return outputData, nil
-}
 
 // 响应转换验证函数
 func validateOpenAIToAnthropicResponse(input, output []byte) error {

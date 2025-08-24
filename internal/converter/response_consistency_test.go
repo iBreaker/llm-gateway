@@ -10,7 +10,7 @@ import (
 
 // TestResponseConsistency 测试响应的一致性：原始 -> 中间格式 -> 原始
 func TestResponseConsistency(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	conv := NewManager()
 
 	// 读取所有响应测试文件
 	rspFiles, err := filepath.Glob("testdata/rsp/rsp_*.json")
@@ -33,7 +33,7 @@ func TestResponseConsistency(t *testing.T) {
 
 			// 根据文件名确定格式
 			var provider types.Provider
-			var targetFormat RequestFormat
+			var targetFormat Format
 			filename := filepath.Base(rspFile)
 			if len(filename) > 4 && filename[:4] == "rsp_" {
 				if len(filename) > 13 && filename[4:13] == "anthropic" {
@@ -51,25 +51,10 @@ func TestResponseConsistency(t *testing.T) {
 
 			t.Logf("检测到格式: %s, 提供商: %s", targetFormat, provider)
 
-			// 步骤1: 原始响应 -> 中间格式 (ProxyResponse)
-			var proxyResp *types.ProxyResponse
-			switch provider {
-			case types.ProviderAnthropic:
-				proxyResp, err = conv.parseAnthropicResponse(originalData)
-			case types.ProviderOpenAI:
-				proxyResp, err = conv.parseOpenAIResponse(originalData)
-			default:
-				t.Fatalf("不支持的提供商: %s", provider)
-			}
-
+			// 使用新API进行往返转换（同格式转换应该保持一致）
+			rebuiltData, err := conv.ConvertResponse(targetFormat, targetFormat, originalData)
 			if err != nil {
-				t.Fatalf("解析响应失败: %v", err)
-			}
-
-			// 步骤2: 中间格式 -> 原始格式
-			rebuiltData, err := conv.TransformResponse(proxyResp, targetFormat)
-			if err != nil {
-				t.Fatalf("重建响应失败: %v", err)
+				t.Fatalf("往返转换失败: %v", err)
 			}
 
 			// 步骤3: 比较一致性
@@ -84,7 +69,7 @@ func TestResponseConsistency(t *testing.T) {
 
 // TestSpecificResponseFieldPreservation 测试响应特定字段保留
 func TestSpecificResponseFieldPreservation(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	conv := NewManager()
 
 	testCases := []struct {
 		name     string
@@ -149,34 +134,19 @@ func TestSpecificResponseFieldPreservation(t *testing.T) {
 				t.Fatalf("读取文件失败: %v", err)
 			}
 
-			// 确定格式和提供商
-			var provider types.Provider
-			var targetFormat RequestFormat
+			// 确定格式
+			var targetFormat Format
 			filename := filepath.Base(tc.filename)
 			if len(filename) > 13 && filename[4:13] == "anthropic" {
-				provider = types.ProviderAnthropic
 				targetFormat = FormatAnthropic
 			} else if len(filename) > 10 && filename[4:10] == "openai" {
-				provider = types.ProviderOpenAI
 				targetFormat = FormatOpenAI
 			}
 
-			// 解析和重建
-			var proxyResp *types.ProxyResponse
-			switch provider {
-			case types.ProviderAnthropic:
-				proxyResp, err = conv.parseAnthropicResponse(originalData)
-			case types.ProviderOpenAI:
-				proxyResp, err = conv.parseOpenAIResponse(originalData)
-			}
-
+			// 使用新API进行往返转换
+			rebuiltData, err := conv.ConvertResponse(targetFormat, targetFormat, originalData)
 			if err != nil {
-				t.Fatalf("解析响应失败: %v", err)
-			}
-
-			rebuiltData, err := conv.TransformResponse(proxyResp, targetFormat)
-			if err != nil {
-				t.Fatalf("重建响应失败: %v", err)
+				t.Fatalf("往返转换失败: %v", err)
 			}
 
 			// 执行所有检查

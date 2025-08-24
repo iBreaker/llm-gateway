@@ -10,7 +10,7 @@ import (
 
 // TestRequestConsistency 测试请求的一致性：原始 -> 中间格式 -> 原始
 func TestRequestConsistency(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	manager := NewManager()
 
 	// 读取所有请求测试文件
 	reqFiles, err := filepath.Glob("testdata/req/req_*.json")
@@ -32,30 +32,31 @@ func TestRequestConsistency(t *testing.T) {
 			}
 
 			// 检测格式
-			format := conv.DetectFormat(originalData)
-			if format == FormatUnknown {
+			format := manager.DetectFormat(originalData, "")
+			if !format.IsValid() {
 				t.Fatalf("无法检测请求格式")
 			}
 
 			t.Logf("检测到格式: %s", format)
 
 			// 步骤1: 原始 -> 中间格式
-			proxyReq, err := conv.TransformRequest(originalData, format)
+			proxyReq, detectedFormat, err := manager.ParseRequest(originalData, "")
 			if err != nil {
-				t.Fatalf("转换到中间格式失败: %v", err)
+				t.Fatalf("解析请求失败: %v", err)
 			}
 
-			// 步骤2: 中间格式 -> 原始格式
+			if detectedFormat != format {
+				t.Errorf("格式检测不一致: 期望 %s, 得到 %s", format, detectedFormat)
+			}
+
+			// 步骤2: 中间格式 -> 原始格式  
 			var rebuiltData []byte
-			switch format {
-			case FormatAnthropic:
-				rebuiltData, err = conv.BuildAnthropicRequest(proxyReq)
-			case FormatOpenAI:
-				rebuiltData, err = conv.BuildOpenAIRequest(proxyReq)
-			default:
-				t.Fatalf("不支持的格式: %s", format)
+			converter, err := manager.GetRegistry().Get(format)
+			if err != nil {
+				t.Fatalf("获取转换器失败: %v", err)
 			}
 
+			rebuiltData, err = converter.BuildRequest(proxyReq)
 			if err != nil {
 				t.Fatalf("重建请求失败: %v", err)
 			}
@@ -72,7 +73,7 @@ func TestRequestConsistency(t *testing.T) {
 
 // TestSpecificFieldPreservation 测试特定字段保留
 func TestSpecificFieldPreservation(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	manager := NewManager()
 
 	testCases := []struct {
 		name     string
@@ -141,23 +142,18 @@ func TestSpecificFieldPreservation(t *testing.T) {
 			}
 
 			// 检测格式并转换
-			format := conv.DetectFormat(originalData)
-			proxyReq, err := conv.TransformRequest(originalData, format)
+			proxyReq, format, err := manager.ParseRequest(originalData, "")
 			if err != nil {
-				t.Fatalf("转换失败: %v", err)
+				t.Fatalf("解析失败: %v", err)
 			}
 
 			// 重建请求
-			var rebuiltData []byte
-			switch format {
-			case FormatAnthropic:
-				rebuiltData, err = conv.BuildAnthropicRequest(proxyReq)
-			case FormatOpenAI:
-				rebuiltData, err = conv.BuildOpenAIRequest(proxyReq)
-			default:
-				t.Fatalf("不支持的格式: %s", format)
+			converter, err := manager.GetRegistry().Get(format)
+			if err != nil {
+				t.Fatalf("获取转换器失败: %v", err)
 			}
 
+			rebuiltData, err := converter.BuildRequest(proxyReq)
 			if err != nil {
 				t.Fatalf("重建失败: %v", err)
 			}

@@ -21,7 +21,7 @@ type HTTPServer struct {
 	clientMgr    *client.GatewayKeyManager
 	upstreamMgr  *upstream.UpstreamManager
 	router       *router.RequestRouter
-	converter    *converter.RequestResponseConverter
+	converter    *converter.Manager
 	server       *http.Server
 	authMW       *AuthMiddleware
 	rateLimitMW  *RateLimitMiddleware
@@ -35,7 +35,7 @@ func NewServer(
 	clientMgr *client.GatewayKeyManager,
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
-	converter *converter.RequestResponseConverter,
+	converter *converter.Manager,
 ) *HTTPServer {
 	mux := http.NewServeMux()
 

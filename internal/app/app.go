@@ -16,7 +16,7 @@ type Application struct {
 	UpstreamMgr   *upstream.UpstreamManager
 	OAuthMgr      *upstream.OAuthManager
 	Router        *router.RequestRouter
-	Converter     *converter.RequestResponseConverter
+	Converter     *converter.Manager
 	HTTPServer    *server.HTTPServer
 }
 
@@ -35,7 +35,7 @@ func NewApplication(configPath string) (*Application, error) {
 	gatewayKeyMgr := client.NewGatewayKeyManager(configMgr)
 	upstreamMgr := upstream.NewUpstreamManager(configMgr)
 	oauthMgr := upstream.NewOAuthManager(upstreamMgr)
-	converter := converter.NewRequestResponseConverter()
+	converter := converter.NewManager()
 
 	// 设置路由器策略
 	requestRouter := router.NewRequestRouter(upstreamMgr, router.StrategyHealthFirst)

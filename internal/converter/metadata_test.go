@@ -6,7 +6,7 @@ import (
 )
 
 func TestMetadataPreservation(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	conv := NewManager()
 
 	tests := []struct {
 		name        string
@@ -182,24 +182,18 @@ func TestMetadataPreservation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 解析请求
-			proxyReq, err := conv.TransformRequest([]byte(tt.input), FormatAnthropic)
+			// 使用新Manager API：往返转换测试（从Anthropic到Anthropic，应该保持原样）
+			rebuilt, err := conv.ConvertRequest(FormatAnthropic, FormatAnthropic, []byte(tt.input))
 
 			if tt.expectError {
 				if err == nil {
-					t.Error("期望解析失败，但成功了")
+					t.Error("期望转换失败，但成功了")
 				}
 				return
 			}
 
 			if err != nil {
-				t.Fatalf("解析请求失败: %v", err)
-			}
-
-			// 重建请求
-			rebuilt, err := conv.BuildAnthropicRequest(proxyReq)
-			if err != nil {
-				t.Fatalf("重建请求失败: %v", err)
+				t.Fatalf("转换请求失败: %v", err)
 			}
 
 			// 执行检查函数
@@ -209,7 +203,7 @@ func TestMetadataPreservation(t *testing.T) {
 }
 
 func TestSystemFieldPreservation(t *testing.T) {
-	conv := NewRequestResponseConverter()
+	conv := NewManager()
 
 	tests := []struct {
 		name   string
@@ -286,14 +280,9 @@ func TestSystemFieldPreservation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			proxyReq, err := conv.TransformRequest([]byte(tt.input), FormatAnthropic)
+			rebuilt, err := conv.ConvertRequest(FormatAnthropic, FormatAnthropic, []byte(tt.input))
 			if err != nil {
-				t.Fatalf("解析失败: %v", err)
-			}
-
-			rebuilt, err := conv.BuildAnthropicRequest(proxyReq)
-			if err != nil {
-				t.Fatalf("重建失败: %v", err)
+				t.Fatalf("转换失败: %v", err)
 			}
 
 			tt.expect(t, rebuilt)
