@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/iBreaker/llm-gateway/internal/app"
+	"github.com/iBreaker/llm-gateway/pkg/debug"
 	"github.com/iBreaker/llm-gateway/pkg/logger"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
@@ -29,6 +30,13 @@ func main() {
 	if err != nil {
 		log.Printf("初始化应用失败: %v\n", err)
 		os.Exit(1)
+	}
+
+	// 初始化调试模式（从配置或环境变量）
+	if config := application.Config.Get(); config != nil {
+		if err := debug.EnableFromConfig(config.Logging.Level, config.Logging.File); err != nil {
+			log.Printf("启用调试模式失败: %v\n", err)
+		}
 	}
 
 	// 运行CLI

@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"crypto/rand"
+	"encoding/hex"
 
 	"github.com/iBreaker/llm-gateway/internal/client"
 	"github.com/iBreaker/llm-gateway/internal/converter"
 	"github.com/iBreaker/llm-gateway/internal/router"
 	"github.com/iBreaker/llm-gateway/internal/upstream"
+	"github.com/iBreaker/llm-gateway/pkg/debug"
 	"github.com/iBreaker/llm-gateway/pkg/logger"
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
@@ -32,22 +35,46 @@ type httpStreamWriter struct {
 	writer      http.ResponseWriter
 	flusher     http.Flusher
 	totalTokens *int
+	trace       *debug.RequestTrace
 }
 
 // WriteChunk 写入数据块
 func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
+	chunkStart := time.Now()
+	var rawData []byte
+	var convertedData []byte
+	
 	if chunk.IsDone {
+		rawData = []byte("[DONE]")
 		_, _ = fmt.Fprintf(w.writer, "data: [DONE]\n\n")
+		convertedData = []byte("data: [DONE]\n\n")
+		
+		// 记录流式响应结束
+		if w.trace != nil {
+			w.trace.AddStreamChunk("done", rawData, convertedData, time.Since(chunkStart))
+		}
 	} else {
 		data, err := json.Marshal(chunk.Data)
 		if err != nil {
 			return err
 		}
+		rawData = data
 		
 		if chunk.EventType != "" {
+			convertedData = []byte(fmt.Sprintf("event: %s\ndata: %s\n\n", chunk.EventType, string(data)))
 			_, _ = fmt.Fprintf(w.writer, "event: %s\ndata: %s\n\n", chunk.EventType, string(data))
 		} else {
+			convertedData = []byte(fmt.Sprintf("data: %s\n\n", string(data)))
 			_, _ = fmt.Fprintf(w.writer, "data: %s\n\n", string(data))
+		}
+		
+		// 记录流式响应块
+		if w.trace != nil {
+			eventType := chunk.EventType
+			if eventType == "" {
+				eventType = "chunk"
+			}
+			w.trace.AddStreamChunk(eventType, rawData, convertedData, time.Since(chunkStart))
 		}
 	}
 	
@@ -124,23 +151,54 @@ func (h *ProxyHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	h.handleProxyRequest(w, r, "/v1/messages", "/v1/messages")
 }
 
+// generateRequestID 生成请求ID
+func (h *ProxyHandler) generateRequestID() string {
+	bytes := make([]byte, 8)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
 // handleProxyRequest 处理代理请求的核心逻辑
 func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, upstreamPath, clientEndpoint string) {
 	startTime := time.Now()
+	
+	// 生成请求ID
+	requestID := h.generateRequestID()
+	
+	// 初始化调试跟踪
+	trace := debug.NewRequestTrace(requestID)
 
 	// 1. 读取请求体
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "read_request_body")
+			trace.SaveAsync()
+		}
 		h.writeErrorResponse(w, http.StatusBadRequest, "invalid_request_body", "Failed to read request body")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
+	// 记录原始客户端请求
+	if trace != nil {
+		trace.SetClientRequest(requestBody)
+	}
+
 	// 2. 解析请求（自动检测格式）
 	proxyReq, requestFormat, err := h.converter.ParseRequest(requestBody, clientEndpoint)
 	if err != nil || !requestFormat.IsValid() {
+		if trace != nil {
+			trace.SetError(err, "parse_request")
+			trace.SaveAsync()
+		}
 		h.writeErrorResponse(w, http.StatusBadRequest, "request_parse_error", fmt.Sprintf("Failed to parse request: %v", err))
 		return
+	}
+
+	// 记录中间格式请求
+	if trace != nil {
+		trace.SetProxyRequest(proxyReq)
 	}
 
 	// 4. 设置请求上下文信息
@@ -153,10 +211,25 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	// 6. 选择上游账号
 	upstreamAccount, err := h.router.SelectUpstream(targetProvider)
 	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "select_upstream")
+			trace.SaveAsync()
+		}
 		h.writeErrorResponse(w, http.StatusServiceUnavailable, "no_upstream_available", fmt.Sprintf("No available upstream for provider %s: %v", targetProvider, err))
 		return
 	}
 	proxyReq.UpstreamID = upstreamAccount.ID
+
+	// 记录上下文信息
+	if trace != nil {
+		responseFormat := string(requestFormat)
+		if requestFormat == converter.FormatOpenAI {
+			responseFormat = "openai"
+		} else if requestFormat == converter.FormatAnthropic {
+			responseFormat = "anthropic"
+		}
+		trace.SetContextInfo(targetProvider, clientEndpoint, upstreamPath, string(requestFormat), responseFormat)
+	}
 
 	// 7. 根据上游账号类型注入特殊处理
 	h.converter.InjectSystemPrompt(proxyReq, upstreamAccount.Provider, upstreamAccount.Type)
@@ -164,18 +237,28 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	// 8. 根据stream参数选择处理方式
 	if proxyReq.Stream != nil && *proxyReq.Stream {
 		// 流式响应处理
-		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime)
+		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime, trace)
 	} else {
 		// 非流式响应处理
-		h.handleNonStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime)
+		h.handleNonStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime, trace)
 	}
 }
 
 // handleNonStreamResponse 处理非流式响应
-func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time) {
+func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
+	conversionStart := time.Now()
+	
 	// 调用上游API获取原始响应
-	responseBytes, err := h.callUpstreamAPIRaw(account, request, upstreamPath)
+	upstreamStart := time.Now()
+	responseBytes, err := h.callUpstreamAPIRaw(account, request, upstreamPath, trace)
+	upstreamDuration := time.Since(upstreamStart)
+	
 	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "upstream_api_call")
+			trace.SetDurations(time.Since(startTime), upstreamDuration, 0)
+			trace.SaveAsync()
+		}
 		h.handleUpstreamError(w, account, err)
 		return
 	}
@@ -192,9 +275,23 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 	}
 	
 	transformedBytes, err := h.converter.ConvertResponse(upstreamFormat, requestFormat, responseBytes)
+	conversionDuration := time.Since(conversionStart)
+	
 	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "response_conversion")
+			trace.SetDurations(time.Since(startTime), upstreamDuration, conversionDuration)
+			trace.SaveAsync()
+		}
 		h.writeErrorResponse(w, http.StatusInternalServerError, "response_transform_error", fmt.Sprintf("Failed to transform response: %v", err))
 		return
+	}
+
+	// 记录转换后的客户端响应
+	if trace != nil {
+		trace.SetClientResponse(transformedBytes)
+		trace.SetDurations(time.Since(startTime), upstreamDuration, conversionDuration)
+		trace.SaveAsync()
 	}
 
 	// 记录成功统计
@@ -209,7 +306,7 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 }
 
 // handleStreamResponse 处理流式响应
-func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time) {
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
 	// 设置SSE响应头
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -219,13 +316,21 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 	// 获取Flusher确保实时推送
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		if trace != nil {
+			trace.SetError(fmt.Errorf("streaming not supported"), "stream_setup")
+			trace.SaveAsync()
+		}
 		h.writeErrorResponse(w, http.StatusInternalServerError, "stream_not_supported", "Streaming not supported")
 		return
 	}
 
 	// 调用上游流式API
-	err := h.callUpstreamStreamAPI(w, flusher, account, request, upstreamPath, requestFormat, keyID, startTime)
+	err := h.callUpstreamStreamAPI(w, flusher, account, request, upstreamPath, requestFormat, keyID, startTime, trace)
 	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "stream_processing")
+			trace.SaveAsync()
+		}
 		// 流式响应中的错误处理
 		h.writeStreamError(w, flusher, err)
 		return
@@ -233,11 +338,11 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 }
 
 // callUpstreamStreamAPI 调用上游流式API
-func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time) error {
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) error {
 	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
 
 	// 构建上游请求
-	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
+	upstreamReq, err := h.buildUpstreamRequest(account, request, path, trace)
 	if err != nil {
 		logger.Debug("构建上游请求失败: %v", err)
 		return fmt.Errorf("failed to build upstream request: %w", err)
@@ -275,11 +380,11 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 
 	logger.Debug("开始处理流式响应")
 	// 开始处理流式响应
-	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime)
+	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime, trace)
 }
 
 // processStreamResponse 处理流式响应
-func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.Format, keyID, upstreamID string, startTime time.Time) error {
+func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.Format, keyID, upstreamID string, startTime time.Time, trace *debug.RequestTrace) error {
 	var totalTokens int
 	logger.Debug("开始处理流式响应，Provider: %s, RequestFormat: %v", provider, requestFormat)
 
@@ -290,18 +395,26 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 		writer:      w,
 		flusher:     flusher,
 		totalTokens: &totalTokens,
+		trace:       trace,
 	}
 
 	err := h.converter.ProcessStream(responseBody, provider, requestFormat, writer)
 
 	if err != nil {
 		logger.Debug("流式处理出现错误: %v", err)
+		if trace != nil {
+			trace.SetError(err, "stream_processing")
+		}
 	} else {
 		logger.Debug("流式处理完成，总tokens: %d", totalTokens)
 	}
 
-	// 记录成功统计
+	// 记录成功统计和调试信息
 	duration := time.Since(startTime)
+	if trace != nil {
+		trace.SetDurations(duration, 0, 0)
+		trace.SaveAsync()
+	}
 	go h.recordSuccess(keyID, upstreamID, duration, totalTokens)
 
 	return err
@@ -344,9 +457,9 @@ func (h *ProxyHandler) determineProvider(model string) types.Provider {
 }
 
 // callUpstreamAPIRaw 调用上游API并返回原始响应字节
-func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.ProxyRequest, path string) ([]byte, error) {
+func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.ProxyRequest, path string, trace *debug.RequestTrace) ([]byte, error) {
 	// 1. 构建上游请求
-	upstreamReq, err := h.buildUpstreamRequest(account, request, path)
+	upstreamReq, err := h.buildUpstreamRequest(account, request, path, trace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build upstream request: %w", err)
 	}
@@ -364,6 +477,11 @@ func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, reques
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
+	// 记录原始上游响应
+	if trace != nil {
+		trace.SetUpstreamResponse(responseBody)
+	}
+
 	// 4. 检查HTTP状态码
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("upstream API error: status=%d, body=%s", resp.StatusCode, string(responseBody))
@@ -373,12 +491,17 @@ func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, reques
 }
 
 // buildUpstreamRequest 构建上游请求
-func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.ProxyRequest, path string) (*http.Request, error) {
+func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.ProxyRequest, path string, trace *debug.RequestTrace) (*http.Request, error) {
 	// 1. 根据上游提供商转换请求格式
 	requestBody, err := h.converter.BuildUpstreamRequest(request, account.Provider)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request for upstream: %w", err)
+	}
+
+	// 记录转换后的上游请求
+	if trace != nil {
+		trace.SetUpstreamRequest(requestBody)
 	}
 
 	// 2. 构建URL (优先使用账号配置的BaseURL)

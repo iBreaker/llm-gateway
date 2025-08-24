@@ -4,13 +4,23 @@
 *.dll
 *.so
 *.dylib
+
+# 禁止提交所有编译后的二进制文件
 llm-gateway
+llm-gateway.exe
+main
+cmd/main
+/cmd/main
+./cmd/main
 
 # Test binary, built with `go test -c`
 *.test
 
 # Output of the go coverage tool
 *.out
+
+# Go build cache
+go.sum.backup
 
 # Dependency directories
 vendor/
