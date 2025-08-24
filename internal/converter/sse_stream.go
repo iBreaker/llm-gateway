@@ -78,13 +78,6 @@ func (p *SSEStreamProcessor) ProcessStream(reader io.Reader, writer StreamWriter
 
 			// 处理结束标记
 			if data == "[DONE]" {
-				chunk := &StreamChunk{
-					Data:   "[DONE]",
-					IsDone: true,
-				}
-				if err := writer.WriteChunk(chunk); err != nil {
-					return err
-				}
 				return writer.WriteDone()
 			}
 
