@@ -3,6 +3,10 @@
   "system": [
     {
       "type": "text",
+      "text": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    {
+      "type": "text",
       "text": "You are Claude, an AI assistant created by Anthropic",
       "cache_control": {
         "type": "ephemeral"

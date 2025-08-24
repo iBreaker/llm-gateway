@@ -1,6 +1,12 @@
 {
   "model": "claude-3-sonnet-20240229",
   "max_tokens": 1024,
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude Code, Anthropic's official CLI for Claude."
+    }
+  ],
   "tools": [
     {
       "name": "get_weather",

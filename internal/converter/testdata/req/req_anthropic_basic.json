@@ -1,6 +1,15 @@
 {
   "model": "claude-3-sonnet-20240229",
-  "system": "You are a helpful assistant",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    {
+      "type": "text",
+      "text": "You are a helpful assistant"
+    }
+  ],
   "messages": [
     {
       "role": "user", 

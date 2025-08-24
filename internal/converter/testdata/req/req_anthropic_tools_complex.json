@@ -1,7 +1,16 @@
 {
   "model": "claude-3-sonnet-20240229",
   "max_tokens": 2000,
-  "system": "You are a helpful assistant that can access various tools to help users",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    {
+      "type": "text",
+      "text": "You are a helpful assistant that can access various tools to help users"
+    }
+  ],
   "tools": [
     {
       "name": "get_weather",
