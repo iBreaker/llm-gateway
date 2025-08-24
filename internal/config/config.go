@@ -190,6 +190,14 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 			Port:    3847, // 使用随机端口避免冲突
 			Timeout: 30,
 		},
+		Proxy: types.ProxyConfig{
+			RequestTimeout:  60,  // 普通请求60秒
+			StreamTimeout:   300, // 流式请求5分钟
+			ConnectTimeout:  10,  // 连接超时10秒
+			TLSTimeout:      10,  // TLS握手10秒
+			IdleConnTimeout: 90,  // 空闲连接90秒
+			ResponseTimeout: 30,  // 响应头30秒
+		},
 		GatewayKeys:      []types.GatewayAPIKey{},
 		UpstreamAccounts: []types.UpstreamAccount{},
 		Logging: types.LoggingConfig{

@@ -33,16 +33,41 @@ func NewProxyHandler(
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
 	converter *converter.RequestResponseConverter,
+	proxyConfig *types.ProxyConfig,
 ) *ProxyHandler {
+	// 设置超时配置，使用传入的配置或默认值
+	streamTimeout := 5 * time.Minute // 默认5分钟
+	if proxyConfig != nil && proxyConfig.StreamTimeout > 0 {
+		streamTimeout = time.Duration(proxyConfig.StreamTimeout) * time.Second
+	}
+
+	idleTimeout := 90 * time.Second // 默认90秒
+	if proxyConfig != nil && proxyConfig.IdleConnTimeout > 0 {
+		idleTimeout = time.Duration(proxyConfig.IdleConnTimeout) * time.Second
+	}
+
+	tlsTimeout := 10 * time.Second // 默认10秒
+	if proxyConfig != nil && proxyConfig.TLSTimeout > 0 {
+		tlsTimeout = time.Duration(proxyConfig.TLSTimeout) * time.Second
+	}
+
+	responseTimeout := 30 * time.Second // 默认30秒
+	if proxyConfig != nil && proxyConfig.ResponseTimeout > 0 {
+		responseTimeout = time.Duration(proxyConfig.ResponseTimeout) * time.Second
+	}
+
 	return &ProxyHandler{
 		gatewayKeyMgr: gatewayKeyMgr,
 		upstreamMgr:   upstreamMgr,
 		router:        router,
 		converter:     converter,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: streamTimeout,
 			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment, // 支持代理环境变量
+				Proxy:                 http.ProxyFromEnvironment,
+				IdleConnTimeout:       idleTimeout,
+				TLSHandshakeTimeout:   tlsTimeout,
+				ResponseHeaderTimeout: responseTimeout,
 			},
 		},
 	}

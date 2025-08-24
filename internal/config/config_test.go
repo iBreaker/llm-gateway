@@ -32,6 +32,12 @@ func TestConfigManager_LoadDefaultConfig(t *testing.T) {
 	if config.Server.Timeout != 30 {
 		t.Errorf("Default server timeout = %d, want 30", config.Server.Timeout)
 	}
+	if config.Proxy.StreamTimeout != 300 {
+		t.Errorf("Default proxy stream timeout = %d, want 300", config.Proxy.StreamTimeout)
+	}
+	if config.Proxy.RequestTimeout != 60 {
+		t.Errorf("Default proxy request timeout = %d, want 60", config.Proxy.RequestTimeout)
+	}
 	if config.Logging.Level != "info" {
 		t.Errorf("Default logging level = %v, want info", config.Logging.Level)
 	}

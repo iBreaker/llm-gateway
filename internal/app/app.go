@@ -41,7 +41,7 @@ func NewApplication(configPath string) (*Application, error) {
 	requestRouter := router.NewRequestRouter(upstreamMgr, router.StrategyHealthFirst)
 
 	// 创建HTTP服务器
-	httpServer := server.NewServer(&cfg.Server, gatewayKeyMgr, upstreamMgr, requestRouter, converter)
+	httpServer := server.NewServer(&cfg.Server, &cfg.Proxy, gatewayKeyMgr, upstreamMgr, requestRouter, converter)
 
 	app := &Application{
 		Config:        configMgr,

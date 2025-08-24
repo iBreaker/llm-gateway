@@ -31,6 +31,7 @@ type HTTPServer struct {
 // NewServer 创建新的HTTP服务器
 func NewServer(
 	config *types.ServerConfig,
+	proxyConfig *types.ProxyConfig,
 	clientMgr *client.GatewayKeyManager,
 	upstreamMgr *upstream.UpstreamManager,
 	router *router.RequestRouter,
@@ -43,7 +44,7 @@ func NewServer(
 	rateLimitMW := NewRateLimitMiddleware(clientMgr)
 
 	// 创建代理处理器
-	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter)
+	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter, proxyConfig)
 
 	s := &HTTPServer{
 		mux:          mux,
