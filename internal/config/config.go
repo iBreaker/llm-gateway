@@ -196,7 +196,7 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 			ConnectTimeout:  10,  // 连接超时10秒
 			TLSTimeout:      10,  // TLS握手10秒
 			IdleConnTimeout: 90,  // 空闲连接90秒
-			ResponseTimeout: 30,  // 响应头30秒
+			ResponseTimeout: 60,  // 响应头60秒
 		},
 		GatewayKeys:      []types.GatewayAPIKey{},
 		UpstreamAccounts: []types.UpstreamAccount{},
