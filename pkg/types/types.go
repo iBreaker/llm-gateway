@@ -270,6 +270,32 @@ func (s *SystemField) ToString() string {
 	return strings.Join(parts, "\n")
 }
 
+// IsString 检查是否为字符串格式
+func (s *SystemField) IsString() bool {
+	return s.isString
+}
+
+// ToArray 获取数组格式的值
+func (s *SystemField) ToArray() []SystemBlock {
+	if s.isString {
+		// 如果是字符串，转换为单个块的数组
+		return []SystemBlock{
+			{
+				Type: "text",
+				Text: s.stringValue,
+			},
+		}
+	}
+	return s.arrayValue
+}
+
+// SetArray 设置为数组格式
+func (s *SystemField) SetArray(blocks []SystemBlock) {
+	s.isString = false
+	s.arrayValue = blocks
+	s.stringValue = ""
+}
+
 // AnthropicRequest - Anthropic API请求格式
 type AnthropicRequest struct {
 	Model       string                   `json:"model"`

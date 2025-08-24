@@ -396,7 +396,13 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 
 	// 4. 设置通用头部
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "LLM-Gateway/1.0")
+	
+	// 对Anthropic使用Claude Code User-Agent，其他提供商使用通用User-Agent
+	if account.Provider == types.ProviderAnthropic {
+		req.Header.Set("User-Agent", "claude-cli/1.0.56 (external, cli)")
+	} else {
+		req.Header.Set("User-Agent", "LLM-Gateway/1.0")
+	}
 
 	// 5. 设置认证头部 - 调用Upstream模块处理
 	authHeaders, err := h.upstreamMgr.GetAuthHeaders(account.ID)

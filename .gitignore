@@ -44,7 +44,7 @@ CLAUDE.md
 tmp/
 temp/
 
-tests/
+# tests/
 
 __debug_bin*
 # __debug_bin2887680977

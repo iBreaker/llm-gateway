@@ -3,7 +3,6 @@ package converter
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
@@ -99,10 +98,8 @@ func (m *Manager) ProcessStream(reader io.Reader, provider types.Provider, clien
 
 // InjectSystemPrompt 注入系统提示词
 func (m *Manager) InjectSystemPrompt(request *types.ProxyRequest, provider types.Provider, upstreamType types.UpstreamType) {
-	// 对Anthropic账号注入Claude Code系统提示词
-	if provider == types.ProviderAnthropic {
-		m.injectClaudeCodePrompt(request)
-	}
+	// Anthropic转换器会自动处理Claude Code身份注入
+	// 这里不需要做任何操作，让具体的转换器自己决定
 }
 
 // ValidateRequest 验证请求
@@ -132,56 +129,3 @@ func (m *Manager) getProviderFormat(provider types.Provider) Format {
 	}
 }
 
-// injectClaudeCodePrompt 注入Claude Code系统提示词
-func (m *Manager) injectClaudeCodePrompt(request *types.ProxyRequest) {
-	claudeCodeIdentity := "You are Claude Code, Anthropic's official CLI for Claude."
-
-	// 检查是否已包含Claude Code身份
-	hasClaudeCodeIdentity := false
-	for _, msg := range request.Messages {
-		if msg.Role == "system" {
-			content := m.contentToString(msg.Content)
-			if m.containsClaudeCode(content) {
-				hasClaudeCodeIdentity = true
-				break
-			}
-		}
-	}
-
-	// 只有在不存在Claude Code身份时才注入
-	if !hasClaudeCodeIdentity {
-		// 检查是否已有system消息
-		hasSystem := false
-		for i, msg := range request.Messages {
-			if msg.Role == "system" {
-				// 在现有系统消息前添加Claude Code身份
-				content := m.contentToString(msg.Content)
-				request.Messages[i].Content = claudeCodeIdentity + "\n\n" + content
-				hasSystem = true
-				break
-			}
-		}
-
-		// 如果没有system消息，添加一个
-		if !hasSystem {
-			systemMsg := types.Message{
-				Role:    "system",
-				Content: claudeCodeIdentity,
-			}
-			request.Messages = append([]types.Message{systemMsg}, request.Messages...)
-		}
-	}
-}
-
-// contentToString 转换内容为字符串
-func (m *Manager) contentToString(content interface{}) string {
-	converter := NewAnthropicConverter()
-	return converter.contentToString(content)
-}
-
-// containsClaudeCode 检查内容是否包含Claude Code身份
-func (m *Manager) containsClaudeCode(content string) bool {
-	return len(content) > 0 && 
-		(strings.Contains(content, "You are Claude Code") || 
-		 strings.Contains(content, "Claude Code"))
-}

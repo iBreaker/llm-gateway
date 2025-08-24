@@ -98,25 +98,20 @@ func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, 
 		}
 	}
 
+	convertedTools := c.convertTools(request.Tools)
+
 	req := types.AnthropicRequest{
 		Model:       request.Model,
 		Messages:    messages,
 		MaxTokens:   request.MaxTokens,
 		Temperature: request.Temperature,
 		Stream:      request.Stream,
-		Tools:       c.convertTools(request.Tools),
-		ToolChoice:  request.ToolChoice,
+		Tools:       convertedTools,
+		// 注意：故意不设置ToolChoice字段 - Anthropic默认为auto行为
 	}
 
-	// 设置系统字段
-	if request.OriginalSystem != nil {
-		req.System = request.OriginalSystem
-	} else if systemPrompt != "" {
-		systemField := &types.SystemField{}
-		jsonStr := `"` + strings.ReplaceAll(systemPrompt, `"`, `\"`) + `"`
-		_ = systemField.UnmarshalJSON([]byte(jsonStr))
-		req.System = systemField
-	}
+	// 设置系统字段，并确保Claude Code身份在最前面
+	req.System = c.buildSystemField(request.OriginalSystem, systemPrompt)
 
 	// 设置metadata
 	if request.OriginalMetadata != nil {
@@ -124,6 +119,90 @@ func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, 
 	}
 
 	return json.Marshal(req)
+}
+
+// buildSystemField 构建system字段，确保Claude Code身份在最前面
+func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField, systemPrompt string) *types.SystemField {
+	claudeCodeIdentity := "You are Claude Code, Anthropic's official CLI for Claude."
+	
+	// 检查是否已经包含Claude Code身份
+	hasClaudeCodeIdentity := false
+	
+	// 检查原始system字段
+	if originalSystem != nil {
+		if originalSystem.IsString() {
+			if c.containsClaudeCode(originalSystem.ToString()) {
+				hasClaudeCodeIdentity = true
+			}
+		} else {
+			for _, block := range originalSystem.ToArray() {
+				if c.containsClaudeCode(block.Text) {
+					hasClaudeCodeIdentity = true
+					break
+				}
+			}
+		}
+	}
+	
+	// 检查从消息中提取的系统提示词
+	if !hasClaudeCodeIdentity && systemPrompt != "" {
+		if c.containsClaudeCode(systemPrompt) {
+			hasClaudeCodeIdentity = true
+		}
+	}
+	
+	// 如果已经有Claude Code身份，直接使用原有逻辑
+	if hasClaudeCodeIdentity {
+		if originalSystem != nil {
+			return originalSystem
+		} else if systemPrompt != "" {
+			systemField := &types.SystemField{}
+			jsonBytes, _ := json.Marshal(systemPrompt)
+			_ = systemField.UnmarshalJSON(jsonBytes)
+			return systemField
+		}
+		return nil
+	}
+	
+	// 需要注入Claude Code身份
+	claudeCodeBlock := types.SystemBlock{
+		Type: "text",
+		Text: claudeCodeIdentity,
+	}
+	
+	var allBlocks []types.SystemBlock
+	allBlocks = append(allBlocks, claudeCodeBlock)
+	
+	// 添加原有的system内容
+	if originalSystem != nil {
+		if originalSystem.IsString() {
+			userBlock := types.SystemBlock{
+				Type: "text",
+				Text: originalSystem.ToString(),
+			}
+			allBlocks = append(allBlocks, userBlock)
+		} else {
+			allBlocks = append(allBlocks, originalSystem.ToArray()...)
+		}
+	} else if systemPrompt != "" {
+		userBlock := types.SystemBlock{
+			Type: "text",
+			Text: systemPrompt,
+		}
+		allBlocks = append(allBlocks, userBlock)
+	}
+	
+	// 创建数组格式的SystemField
+	systemField := &types.SystemField{}
+	systemField.SetArray(allBlocks)
+	return systemField
+}
+
+// containsClaudeCode 检查内容是否包含Claude Code身份
+func (c *AnthropicConverter) containsClaudeCode(content string) bool {
+	return len(content) > 0 && 
+		(strings.Contains(content, "You are Claude Code") ||
+		 strings.Contains(content, "Claude Code"))
 }
 
 // ParseResponse 解析Anthropic上游响应到内部格式
@@ -527,5 +606,44 @@ func (c *AnthropicConverter) convertAnthropicToOpenAI(chunk *StreamChunk) (*Stre
 	default:
 		// 其他事件类型直接透传
 		return chunk, nil
+	}
+}
+
+// convertToolChoice 转换OpenAI格式的tool_choice到Anthropic格式
+func (c *AnthropicConverter) convertToolChoice(toolChoice interface{}, hasTools bool) interface{} {
+	if toolChoice == nil {
+		return nil
+	}
+
+	// 如果没有工具，Anthropic不需要tool_choice字段
+	if !hasTools {
+		return nil
+	}
+
+	switch v := toolChoice.(type) {
+	case string:
+		switch v {
+		case "auto":
+			return nil // Anthropic默认行为是auto，不需要发送该字段
+		case "none":
+			return nil // 不发送工具定义时也不需要tool_choice
+		default:
+			return nil
+		}
+	case map[string]interface{}:
+		if v["type"] == "function" {
+			if function, ok := v["function"].(map[string]interface{}); ok {
+				if name, exists := function["name"].(string); exists {
+					return map[string]interface{}{
+						"type": "tool",
+						"name": name,
+					}
+				}
+			}
+		}
+		// 其他情况不发送tool_choice
+		return nil
+	default:
+		return nil
 	}
 }
