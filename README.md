@@ -1,29 +1,42 @@
 # LLM Gateway
 
-一个轻量级的大语言模型API代理网关，支持多种API格式和多账号管理。
+[English](README.md) | [中文](README.zh-CN.md)
 
-## 功能特性
+🚀 A high-performance, multi-provider LLM API gateway with intelligent request routing and format conversion.
 
-### 🚀 核心功能
-- **多格式支持** - 支持 OpenAI、Anthropic 等主流API格式，自动检测和转换
-- **多账号管理** - 支持API Key和OAuth两种认证方式，智能负载均衡
-- **故障转移** - 自动检测账号状态，故障时切换到可用账号
-- **纯CLI管理** - 完全命令行管理，无Web界面依赖
+## 🌟 Features
 
-### 🔐 认证支持
-- **Anthropic API Key** - 标准API密钥认证
-- **Anthropic OAuth** - Claude Code集成，支持完整OAuth流程
-- **Gateway API Key** - 下游客户端访问控制
+- **Multi-Provider Support**: Seamlessly integrate with Anthropic, OpenAI, Google, and Azure LLMs
+- **Format Auto-Detection**: Automatically detects and converts between different API formats (OpenAI ↔ Anthropic)
+- **Intelligent Load Balancing**: Health-first routing strategy with automatic failover
+- **OAuth & API Key Support**: Supports both standard API keys and OAuth flows (including Claude Code integration)
+- **CLI Management**: Comprehensive command-line interface for account and key management
+- **High Performance**: Built-in connection pooling, concurrent request handling, and optimized streaming
+- **Production Ready**: Structured logging, health checks, metrics, and robust error handling
 
-### 🛠 管理功能
-- **配置持久化** - YAML配置文件管理
-- **状态监控** - 实时健康检查和使用统计
-- **权限控制** - 细粒度权限管理
-- **自动刷新** - OAuth token自动维护
+## 🏗️ Architecture
 
-## 快速开始
+```
+Client Request (Any Format) → Format Detection → Account Selection → Request Transform → Upstream Call → Response Transform → Client Response
+```
 
-### 安装
+### Key Components
+
+- **Server**: HTTP proxy server with middleware chain (Auth → Rate Limit → CORS → Logging)
+- **Converter**: Bi-directional format conversion between OpenAI and Anthropic APIs
+- **Router**: Intelligent upstream selection with health monitoring
+- **Client Manager**: Gateway API key management and authentication  
+- **Upstream Manager**: Multi-provider account management with OAuth support
+- **Config Manager**: Thread-safe YAML-based configuration with auto-save
+
+## 📦 Installation
+
+### Prerequisites
+
+- Go 1.21 or later
+- Git
+
+### Build from Source
 
 ```bash
 git clone https://github.com/iBreaker/llm-gateway.git
@@ -31,180 +44,273 @@ cd llm-gateway
 go build -o llm-gateway cmd/main.go
 ```
 
-### 基本使用
+### Using Docker
 
-1. **添加上游账号**
-   ```bash
-   # 添加Anthropic API Key账号
-   ./llm-gateway upstream add --type=api-key --key=sk-ant-xxx --name="生产账号"
-   
-   # 添加Claude Code OAuth账号
-   ./llm-gateway upstream add --type=oauth --name="Claude Code账号"
-   ```
-
-2. **创建Gateway API Key**
-   ```bash
-   ./llm-gateway apikey add --name="团队A" --permissions="read,write"
-   ```
-
-3. **启动服务**
-   ```bash
-   ./llm-gateway server start
-   ```
-
-## CLI命令参考
-
-### 服务管理
 ```bash
-./llm-gateway server start           # 启动HTTP服务器
-./llm-gateway server status          # 查看服务器状态
+docker build -t llm-gateway .
+docker run -p 3847:3847 -v $(pwd)/config:/app/config llm-gateway
 ```
 
-### 上游账号管理
+## 🚀 Quick Start
+
+### 1. Initialize Configuration
+
 ```bash
-./llm-gateway upstream add           # 添加上游账号
-./llm-gateway upstream list          # 列出所有上游账号
-./llm-gateway upstream show <id>     # 显示账号详情
-./llm-gateway upstream remove <id>   # 删除账号
-./llm-gateway upstream enable <id>   # 启用账号
-./llm-gateway upstream disable <id>  # 禁用账号
+# First run creates default config at ~/.llm-gateway/config.yaml
+./llm-gateway server status
 ```
 
-### Gateway API Key管理
+### 2. Add Upstream Provider Account
+
 ```bash
-./llm-gateway apikey add             # 添加API Key
-./llm-gateway apikey list            # 列出所有API Key
-./llm-gateway apikey show <id>       # 显示Key详情
-./llm-gateway apikey remove <id>     # 删除Key
-./llm-gateway apikey disable <id>    # 禁用Key
+# Add Anthropic API Key
+./llm-gateway upstream add --type=api-key --provider=anthropic --name="prod-account" --key=sk-ant-xxxxx
+
+# Add Anthropic OAuth (Claude Code)
+./llm-gateway upstream add --type=oauth --provider=anthropic --name="claude-code"
+# Follow interactive OAuth flow...
 ```
 
-### OAuth流程管理
+### 3. Create Gateway API Key
+
 ```bash
-./llm-gateway oauth start <id>       # 启动OAuth授权
-./llm-gateway oauth status <id>      # 查看OAuth状态
-./llm-gateway oauth refresh <id>     # 刷新OAuth token
+./llm-gateway apikey add --name="team-api" --permissions="read,write"
+# Save the generated API key securely!
 ```
 
-### 系统状态
+### 4. Start the Gateway
+
 ```bash
-./llm-gateway status                 # 系统整体状态
-./llm-gateway health                 # 健康检查
+./llm-gateway server start
+# Server starts on http://localhost:3847
 ```
 
-### 环境变量管理
+### 5. Test with OpenAI-Compatible Request
+
 ```bash
-./llm-gateway env list               # 显示环境变量
+curl -X POST http://localhost:3847/v1/chat/completions \
+  -H "Authorization: Bearer your-gateway-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-sonnet-20240229",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+```
+
+## 📚 CLI Reference
+
+### Server Management
+
+```bash
+./llm-gateway server start          # Start HTTP server
+./llm-gateway server status         # Show server status
+```
+
+### Gateway API Key Management
+
+```bash
+./llm-gateway apikey add --name="team-a" --permissions="read,write"
+./llm-gateway apikey list            # List all gateway keys
+./llm-gateway apikey show <key-id>   # Show key details
+./llm-gateway apikey remove <key-id> # Delete key
+./llm-gateway apikey disable <key-id> # Disable key
+```
+
+### Upstream Account Management
+
+```bash
+# API Key accounts
+./llm-gateway upstream add --type=api-key --provider=anthropic --name="prod" --key=sk-ant-xxx
+
+# OAuth accounts  
+./llm-gateway upstream add --type=oauth --provider=anthropic --name="claude-code"
+
+./llm-gateway upstream list          # List all upstream accounts
+./llm-gateway upstream show <id>     # Show account details
+./llm-gateway upstream remove <id>   # Delete account
+./llm-gateway upstream enable <id>   # Enable account
+./llm-gateway upstream disable <id>  # Disable account
+```
+
+### OAuth Management
+
+```bash
+./llm-gateway oauth start <upstream-id>    # Start OAuth flow
+./llm-gateway oauth status <upstream-id>   # Check OAuth status
+./llm-gateway oauth refresh <upstream-id>  # Refresh tokens
+```
+
+### System Monitoring
+
+```bash
+./llm-gateway status                # Overall system status
+./llm-gateway health                # Health check
+```
+
+### Environment Configuration
+
+```bash
+./llm-gateway env list              # Show environment variables
 ./llm-gateway env set --http-proxy=http://proxy:8080
+./llm-gateway env show --name=http_proxy
 ./llm-gateway env unset --name=http_proxy
 ```
 
-## API使用示例
+## 🔧 Configuration
 
-启动服务后，可以使用任意兼容的客户端访问：
-
-### OpenAI格式请求
-```bash
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Authorization: Bearer gateway-key-12345" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-sonnet-20240229",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-### Anthropic格式请求
-```bash
-curl -X POST http://localhost:8080/v1/messages \
-  -H "x-api-key: gateway-key-12345" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-sonnet-20240229",
-    "max_tokens": 1000,
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-## 配置文件
-
-默认配置文件位置：`~/.llm-gateway/config.yaml`
+The gateway uses a YAML configuration file located at `~/.llm-gateway/config.yaml`:
 
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 3847
   timeout: 30
 
+proxy:
+  request_timeout: 60
+  stream_timeout: 300
+  connect_timeout: 10
+  tls_timeout: 10
+  idle_conn_timeout: 90
+  response_timeout: 30
+
 gateway_keys:
-  - id: "key-123"
-    name: "团队A"
+  - id: "gw_xxxxx"
+    name: "team-api"
+    key_hash: "hashed_key"
     permissions: ["read", "write"]
     status: "active"
 
 upstream_accounts:
-  - id: "account-456"
-    name: "生产API账号"
+  - id: "upstream_xxxxx"
+    name: "production-anthropic"
     type: "api-key"
     provider: "anthropic"
+    api_key: "sk-ant-xxxxx"
     status: "active"
-    api_key: "sk-ant-xxxxxxxx"
+
+logging:
+  level: "info"
+  format: "json"
 
 environment:
   http_proxy: ""
   https_proxy: ""
-  no_proxy: ""
+  no_proxy: "localhost,127.0.0.1,::1"
 ```
 
-## 架构特点
+## 🔌 API Endpoints
 
-### 格式转换
-- 自动检测输入API格式（OpenAI/Anthropic）
-- 智能转换到目标上游格式
-- 保持语义一致性和完整性
-- 支持流式和非流式响应
+### Health Check
+- `GET /health` - Service health status
 
-### 负载均衡
-- 健康优先策略
-- 自动故障检测和隔离
-- 智能账号选择
-- 请求分发和重试
+### LLM API Proxy
+- `POST /v1/chat/completions` - OpenAI-compatible chat completions
+- `POST /v1/completions` - OpenAI-compatible text completions  
+- `POST /v1/messages` - Anthropic-native messages endpoint
 
-### 数据安全
-- 敏感信息加密存储
-- 权限细粒度控制
-- 安全的OAuth流程
-- 日志脱敏处理
+### Supported Request Formats
 
-## 开发和测试
+The gateway automatically detects and converts between:
+- **OpenAI Format**: Compatible with OpenAI GPT models
+- **Anthropic Format**: Native Anthropic Claude API format
 
-### 运行测试
+### Authentication
+
+All API requests require a Gateway API Key in the Authorization header:
+```
+Authorization: Bearer your-gateway-api-key
+```
+
+## 🧪 Testing
+
 ```bash
+# Run all tests
 go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific test suites
+go test ./internal/converter/...
+go test ./internal/client/...
+go test ./internal/upstream/...
+
+# Integration tests
+./scripts/integration-test.sh
 ```
 
-### 调试模式
+## 🚦 Load Balancing & Failover
+
+The gateway implements a health-first routing strategy:
+
+1. **Health Monitoring**: Continuous health checks for all upstream accounts
+2. **Intelligent Selection**: Routes requests to healthy accounts with best performance
+3. **Automatic Failover**: Seamlessly switches to backup accounts on failures
+4. **Circuit Breaking**: Temporarily excludes failing accounts to prevent cascade failures
+
+## 🔒 Security Features
+
+- **API Key Authentication**: Gateway-level access control
+- **Request Validation**: Input sanitization and format validation
+- **Rate Limiting**: Per-key request rate controls
+- **Secure Storage**: Encrypted storage of sensitive credentials
+- **Environment Variables**: Proxy configuration support
+- **CORS Support**: Cross-origin request handling
+
+## 📊 Monitoring & Observability
+
+- **Structured Logging**: JSON-formatted logs with contextual information
+- **Usage Statistics**: Request counts, success rates, and latency tracking
+- **Health Metrics**: Account status and performance monitoring
+- **Error Tracking**: Detailed error logging and categorization
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Setup
+
 ```bash
-export DEBUG=true
-./llm-gateway server start
+git clone https://github.com/iBreaker/llm-gateway.git
+cd llm-gateway
+go mod download
+go run cmd/main.go --help
 ```
 
-### 构建
-```bash
-make build        # 构建二进制文件
-make test         # 运行测试
-make clean        # 清理构建产物
-```
+### Code Style
 
-## 依赖要求
+- Follow Go conventions and `gofmt` formatting
+- Use meaningful variable and function names
+- Add comments for complex logic
+- Write tests for new features
 
-- Go 1.21+
-- 支持的操作系统：Linux, macOS, Windows
+## 📄 License
 
-## 贡献
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-欢迎提交Issue和Pull Request！
+## 🙋 Support
 
-## 联系方式
+- **Issues**: [GitHub Issues](https://github.com/iBreaker/llm-gateway/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/iBreaker/llm-gateway/discussions)
+- **Documentation**: Check the `/docs` directory for detailed documentation
 
-如有问题，请通过GitHub Issues联系。
+## 🗺️ Roadmap
+
+- [ ] Support for more LLM providers (Google Gemini, Azure OpenAI)
+- [ ] WebUI for management and monitoring
+- [ ] Prometheus metrics export
+- [ ] Docker Compose deployment
+- [ ] Kubernetes Helm charts
+- [ ] Request caching and deduplication
+- [ ] Advanced load balancing strategies
+- [ ] Multi-tenant support
+
+---
+
+**Made with ❤️ by the LLM Gateway team**
