@@ -14,10 +14,7 @@ import (
 
 // TestErrorHandling 测试错误处理
 func TestErrorHandling(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	t.Run("无效API Key", func(t *testing.T) {
 		requestBody := map[string]interface{}{
@@ -125,10 +122,7 @@ func TestErrorHandling(t *testing.T) {
 
 // TestComplexMessages 测试复杂消息格式
 func TestComplexMessages(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	t.Run("多轮对话", func(t *testing.T) {
 		requestBody := map[string]interface{}{
@@ -168,7 +162,7 @@ func TestComplexMessages(t *testing.T) {
 
 	t.Run("长文本消息", func(t *testing.T) {
 		longText := strings.Repeat("This is a long text message. ", 50)
-		
+
 		requestBody := map[string]interface{}{
 			"model": config.DefaultModel,
 			"messages": []map[string]interface{}{
@@ -198,7 +192,7 @@ func TestComplexMessages(t *testing.T) {
 
 	t.Run("特殊字符处理", func(t *testing.T) {
 		specialText := "测试中文 🚀 Special chars: @#$%^&*()[]{}|\\:;\"'<>,.?/~`"
-		
+
 		requestBody := map[string]interface{}{
 			"model": config.DefaultModel,
 			"messages": []map[string]interface{}{
@@ -229,10 +223,7 @@ func TestComplexMessages(t *testing.T) {
 
 // TestAdvancedToolCalls 测试高级工具调用场景
 func TestAdvancedToolCalls(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	t.Run("多个工具定义", func(t *testing.T) {
 		requestBody := map[string]interface{}{
@@ -374,10 +365,7 @@ func TestAdvancedToolCalls(t *testing.T) {
 
 // TestPerformance 测试性能相关场景
 func TestPerformance(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	t.Run("并发请求", func(t *testing.T) {
 		concurrency := 3
@@ -406,7 +394,7 @@ func TestPerformance(t *testing.T) {
 
 				success := resp.StatusCode == http.StatusOK
 				results <- success
-				
+
 				if success {
 					t.Logf("并发请求 %d 成功", id)
 				}
@@ -421,7 +409,7 @@ func TestPerformance(t *testing.T) {
 		}
 
 		t.Logf("并发测试完成: %d/%d 成功", successCount, concurrency)
-		
+
 		if successCount < concurrency/2 {
 			t.Errorf("并发测试失败率过高: %d/%d", concurrency-successCount, concurrency)
 		}
@@ -429,7 +417,7 @@ func TestPerformance(t *testing.T) {
 
 	t.Run("响应时间测试", func(t *testing.T) {
 		start := time.Now()
-		
+
 		requestBody := map[string]interface{}{
 			"model": config.DefaultModel,
 			"messages": []map[string]interface{}{
@@ -448,14 +436,14 @@ func TestPerformance(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 
 		duration := time.Since(start)
-		
+
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 		}
 
 		t.Logf("响应时间测试: %v", duration)
-		
+
 		if duration > 10*time.Second {
 			t.Errorf("响应时间过长: %v", duration)
 		}
@@ -464,10 +452,7 @@ func TestPerformance(t *testing.T) {
 
 // TestCrossFormatCompatibility 测试跨格式兼容性
 func TestCrossFormatCompatibility(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	testCases := []struct {
 		name     string
@@ -531,10 +516,7 @@ func TestCrossFormatCompatibility(t *testing.T) {
 
 // TestStreamingRobustness 测试流式处理的健壮性
 func TestStreamingRobustness(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	t.Run("长时间流式", func(t *testing.T) {
 		requestBody := map[string]interface{}{
@@ -563,21 +545,21 @@ func TestStreamingRobustness(t *testing.T) {
 		scanner := bufio.NewScanner(resp.Body)
 		eventCount := 0
 		totalContent := ""
-		
+
 		start := time.Now()
 		timeout := 30 * time.Second
-		
+
 		for scanner.Scan() {
 			if time.Since(start) > timeout {
 				t.Logf("流式响应超时，已接收事件数: %d", eventCount)
 				break
 			}
-			
+
 			line := scanner.Text()
 			if strings.HasPrefix(line, "data: ") {
 				eventCount++
 				data := strings.TrimPrefix(line, "data: ")
-				
+
 				if data == "[DONE]" {
 					t.Log("接收到流式响应结束标记")
 					break
@@ -598,7 +580,7 @@ func TestStreamingRobustness(t *testing.T) {
 		}
 
 		duration := time.Since(start)
-		t.Logf("长时间流式测试完成: 事件数=%d, 内容长度=%d, 耗时=%v", 
+		t.Logf("长时间流式测试完成: 事件数=%d, 内容长度=%d, 耗时=%v",
 			eventCount, len(totalContent), duration)
 
 		if eventCount == 0 {
@@ -634,7 +616,7 @@ func TestStreamingRobustness(t *testing.T) {
 
 		scanner := bufio.NewScanner(resp.Body)
 		eventCount := 0
-		
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.HasPrefix(line, "data: ") {

@@ -23,6 +23,18 @@ type TestConfig struct {
 	Timeout        time.Duration
 }
 
+// checkAndLoadConfig 检查并加载测试配置，如果没有配置文件则跳过测试
+func checkAndLoadConfig(t *testing.T) *TestConfig {
+	config, err := loadTestConfig()
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if config == nil {
+		t.Skip("跳过测试: 没有找到test.env配置文件")
+	}
+	return config
+}
+
 // 从环境文件加载测试配置
 func loadTestConfig() (*TestConfig, error) {
 	// 读取 test.env 文件
@@ -116,10 +128,7 @@ func makeRequest(config *TestConfig, method, endpoint string, body interface{}) 
 
 // TestBasicOpenAIFormat 测试基础OpenAI格式
 func TestBasicOpenAIFormat(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// 测试简单对话
 	t.Run("简单对话", func(t *testing.T) {
@@ -203,10 +212,7 @@ func TestBasicOpenAIFormat(t *testing.T) {
 
 // TestBasicAnthropicFormat 测试基础Anthropic格式
 func TestBasicAnthropicFormat(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// 测试简单对话
 	t.Run("简单对话", func(t *testing.T) {
@@ -325,10 +331,7 @@ func TestBasicAnthropicFormat(t *testing.T) {
 
 // TestToolCalls 测试工具调用功能
 func TestToolCalls(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式工具调用
 	t.Run("OpenAI格式工具调用", func(t *testing.T) {
@@ -457,10 +460,7 @@ func TestToolCalls(t *testing.T) {
 
 // TestStreaming 测试流式处理
 func TestStreaming(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式流式处理
 	t.Run("OpenAI格式流式", func(t *testing.T) {
@@ -605,10 +605,7 @@ func TestStreaming(t *testing.T) {
 
 // TestStreamingToolCalls 测试流式工具调用
 func TestStreamingToolCalls(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式流式工具调用
 	t.Run("OpenAI格式流式工具调用", func(t *testing.T) {
