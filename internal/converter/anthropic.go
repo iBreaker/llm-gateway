@@ -62,6 +62,25 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 
 	// 添加对话消息
 	for _, msg := range req.Messages {
+		// 检查消息内容中是否有tool_result，需要转换格式
+		if msg.Role == "user" && msg.Content != nil {
+			if hasToolResult, toolResultMsgs := c.extractToolResults(msg.Content); hasToolResult {
+				// 将tool_result转换为OpenAI的tool消息
+				messages = append(messages, toolResultMsgs...)
+				continue
+			}
+		}
+		
+		// 检查消息内容中是否有tool_use，需要转换格式
+		if msg.Role == "assistant" && msg.Content != nil {
+			if hasToolUse, convertedMsg := c.extractToolUse(msg.Content); hasToolUse {
+				// 将tool_use转换为OpenAI的tool_calls格式
+				messages = append(messages, convertedMsg)
+				continue
+			}
+		}
+		
+		// 普通消息直接添加
 		messages = append(messages, types.Message{
 			Role:    msg.Role,
 			Content: msg.Content,
@@ -96,6 +115,14 @@ func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, 
 			} else {
 				systemPrompt = content
 			}
+		} else if msg.Role == "tool" {
+			// 将中间格式的tool消息转换回Anthropic的tool_result格式
+			toolResultMsg := c.convertToolMessageToAnthropic(msg)
+			messages = append(messages, toolResultMsg)
+		} else if msg.Role == "assistant" && msg.ToolCalls != nil {
+			// 将中间格式的tool_calls转换回Anthropic的tool_use格式
+			assistantMsg := c.convertToolCallsToAnthropic(msg)
+			messages = append(messages, assistantMsg)
 		} else {
 			messages = append(messages, types.FlexibleMessage{
 				Role:    msg.Role,
@@ -125,6 +152,235 @@ func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, 
 	}
 
 	return json.Marshal(req)
+}
+
+// extractToolResults 从Anthropic消息内容中提取tool_result并转换为中间格式
+func (c *AnthropicConverter) extractToolResults(content interface{}) (bool, []types.Message) {
+	// 检查content是否为数组格式
+	contentArray, ok := content.([]interface{})
+	if !ok {
+		return false, nil
+	}
+	
+	var toolMessages []types.Message
+	hasToolResult := false
+	
+	for _, item := range contentArray {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		// 检查是否为tool_result类型
+		if itemType, exists := itemMap["type"]; exists && itemType == "tool_result" {
+			hasToolResult = true
+			
+			// 提取tool_use_id
+			var toolCallID string
+			if id, exists := itemMap["tool_use_id"]; exists {
+				if idStr, ok := id.(string); ok {
+					toolCallID = idStr
+				}
+			}
+			
+			// 提取content
+			var resultContent string
+			if contentField, exists := itemMap["content"]; exists {
+				// content可能是字符串或者数组
+				switch v := contentField.(type) {
+				case string:
+					resultContent = v
+				case []interface{}:
+					// 如果是数组，提取text内容
+					for _, subItem := range v {
+						if subMap, ok := subItem.(map[string]interface{}); ok {
+							if subType, exists := subMap["type"]; exists && subType == "text" {
+								if text, exists := subMap["text"]; exists {
+									if textStr, ok := text.(string); ok {
+										resultContent = textStr
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			// 创建中间格式的tool消息
+			toolMsg := types.Message{
+				Role:       "tool",
+				Content:    resultContent,
+				ToolCallID: &toolCallID,
+				// Name字段需要从上下文推断，这里暂时留空
+				// 实际使用中，OpenAI API对name字段要求不严格
+			}
+			
+			toolMessages = append(toolMessages, toolMsg)
+		}
+	}
+	
+	return hasToolResult, toolMessages
+}
+
+// extractToolUse 从Anthropic消息内容中提取tool_use并转换为中间格式
+func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Message) {
+	// 检查content是否为数组格式
+	contentArray, ok := content.([]interface{})
+	if !ok {
+		return false, types.Message{}
+	}
+	
+	var toolCalls []map[string]interface{}
+	var textContent string
+	hasToolUse := false
+	
+	for _, item := range contentArray {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		itemType, exists := itemMap["type"]
+		if !exists {
+			continue
+		}
+		
+		switch itemType {
+		case "tool_use":
+			hasToolUse = true
+			
+			// 提取tool_use信息
+			var toolID, toolName string
+			var toolInput interface{}
+			
+			if id, exists := itemMap["id"]; exists {
+				if idStr, ok := id.(string); ok {
+					toolID = idStr
+				}
+			}
+			
+			if name, exists := itemMap["name"]; exists {
+				if nameStr, ok := name.(string); ok {
+					toolName = nameStr
+				}
+			}
+			
+			if input, exists := itemMap["input"]; exists {
+				toolInput = input
+			}
+			
+			// 将input序列化为JSON字符串
+			var inputJSON string
+			if toolInput != nil {
+				if inputBytes, err := json.Marshal(toolInput); err == nil {
+					inputJSON = string(inputBytes)
+				}
+			}
+			
+			// 创建OpenAI格式的tool_call
+			toolCall := map[string]interface{}{
+				"id":   toolID,
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":      toolName,
+					"arguments": inputJSON,
+				},
+			}
+			
+			toolCalls = append(toolCalls, toolCall)
+			
+		case "text":
+			// 保留文本内容
+			if text, exists := itemMap["text"]; exists {
+				if textStr, ok := text.(string); ok {
+					if textContent != "" {
+						textContent += "\n" + textStr
+					} else {
+						textContent = textStr
+					}
+				}
+			}
+		}
+	}
+	
+	if !hasToolUse {
+		return false, types.Message{}
+	}
+	
+	// 创建中间格式的assistant消息
+	msg := types.Message{
+		Role:      "assistant",
+		ToolCalls: toolCalls,
+	}
+	
+	// 如果有文本内容，设置content；否则设置为nil（OpenAI格式要求）
+	if textContent != "" {
+		msg.Content = textContent
+	} else {
+		msg.Content = nil
+	}
+	
+	return true, msg
+}
+
+// convertToolMessageToAnthropic 将中间格式的tool消息转换为Anthropic的tool_result格式
+func (c *AnthropicConverter) convertToolMessageToAnthropic(msg types.Message) types.FlexibleMessage {
+	toolResult := map[string]interface{}{
+		"type":        "tool_result",
+		"tool_use_id": *msg.ToolCallID,
+		"content": []map[string]interface{}{
+			{
+				"type": "text",
+				"text": c.contentToString(msg.Content),
+			},
+		},
+	}
+
+	return types.FlexibleMessage{
+		Role:    "user",
+		Content: []interface{}{toolResult},
+	}
+}
+
+// convertToolCallsToAnthropic 将中间格式的tool_calls转换为Anthropic的tool_use格式
+func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) types.FlexibleMessage {
+	var content []interface{}
+	
+	// 如果有文本内容，先添加文本
+	if msg.Content != nil && msg.Content != "" {
+		textContent := map[string]interface{}{
+			"type": "text",
+			"text": c.contentToString(msg.Content),
+		}
+		content = append(content, textContent)
+	}
+	
+	// 添加tool_use内容
+	for _, toolCall := range msg.ToolCalls {
+		toolUse := map[string]interface{}{
+			"type": "tool_use",
+			"id":   toolCall["id"],
+			"name": toolCall["function"].(map[string]interface{})["name"],
+		}
+		
+		// 解析arguments JSON字符串为对象
+		if functionData, ok := toolCall["function"].(map[string]interface{}); ok {
+			if argsStr, ok := functionData["arguments"].(string); ok {
+				var args interface{}
+				if err := json.Unmarshal([]byte(argsStr), &args); err == nil {
+					toolUse["input"] = args
+				}
+			}
+		}
+		
+		content = append(content, toolUse)
+	}
+	
+	return types.FlexibleMessage{
+		Role:    "assistant",
+		Content: content,
+	}
 }
 
 // buildSystemField 构建system字段，确保Claude Code身份在最前面

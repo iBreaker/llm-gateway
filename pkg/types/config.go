@@ -6,6 +6,7 @@ type Config struct {
 	Proxy            ProxyConfig       `yaml:"proxy"`
 	GatewayKeys      []GatewayAPIKey   `yaml:"gateway_keys"`
 	UpstreamAccounts []UpstreamAccount `yaml:"upstream_accounts"`
+	ModelRoutes      ModelRouteConfig  `yaml:"model_routes"`
 	Logging          LoggingConfig     `yaml:"logging"`
 	Environment      EnvironmentConfig `yaml:"environment"`
 }
