@@ -115,6 +115,14 @@ func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, 
 			} else {
 				systemPrompt = content
 			}
+		} else if msg.Role == "tool" {
+			// 将中间格式的tool消息转换回Anthropic的tool_result格式
+			toolResultMsg := c.convertToolMessageToAnthropic(msg)
+			messages = append(messages, toolResultMsg)
+		} else if msg.Role == "assistant" && msg.ToolCalls != nil {
+			// 将中间格式的tool_calls转换回Anthropic的tool_use格式
+			assistantMsg := c.convertToolCallsToAnthropic(msg)
+			messages = append(messages, assistantMsg)
 		} else {
 			messages = append(messages, types.FlexibleMessage{
 				Role:    msg.Role,
@@ -314,6 +322,65 @@ func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Me
 	}
 	
 	return true, msg
+}
+
+// convertToolMessageToAnthropic 将中间格式的tool消息转换为Anthropic的tool_result格式
+func (c *AnthropicConverter) convertToolMessageToAnthropic(msg types.Message) types.FlexibleMessage {
+	toolResult := map[string]interface{}{
+		"type":        "tool_result",
+		"tool_use_id": *msg.ToolCallID,
+		"content": []map[string]interface{}{
+			{
+				"type": "text",
+				"text": c.contentToString(msg.Content),
+			},
+		},
+	}
+
+	return types.FlexibleMessage{
+		Role:    "user",
+		Content: []interface{}{toolResult},
+	}
+}
+
+// convertToolCallsToAnthropic 将中间格式的tool_calls转换为Anthropic的tool_use格式
+func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) types.FlexibleMessage {
+	var content []interface{}
+	
+	// 如果有文本内容，先添加文本
+	if msg.Content != nil && msg.Content != "" {
+		textContent := map[string]interface{}{
+			"type": "text",
+			"text": c.contentToString(msg.Content),
+		}
+		content = append(content, textContent)
+	}
+	
+	// 添加tool_use内容
+	for _, toolCall := range msg.ToolCalls {
+		toolUse := map[string]interface{}{
+			"type": "tool_use",
+			"id":   toolCall["id"],
+			"name": toolCall["function"].(map[string]interface{})["name"],
+		}
+		
+		// 解析arguments JSON字符串为对象
+		if functionData, ok := toolCall["function"].(map[string]interface{}); ok {
+			if argsStr, ok := functionData["arguments"].(string); ok {
+				var args interface{}
+				if err := json.Unmarshal([]byte(argsStr), &args); err == nil {
+					toolUse["input"] = args
+				}
+			}
+		}
+		
+		content = append(content, toolUse)
+	}
+	
+	return types.FlexibleMessage{
+		Role:    "assistant",
+		Content: content,
+	}
 }
 
 // buildSystemField 构建system字段，确保Claude Code身份在最前面
