@@ -66,9 +66,7 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 		if msg.Role == "user" && msg.Content != nil {
 			if hasToolResult, toolResultMsgs := c.extractToolResults(msg.Content); hasToolResult {
 				// 将tool_result转换为OpenAI的tool消息
-				for _, toolMsg := range toolResultMsgs {
-					messages = append(messages, toolMsg)
-				}
+				messages = append(messages, toolResultMsgs...)
 				continue
 			}
 		}

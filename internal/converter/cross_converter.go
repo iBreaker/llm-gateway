@@ -140,14 +140,15 @@ func (w *convertStreamWriter) WriteChunk(chunk *StreamChunk) error {
 	if convertedChunk != nil {
 		// 如果目标格式是Anthropic且还没发送message_start，检查是否需要先发送
 		if w.targetFormat == FormatAnthropic && !w.messageStartSent {
-			if convertedChunk.EventType == "content_block_delta" {
+			switch convertedChunk.EventType {
+			case "content_block_delta":
 				// 先发送message_start事件
 				messageStartChunk := w.createMessageStart()
 				if err := w.targetWriter.WriteChunk(messageStartChunk); err != nil {
 					return err
 				}
 				w.messageStartSent = true
-			} else if convertedChunk.EventType == "message_start" {
+			case "message_start":
 				w.messageStartSent = true
 			}
 		}
