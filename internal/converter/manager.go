@@ -117,6 +117,17 @@ func (m *Manager) GetRegistry() ConverterRegistry {
 	return m.registry
 }
 
+// GetUpstreamPath 根据提供商和客户端端点获取上游路径
+func (m *Manager) GetUpstreamPath(provider types.Provider, clientEndpoint string) (string, error) {
+	format := m.getProviderFormat(provider)
+	converter, err := m.registry.Get(format)
+	if err != nil {
+		return "", fmt.Errorf("获取提供商转换器失败: %w", err)
+	}
+	
+	return converter.GetUpstreamPath(clientEndpoint), nil
+}
+
 // getProviderFormat 根据提供商获取对应格式
 func (m *Manager) getProviderFormat(provider types.Provider) Format {
 	switch provider {
@@ -125,7 +136,7 @@ func (m *Manager) getProviderFormat(provider types.Provider) Format {
 	case types.ProviderOpenAI:
 		return FormatOpenAI
 	default:
-		return FormatOpenAI // 默认OpenAI格式
+		return FormatOpenAI // 默认OpenAI格式，Qwen等也使用此格式
 	}
 }
 

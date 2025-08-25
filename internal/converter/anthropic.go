@@ -23,6 +23,12 @@ func (c *AnthropicConverter) GetFormat() Format {
 	return FormatAnthropic
 }
 
+// GetUpstreamPath 根据客户端端点获取上游路径
+func (c *AnthropicConverter) GetUpstreamPath(clientEndpoint string) string {
+	// Anthropic 统一使用 /v1/messages 端点
+	return "/v1/messages"
+}
+
 // ParseRequest 解析Anthropic请求到内部格式
 func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, error) {
 	logger.Debug("解析Anthropic请求: %s", string(data))

@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,8 +11,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"crypto/rand"
-	"encoding/hex"
 
 	"github.com/iBreaker/llm-gateway/internal/client"
 	"github.com/iBreaker/llm-gateway/internal/converter"
@@ -43,12 +43,12 @@ func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
 	chunkStart := time.Now()
 	var rawData []byte
 	var convertedData []byte
-	
+
 	if chunk.IsDone {
 		rawData = []byte("[DONE]")
 		_, _ = fmt.Fprintf(w.writer, "data: [DONE]\n\n")
 		convertedData = []byte("data: [DONE]\n\n")
-		
+
 		// 记录流式响应结束
 		if w.trace != nil {
 			w.trace.AddStreamChunk("done", rawData, convertedData, time.Since(chunkStart))
@@ -59,7 +59,7 @@ func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
 			return err
 		}
 		rawData = data
-		
+
 		if chunk.EventType != "" {
 			convertedData = []byte(fmt.Sprintf("event: %s\ndata: %s\n\n", chunk.EventType, string(data)))
 			_, _ = fmt.Fprintf(w.writer, "event: %s\ndata: %s\n\n", chunk.EventType, string(data))
@@ -67,7 +67,7 @@ func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
 			convertedData = []byte(fmt.Sprintf("data: %s\n\n", string(data)))
 			_, _ = fmt.Fprintf(w.writer, "data: %s\n\n", string(data))
 		}
-		
+
 		// 记录流式响应块
 		if w.trace != nil {
 			eventType := chunk.EventType
@@ -77,7 +77,7 @@ func (w *httpStreamWriter) WriteChunk(chunk *converter.StreamChunk) error {
 			w.trace.AddStreamChunk(eventType, rawData, convertedData, time.Since(chunkStart))
 		}
 	}
-	
+
 	w.flusher.Flush()
 	*w.totalTokens += chunk.Tokens
 	return nil
@@ -138,17 +138,17 @@ func NewProxyHandler(
 
 // HandleChatCompletions 处理聊天完成请求
 func (h *ProxyHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	h.handleProxyRequest(w, r, "/v1/messages", "/v1/chat/completions") // 第二个参数是客户端端点
+	h.handleProxyRequest(w, r, "/v1/chat/completions")
 }
 
 // HandleCompletions 处理文本完成请求
 func (h *ProxyHandler) HandleCompletions(w http.ResponseWriter, r *http.Request) {
-	h.handleProxyRequest(w, r, "/v1/complete", "/v1/completions")
+	h.handleProxyRequest(w, r, "/v1/completions")
 }
 
 // HandleMessages 处理Anthropic原生消息端点
 func (h *ProxyHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
-	h.handleProxyRequest(w, r, "/v1/messages", "/v1/messages")
+	h.handleProxyRequest(w, r, "/v1/messages")
 }
 
 // generateRequestID 生成请求ID
@@ -159,12 +159,12 @@ func (h *ProxyHandler) generateRequestID() string {
 }
 
 // handleProxyRequest 处理代理请求的核心逻辑
-func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, upstreamPath, clientEndpoint string) {
+func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request, clientEndpoint string) {
 	startTime := time.Now()
-	
+
 	// 生成请求ID
 	requestID := h.generateRequestID()
-	
+
 	// 初始化调试跟踪
 	trace := debug.NewRequestTrace(requestID)
 
@@ -205,8 +205,19 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	keyID := r.Header.Get("X-Gateway-Key-ID")
 	proxyReq.GatewayKeyID = keyID
 
-	// 5. 确定目标提供商（暂时硬编码为Anthropic，后续可以根据模型名称智能路由）
+	// 5. 确定目标提供商（根据模型名称智能路由）
 	targetProvider := h.determineProvider(proxyReq.Model)
+	
+	// 5.1. 通过 converter 获取上游路径
+	upstreamPath, err := h.converter.GetUpstreamPath(targetProvider, clientEndpoint)
+	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "get_upstream_path")
+			trace.SaveAsync()
+		}
+		h.writeErrorResponse(w, http.StatusInternalServerError, "upstream_path_error", fmt.Sprintf("Failed to get upstream path: %v", err))
+		return
+	}
 
 	// 6. 选择上游账号
 	upstreamAccount, err := h.router.SelectUpstream(targetProvider)
@@ -247,12 +258,12 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 // handleNonStreamResponse 处理非流式响应
 func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
 	conversionStart := time.Now()
-	
+
 	// 调用上游API获取原始响应
 	upstreamStart := time.Now()
 	responseBytes, err := h.callUpstreamAPIRaw(account, request, upstreamPath, trace)
 	upstreamDuration := time.Since(upstreamStart)
-	
+
 	if err != nil {
 		if trace != nil {
 			trace.SetError(err, "upstream_api_call")
@@ -268,15 +279,15 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 	switch account.Provider {
 	case types.ProviderAnthropic:
 		upstreamFormat = converter.FormatAnthropic
-	case types.ProviderOpenAI:
+	case types.ProviderOpenAI, types.ProviderQwen:
 		upstreamFormat = converter.FormatOpenAI
 	default:
 		upstreamFormat = converter.FormatOpenAI
 	}
-	
+
 	transformedBytes, err := h.converter.ConvertResponse(upstreamFormat, requestFormat, responseBytes)
 	conversionDuration := time.Since(conversionStart)
-	
+
 	if err != nil {
 		if trace != nil {
 			trace.SetError(err, "response_conversion")
@@ -525,7 +536,7 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 
 	// 4. 设置通用头部
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// 对Anthropic使用Claude Code User-Agent，其他提供商使用通用User-Agent
 	if account.Provider == types.ProviderAnthropic {
 		req.Header.Set("User-Agent", "claude-cli/1.0.56 (external, cli)")
