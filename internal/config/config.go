@@ -410,8 +410,9 @@ func (m *ConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*t
 					continue
 				}
 				
-				// 可选：检查token是否过期（如果有过期时间）
-				if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) {
+				// 如果token过期但有refresh_token，仍然允许被选中（后续会自动刷新）
+				// 只有当token过期且没有refresh_token时才跳过
+				if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) && account.RefreshToken == "" {
 					continue
 				}
 			}
