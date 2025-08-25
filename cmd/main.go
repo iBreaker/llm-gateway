@@ -34,6 +34,13 @@ func main() {
 
 	// 初始化调试模式（从配置或环境变量）
 	if config := application.Config.Get(); config != nil {
+		// 根据配置的日志级别设置 logger 模块的级别
+		switch config.Logging.Level {
+		case "debug":
+			logger.SetDebugLevel()
+		}
+		
+		// 启用 trace 调试功能
 		if err := debug.EnableFromConfig(config.Logging.Level, config.Logging.File); err != nil {
 			log.Printf("启用调试模式失败: %v\n", err)
 		}
