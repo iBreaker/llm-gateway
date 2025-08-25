@@ -451,6 +451,9 @@ func (h *ProxyHandler) determineProvider(model string) types.Provider {
 	if strings.Contains(model, "azure") {
 		return types.ProviderAzure
 	}
+	if strings.Contains(model, "qwen") {
+		return types.ProviderQwen
+	}
 
 	// 默认使用Anthropic
 	return types.ProviderAnthropic
@@ -504,8 +507,11 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 		trace.SetUpstreamRequest(requestBody)
 	}
 
-	// 2. 构建URL (优先使用账号配置的BaseURL)
-	baseURL := account.BaseURL
+	// 2. 构建URL (优先使用OAuth的ResourceURL，然后是BaseURL，最后是默认值)
+	baseURL := account.ResourceURL
+	if baseURL == "" {
+		baseURL = account.BaseURL
+	}
 	if baseURL == "" {
 		baseURL = h.getProviderBaseURL(account.Provider)
 	}
@@ -551,6 +557,8 @@ func (h *ProxyHandler) getProviderBaseURL(provider types.Provider) string {
 		return "https://generativelanguage.googleapis.com"
 	case types.ProviderAzure:
 		return "https://your-resource.openai.azure.com" // 需要配置
+	case types.ProviderQwen:
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	default:
 		return "https://api.anthropic.com"
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
 	yaml "gopkg.in/yaml.v2"
@@ -402,6 +403,19 @@ func (m *ConfigManager) ListActiveUpstreamAccounts(provider types.Provider) []*t
 	var activeAccounts []*types.UpstreamAccount
 	for _, account := range m.config.UpstreamAccounts {
 		if account.Provider == provider && account.Status == "active" {
+			// 对于OAuth账号，必须检查是否有有效的access_token
+			if account.Type == types.UpstreamTypeOAuth {
+				// OAuth账号必须有access_token才能被选中
+				if account.AccessToken == "" {
+					continue
+				}
+				
+				// 可选：检查token是否过期（如果有过期时间）
+				if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) {
+					continue
+				}
+			}
+			
 			accountCopy := account
 			activeAccounts = append(activeAccounts, &accountCopy)
 		}

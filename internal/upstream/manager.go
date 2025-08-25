@@ -165,6 +165,11 @@ func (m *UpstreamManager) RecordError(upstreamID string, err error) error {
 
 // UpdateOAuthTokens 更新OAuth token信息（业务逻辑）
 func (m *UpstreamManager) UpdateOAuthTokens(upstreamID, accessToken, refreshToken string, expiresAt time.Time) error {
+	return m.UpdateOAuthTokensWithResourceURL(upstreamID, accessToken, refreshToken, "", expiresAt)
+}
+
+// UpdateOAuthTokensWithResourceURL 更新OAuth token信息和resource_url（业务逻辑）
+func (m *UpstreamManager) UpdateOAuthTokensWithResourceURL(upstreamID, accessToken, refreshToken, resourceURL string, expiresAt time.Time) error {
 	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
 		if account.Type != types.UpstreamTypeOAuth {
 			return fmt.Errorf("账号类型不是OAuth: %s", upstreamID)
@@ -172,6 +177,9 @@ func (m *UpstreamManager) UpdateOAuthTokens(upstreamID, accessToken, refreshToke
 
 		account.AccessToken = accessToken
 		account.RefreshToken = refreshToken
+		if resourceURL != "" {
+			account.ResourceURL = resourceURL
+		}
 		account.ExpiresAt = &expiresAt
 		account.UpdatedAt = time.Now()
 		account.Status = "active"
@@ -263,6 +271,13 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 			headers["anthropic-version"] = "2023-06-01"
 			// 设置OAuth特有的beta标志
 			headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
+		}
+
+		// Qwen DashScope OAuth需要特殊处理
+		if account.Provider == types.ProviderQwen {
+			// DashScope 特殊头部
+			headers["X-DashScope-CacheControl"] = "enable"
+			headers["X-DashScope-UserAgent"] = "LLM-Gateway/1.0"
 		}
 
 	default:

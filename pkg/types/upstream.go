@@ -15,6 +15,7 @@ type UpstreamAccount struct {
 	ClientSecret    string              `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
 	AccessToken     string              `json:"access_token,omitempty" yaml:"access_token,omitempty"`
 	RefreshToken    string              `json:"refresh_token,omitempty" yaml:"refresh_token,omitempty"`
+	ResourceURL     string              `json:"resource_url,omitempty" yaml:"resource_url,omitempty"`
 	ExpiresAt       *time.Time          `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
 	Usage           *UpstreamUsageStats `json:"usage,omitempty" yaml:"usage,omitempty"`
 	LastHealthCheck *time.Time          `json:"last_health_check,omitempty" yaml:"last_health_check,omitempty"`

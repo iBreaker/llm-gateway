@@ -334,7 +334,7 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	fs := flag.NewFlagSet("upstream add", flag.ContinueOnError)
 	accountType := fs.String("type", "", "账号类型 (api-key, oauth)")
 	name := fs.String("name", "", "账号名称")
-	provider := fs.String("provider", "anthropic", "提供商 (anthropic, openai, google, azure)")
+	provider := fs.String("provider", "", "提供商 (anthropic, openai, google, azure, qwen)")
 	baseURL := fs.String("base-url", "", "自定义API端点URL (可选)")
 	apiKey := fs.String("key", "", "API密钥 (type=api-key时必需)")
 
@@ -364,6 +364,11 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 		return fmt.Errorf("无效的账号类型: %s (支持: api-key, oauth)", *accountType)
 	}
 
+	// 验证provider参数（必填）
+	if *provider == "" {
+		return fmt.Errorf("缺少必要参数: --provider")
+	}
+
 	// 验证提供商
 	var providerType types.Provider
 	switch *provider {
@@ -375,8 +380,10 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 		providerType = types.ProviderGoogle
 	case "azure":
 		providerType = types.ProviderAzure
+	case "qwen":
+		providerType = types.ProviderQwen
 	default:
-		return fmt.Errorf("无效的提供商: %s (支持: anthropic, openai, google, azure)", *provider)
+		return fmt.Errorf("无效的提供商: %s (支持: anthropic, openai, google, azure, qwen)", *provider)
 	}
 
 	// 创建上游账号
@@ -814,47 +821,63 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 
 	fmt.Printf("🌐 请在浏览器中访问以下URL完成授权:\n")
 	fmt.Printf("%s\n\n", authURL)
-	fmt.Printf("⏳ 请输入授权后获得的code（或按Enter跳过）: ")
 
-	// 读取用户输入的authorization code
-	var code string
-	_, _ = fmt.Scanln(&code)
+	// 根据provider类型决定不同的处理方式
+	if account.Provider == types.ProviderQwen {
+		// Qwen使用Device Flow，自动轮询，等待授权完成
+		fmt.Printf("⏳ 正在等待授权完成（自动轮询中）...\n")
+		fmt.Printf("💡 按 Ctrl+C 可以取消等待，授权流程会在后台继续\n\n")
+		
+		// 等待足够长的时间让轮询完成（或者用户取消）
+		// 这里可以设置一个合理的等待时间，比如15分钟
+		select {
+		case <-make(chan struct{}): // 永不触发，等待用户中断
+		}
+		
+		return nil // 如果到达这里，通常是用户按了Ctrl+C
+	} else {
+		// Anthropic等使用Authorization Code Flow
+		fmt.Printf("⏳ 请输入授权后获得的code（或按Enter跳过）: ")
 
-	if code == "" {
-		fmt.Printf("⚠️  授权流程已跳过\n")
-		fmt.Printf("💡 稍后可运行以下命令完成授权:\n")
-		fmt.Printf("   ./llm-gateway oauth start %s\n", upstreamID)
+		// 读取用户输入的authorization code
+		var code string
+		_, _ = fmt.Scanln(&code)
+
+		if code == "" {
+			fmt.Printf("⚠️  授权流程已跳过\n")
+			fmt.Printf("💡 稍后可运行以下命令完成授权:\n")
+			fmt.Printf("   ./llm-gateway oauth start %s\n", upstreamID)
+			return nil
+		}
+
+		// 处理OAuth回调
+		fmt.Printf("🔄 处理授权回调...\n")
+		if err := app.OAuthMgr.HandleCallback(upstreamID, code); err != nil {
+			return fmt.Errorf("处理OAuth回调失败: %w", err)
+		}
+
+		// 验证授权成功
+		account, err = app.UpstreamMgr.GetAccount(upstreamID)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("✅ 授权成功！\n")
+		fmt.Printf("🎉 OAuth账号 \"%s\" 已就绪并可用\n\n", account.Name)
+
+		fmt.Printf("账号详情:\n")
+		fmt.Printf("  ID: %s\n", account.ID)
+		fmt.Printf("  名称: %s\n", account.Name)
+		fmt.Printf("  类型: %s\n", account.Type)
+		fmt.Printf("  提供商: %s\n", account.Provider)
+		fmt.Printf("  状态: %s ✅\n", account.Status)
+
+		if account.ExpiresAt != nil {
+			fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
+		}
+
 		return nil
 	}
-
-	// 处理OAuth回调
-	fmt.Printf("🔄 处理授权回调...\n")
-	if err := app.OAuthMgr.HandleCallback(upstreamID, code); err != nil {
-		return fmt.Errorf("处理OAuth回调失败: %w", err)
-	}
-
-
-	// 验证授权成功
-	account, err = app.UpstreamMgr.GetAccount(upstreamID)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("✅ 授权成功！\n")
-	fmt.Printf("🎉 OAuth账号 \"%s\" 已就绪并可用\n\n", account.Name)
-
-	fmt.Printf("账号详情:\n")
-	fmt.Printf("  ID: %s\n", account.ID)
-	fmt.Printf("  名称: %s\n", account.Name)
-	fmt.Printf("  类型: %s\n", account.Type)
-	fmt.Printf("  提供商: %s\n", account.Provider)
-	fmt.Printf("  状态: %s ✅\n", account.Status)
-
-	if account.ExpiresAt != nil {
-		fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
-	}
-
-	return nil
 }
 
 // ===== Environment 命令处理器 =====
