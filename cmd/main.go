@@ -34,6 +34,13 @@ func main() {
 
 	// 初始化调试模式（从配置或环境变量）
 	if config := application.Config.Get(); config != nil {
+		// 根据配置的日志级别设置 logger 模块的级别
+		switch config.Logging.Level {
+		case "debug":
+			logger.SetDebugLevel()
+		}
+		
+		// 启用 trace 调试功能
 		if err := debug.EnableFromConfig(config.Logging.Level, config.Logging.File); err != nil {
 			log.Printf("启用调试模式失败: %v\n", err)
 		}
@@ -830,9 +837,7 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 		
 		// 等待足够长的时间让轮询完成（或者用户取消）
 		// 这里可以设置一个合理的等待时间，比如15分钟
-		select {
-		case <-make(chan struct{}): // 永不触发，等待用户中断
-		}
+		<-make(chan struct{}) // 永不触发，等待用户中断
 		
 		return nil // 如果到达这里，通常是用户按了Ctrl+C
 	} else {

@@ -198,7 +198,8 @@ func (w *StreamTestWriter) WriteDone() error {
 func rebuildSSEEvent(chunk *StreamChunk, format Format) string {
 	var result strings.Builder
 	
-	if format == FormatAnthropic {
+	switch format {
+	case FormatAnthropic:
 		// Anthropic格式有命名事件
 		if chunk.EventType != "" {
 			result.WriteString(fmt.Sprintf("event: %s\n", chunk.EventType))
@@ -208,7 +209,7 @@ func rebuildSSEEvent(chunk *StreamChunk, format Format) string {
 			result.WriteString(fmt.Sprintf("data: %s\n", string(dataBytes)))
 		}
 		result.WriteString("\n")
-	} else if format == FormatOpenAI {
+	case FormatOpenAI:
 		// OpenAI格式只有data字段
 		if chunk.IsDone {
 			result.WriteString("data: [DONE]\n\n")

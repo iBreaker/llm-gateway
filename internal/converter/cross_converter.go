@@ -89,7 +89,7 @@ func (c *crossConverter) ConvertResponse(from, to Format, data []byte) ([]byte, 
 func (c *crossConverter) ConvertStream(from, to Format, reader io.Reader, writer StreamWriter) error {
 	// 如果格式相同，直接转发
 	if from == to {
-		return c.forwardStream(reader, writer)
+		return c.forwardStream(from, reader, writer)
 	}
 
 	// 获取源格式流处理器
@@ -112,12 +112,12 @@ func (c *crossConverter) ConvertStream(from, to Format, reader io.Reader, writer
 }
 
 // forwardStream 直接转发流
-func (c *crossConverter) forwardStream(reader io.Reader, writer StreamWriter) error {
+func (c *crossConverter) forwardStream(from Format, reader io.Reader, writer StreamWriter) error {
 	// 创建简单的转发写入器
 	forwardWriter := &forwardStreamWriter{writer: writer}
 	
-	// 使用通用SSE处理器处理流（格式相同时，使用OpenAI作为默认）
-	processor := NewSSEStreamProcessor(FormatOpenAI)
+	// 使用相应格式的SSE处理器处理流
+	processor := NewSSEStreamProcessor(from)
 	return processor.ProcessStream(reader, forwardWriter)
 }
 

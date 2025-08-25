@@ -23,6 +23,18 @@ type TestConfig struct {
 	Timeout        time.Duration
 }
 
+// checkAndLoadConfig 检查并加载测试配置，如果没有配置文件则跳过测试
+func checkAndLoadConfig(t *testing.T) *TestConfig {
+	config, err := loadTestConfig()
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if config == nil {
+		t.Skip("跳过测试: 没有找到test.env配置文件")
+	}
+	return config
+}
+
 // 从环境文件加载测试配置
 func loadTestConfig() (*TestConfig, error) {
 	// 读取 test.env 文件
@@ -32,7 +44,7 @@ func loadTestConfig() (*TestConfig, error) {
 		fmt.Printf("无法打开环境文件 %s: %v, 测试结束\n", envFile, err)
 		return nil, nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	config := &TestConfig{
 		Timeout: 30 * time.Second,
@@ -65,7 +77,7 @@ func loadTestConfig() (*TestConfig, error) {
 		case "DEFAULT_MAX_TOKENS":
 			if value != "" {
 				config.MaxTokens = 100 // 默认值
-				fmt.Sscanf(value, "%d", &config.MaxTokens)
+				_, _ = fmt.Sscanf(value, "%d", &config.MaxTokens)
 			}
 		}
 	}
@@ -116,10 +128,7 @@ func makeRequest(config *TestConfig, method, endpoint string, body interface{}) 
 
 // TestBasicOpenAIFormat 测试基础OpenAI格式
 func TestBasicOpenAIFormat(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// 测试简单对话
 	t.Run("简单对话", func(t *testing.T) {
@@ -138,7 +147,7 @@ func TestBasicOpenAIFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -185,7 +194,7 @@ func TestBasicOpenAIFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -203,10 +212,7 @@ func TestBasicOpenAIFormat(t *testing.T) {
 
 // TestBasicAnthropicFormat 测试基础Anthropic格式
 func TestBasicAnthropicFormat(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// 测试简单对话
 	t.Run("简单对话", func(t *testing.T) {
@@ -225,7 +231,7 @@ func TestBasicAnthropicFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -269,7 +275,7 @@ func TestBasicAnthropicFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -307,7 +313,7 @@ func TestBasicAnthropicFormat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -325,10 +331,7 @@ func TestBasicAnthropicFormat(t *testing.T) {
 
 // TestToolCalls 测试工具调用功能
 func TestToolCalls(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式工具调用
 	t.Run("OpenAI格式工具调用", func(t *testing.T) {
@@ -367,7 +370,7 @@ func TestToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -427,7 +430,7 @@ func TestToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -457,10 +460,7 @@ func TestToolCalls(t *testing.T) {
 
 // TestStreaming 测试流式处理
 func TestStreaming(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式流式处理
 	t.Run("OpenAI格式流式", func(t *testing.T) {
@@ -480,7 +480,7 @@ func TestStreaming(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -514,7 +514,7 @@ func TestStreaming(t *testing.T) {
 						choice := choices[0].(map[string]interface{})
 						if delta, ok := choice["delta"].(map[string]interface{}); ok {
 							if content, exists := delta["content"]; exists && content != nil {
-								// t.Logf("接收到内容片段: %v", content)
+								_ = content // 内容片段存在但不处理
 							}
 						}
 					}
@@ -551,7 +551,7 @@ func TestStreaming(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -581,7 +581,7 @@ func TestStreaming(t *testing.T) {
 					case "content_block_delta":
 						if delta, ok := event["delta"].(map[string]interface{}); ok {
 							if text, exists := delta["text"]; exists && text != nil {
-								// t.Logf("接收到文本增量: %v", text)
+								_ = text // 文本增量存在但不处理
 							}
 						}
 					case "message_stop":
@@ -605,10 +605,7 @@ func TestStreaming(t *testing.T) {
 
 // TestStreamingToolCalls 测试流式工具调用
 func TestStreamingToolCalls(t *testing.T) {
-	config, err := loadTestConfig()
-	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
-	}
+	config := checkAndLoadConfig(t)
 
 	// OpenAI格式流式工具调用
 	t.Run("OpenAI格式流式工具调用", func(t *testing.T) {
@@ -648,7 +645,7 @@ func TestStreamingToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -738,7 +735,7 @@ func TestStreamingToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -779,7 +776,7 @@ func TestStreamingToolCalls(t *testing.T) {
 					case "content_block_delta":
 						if delta, ok := event["delta"].(map[string]interface{}); ok {
 							if deltaType, exists := delta["type"]; exists && deltaType == "input_json_delta" {
-								// t.Logf("接收到工具输入增量: %v", delta["partial_json"])
+								_ = deltaType // 工具输入增量存在但不处理
 							}
 						}
 					case "message_stop":
