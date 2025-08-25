@@ -44,14 +44,14 @@ func TestErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusOK {
 			t.Error("期望请求失败，但收到成功响应")
 		}
 
 		var errorResponse map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&errorResponse)
+		_ = json.NewDecoder(resp.Body).Decode(&errorResponse)
 		t.Logf("错误响应: %v", errorResponse)
 	})
 
@@ -71,7 +71,7 @@ func TestErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// 可能会成功（如果服务器处理了模型映射）或失败
 		body, _ := io.ReadAll(resp.Body)
@@ -94,7 +94,7 @@ func TestErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		body, _ := io.ReadAll(resp.Body)
 		t.Logf("空消息测试响应 (状态码 %d): %s", resp.StatusCode, string(body))
@@ -116,7 +116,7 @@ func TestErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		body, _ := io.ReadAll(resp.Body)
 		t.Logf("超大Token测试响应 (状态码 %d): %s", resp.StatusCode, string(body))
@@ -154,7 +154,7 @@ func TestComplexMessages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -162,7 +162,7 @@ func TestComplexMessages(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&response)
+		_ = json.NewDecoder(resp.Body).Decode(&response)
 		t.Logf("多轮对话测试通过: %v", response["id"])
 	})
 
@@ -184,7 +184,7 @@ func TestComplexMessages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -192,7 +192,7 @@ func TestComplexMessages(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&response)
+		_ = json.NewDecoder(resp.Body).Decode(&response)
 		t.Logf("长文本消息测试通过: %v", response["id"])
 	})
 
@@ -214,7 +214,7 @@ func TestComplexMessages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -222,7 +222,7 @@ func TestComplexMessages(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&response)
+		_ = json.NewDecoder(resp.Body).Decode(&response)
 		t.Logf("特殊字符处理测试通过: %v", response["id"])
 	})
 }
@@ -287,7 +287,7 @@ func TestAdvancedToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -295,7 +295,7 @@ func TestAdvancedToolCalls(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&response)
+		_ = json.NewDecoder(resp.Body).Decode(&response)
 		t.Logf("多个工具定义测试通过: %v", response["id"])
 	})
 
@@ -359,7 +359,7 @@ func TestAdvancedToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -367,7 +367,7 @@ func TestAdvancedToolCalls(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&response)
+		_ = json.NewDecoder(resp.Body).Decode(&response)
 		t.Logf("复杂工具参数测试通过: %v", response["id"])
 	})
 }
@@ -402,7 +402,7 @@ func TestPerformance(t *testing.T) {
 					results <- false
 					return
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				success := resp.StatusCode == http.StatusOK
 				results <- success
@@ -445,7 +445,7 @@ func TestPerformance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		duration := time.Since(start)
 		
@@ -515,7 +515,7 @@ func TestCrossFormatCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatalf("请求失败: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				body, _ := io.ReadAll(resp.Body)
@@ -523,7 +523,7 @@ func TestCrossFormatCompatibility(t *testing.T) {
 			}
 
 			var response map[string]interface{}
-			json.NewDecoder(resp.Body).Decode(&response)
+			_ = json.NewDecoder(resp.Body).Decode(&response)
 			t.Logf("%s兼容性测试通过: %v", tc.name, response["id"])
 		})
 	}
@@ -553,7 +553,7 @@ func TestStreamingRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -630,7 +630,7 @@ func TestStreamingRobustness(t *testing.T) {
 			t.Logf("流式中断测试 - 预期的超时错误: %v", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		scanner := bufio.NewScanner(resp.Body)
 		eventCount := 0

@@ -284,7 +284,7 @@ func (m *OAuthManager) handleAnthropicCallback(upstreamID string, code string, a
 // handleQwenCallback 处理Qwen OAuth回调 (Device Flow)
 func (m *OAuthManager) handleQwenCallback(upstreamID string, code string, account *types.UpstreamAccount) error {
 	// Qwen使用Device Flow，系统会自动轮询，不需要手动回调
-	return fmt.Errorf("Qwen OAuth使用Device Flow自动轮询，无需手动回调。请等待授权完成")
+	return fmt.Errorf("qwen OAuth使用Device Flow自动轮询，无需手动回调。请等待授权完成")
 }
 
 // RefreshToken 刷新OAuth token

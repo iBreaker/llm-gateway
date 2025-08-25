@@ -837,9 +837,7 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 		
 		// 等待足够长的时间让轮询完成（或者用户取消）
 		// 这里可以设置一个合理的等待时间，比如15分钟
-		select {
-		case <-make(chan struct{}): // 永不触发，等待用户中断
-		}
+		<-make(chan struct{}) // 永不触发，等待用户中断
 		
 		return nil // 如果到达这里，通常是用户按了Ctrl+C
 	} else {
