@@ -300,6 +300,42 @@ func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error
 	return oauthMgr.RefreshToken(account.ID)
 }
 
+// GetBaseURL 获取上游账号的BaseURL
+func (m *UpstreamManager) GetBaseURL(account *types.UpstreamAccount) string {
+	// 1. 如果账号配置了自定义BaseURL，直接使用
+	if account.BaseURL != "" {
+		return account.BaseURL
+	}
+	
+	// 2. Qwen OAuth特殊处理 - 使用resource_url
+	if account.Provider == types.ProviderQwen && account.Type == types.UpstreamTypeOAuth {
+		if account.ResourceURL != "" {
+			return account.ResourceURL
+		}
+	}
+	
+	// 3. 根据提供商返回默认BaseURL
+	return m.getDefaultBaseURL(account.Provider)
+}
+
+// getDefaultBaseURL 获取提供商的默认BaseURL
+func (m *UpstreamManager) getDefaultBaseURL(provider types.Provider) string {
+	switch provider {
+	case types.ProviderAnthropic:
+		return "https://api.anthropic.com"
+	case types.ProviderOpenAI:
+		return "https://api.openai.com"
+	case types.ProviderGoogle:
+		return "https://generativelanguage.googleapis.com"
+	case types.ProviderAzure:
+		return "https://your-resource.openai.azure.com" // 需要配置
+	case types.ProviderQwen:
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	default:
+		return "https://api.anthropic.com"
+	}
+}
+
 // generateUpstreamID 生成上游账号ID
 func generateUpstreamID() string {
 	return fmt.Sprintf("upstream_%d", time.Now().UnixNano())

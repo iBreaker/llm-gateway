@@ -154,7 +154,7 @@ func (h *ProxyHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 // generateRequestID 生成请求ID
 func (h *ProxyHandler) generateRequestID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes) // crypto/rand.Read never fails
 	return hex.EncodeToString(bytes)
 }
 
@@ -206,8 +206,8 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	proxyReq.GatewayKeyID = keyID
 
 	// 5. 确定目标提供商（根据模型名称智能路由）
-	targetProvider := h.determineProvider(proxyReq.Model)
-	
+	targetProvider := h.router.DetermineProvider(proxyReq.Model)
+
 	// 5.1. 通过 converter 获取上游路径
 	upstreamPath, err := h.converter.GetUpstreamPath(targetProvider, clientEndpoint)
 	if err != nil {
@@ -233,13 +233,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 
 	// 记录上下文信息
 	if trace != nil {
-		responseFormat := string(requestFormat)
-		if requestFormat == converter.FormatOpenAI {
-			responseFormat = "openai"
-		} else if requestFormat == converter.FormatAnthropic {
-			responseFormat = "anthropic"
-		}
-		trace.SetContextInfo(targetProvider, clientEndpoint, upstreamPath, string(requestFormat), responseFormat)
+		trace.SetContextInfo(targetProvider, clientEndpoint, upstreamPath, string(requestFormat), string(requestFormat))
 	}
 
 	// 7. 根据上游账号类型注入特殊处理
@@ -445,31 +439,6 @@ func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flus
 	flusher.Flush()
 }
 
-// determineProvider 根据模型名称确定提供商
-func (h *ProxyHandler) determineProvider(model string) types.Provider {
-	model = strings.ToLower(model)
-
-	// 根据模型名称前缀判断提供商
-	if strings.Contains(model, "claude") || strings.Contains(model, "anthropic") {
-		return types.ProviderAnthropic
-	}
-	if strings.Contains(model, "gpt") || strings.Contains(model, "openai") {
-		return types.ProviderOpenAI
-	}
-	if strings.Contains(model, "gemini") || strings.Contains(model, "google") {
-		return types.ProviderGoogle
-	}
-	if strings.Contains(model, "azure") {
-		return types.ProviderAzure
-	}
-	if strings.Contains(model, "qwen") {
-		return types.ProviderQwen
-	}
-
-	// 默认使用Anthropic
-	return types.ProviderAnthropic
-}
-
 // callUpstreamAPIRaw 调用上游API并返回原始响应字节
 func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.ProxyRequest, path string, trace *debug.RequestTrace) ([]byte, error) {
 	// 1. 构建上游请求
@@ -518,14 +487,8 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 		trace.SetUpstreamRequest(requestBody)
 	}
 
-	// 2. 构建URL (优先使用OAuth的ResourceURL，然后是BaseURL，最后是默认值)
-	baseURL := account.ResourceURL
-	if baseURL == "" {
-		baseURL = account.BaseURL
-	}
-	if baseURL == "" {
-		baseURL = h.getProviderBaseURL(account.Provider)
-	}
+	// 2. 构建URL
+	baseURL := h.upstreamMgr.GetBaseURL(account)
 	url := baseURL + path
 
 	// 3. 创建HTTP请求
@@ -555,24 +518,6 @@ func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, requ
 	}
 
 	return req, nil
-}
-
-// getProviderBaseURL 获取提供商的基础URL
-func (h *ProxyHandler) getProviderBaseURL(provider types.Provider) string {
-	switch provider {
-	case types.ProviderAnthropic:
-		return "https://api.anthropic.com"
-	case types.ProviderOpenAI:
-		return "https://api.openai.com"
-	case types.ProviderGoogle:
-		return "https://generativelanguage.googleapis.com"
-	case types.ProviderAzure:
-		return "https://your-resource.openai.azure.com" // 需要配置
-	case types.ProviderQwen:
-		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	default:
-		return "https://api.anthropic.com"
-	}
 }
 
 // handleUpstreamError 处理上游错误
