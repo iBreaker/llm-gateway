@@ -100,6 +100,15 @@ func NewProxyHandler(
 	proxyConfig *types.ProxyConfig,
 	modelRouteConfig *types.ModelRouteConfig,
 ) *ProxyHandler {
+	// 验证模型路由配置
+	if modelRouteConfig != nil {
+		if err := modelRouteConfig.Validate(); err != nil {
+			logger.Warn("模型路由配置验证失败，将禁用模型路由功能: %v", err)
+			modelRouteConfig = nil
+		} else {
+			logger.Info("模型路由配置验证成功，共 %d 条路由规则", len(modelRouteConfig.Routes))
+		}
+	}
 	// 设置超时配置，使用传入的配置或默认值
 	streamTimeout := 5 * time.Minute // 默认5分钟
 	if proxyConfig != nil && proxyConfig.StreamTimeout > 0 {
@@ -188,8 +197,8 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		trace.SetClientRequest(requestBody)
 	}
 
-	// 2. 先进行初步解析以获取模型信息（不进行模型路由）
-	proxyReq, requestFormat, err := h.converter.ParseRequest(requestBody, clientEndpoint)
+	// 2. 先进行初步解析以获取模型信息用于模型路由决策
+	tempReq, requestFormat, err := h.converter.ParseRequest(requestBody, clientEndpoint)
 	if err != nil || !requestFormat.IsValid() {
 		if trace != nil {
 			trace.SetError(err, "parse_request")
@@ -199,21 +208,26 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 4. 设置请求上下文信息
-	keyID := r.Header.Get("X-Gateway-Key-ID")
-	proxyReq.GatewayKeyID = keyID
-
-	// 5. 模型路由处理（根据配置）
+	// 3. 模型路由处理（根据配置）
 	var modelRouteContext *types.ModelRouteContext
 	if h.modelRouteConfig != nil {
-		modelRouteContext = h.modelRouteConfig.CreateContext(proxyReq.Model)
+		modelRouteContext = h.modelRouteConfig.CreateContext(tempReq.Model)
 	}
 
-	// 设置converter的模型路由上下文并应用到请求
-	if modelRouteContext != nil {
-		h.converter.SetModelRouteContextAndApply(modelRouteContext, proxyReq)
-		defer h.converter.ClearModelRouteContext()
+	// 4. 重新解析请求并应用模型路由
+	proxyReq, _, err := h.converter.ParseRequestWithModelRoute(requestBody, clientEndpoint, modelRouteContext)
+	if err != nil {
+		if trace != nil {
+			trace.SetError(err, "parse_request_with_route")
+			trace.SaveAsync()
+		}
+		h.writeErrorResponse(w, http.StatusBadRequest, "request_parse_error", fmt.Sprintf("Failed to parse request with model route: %v", err))
+		return
 	}
+
+	// 5. 设置请求上下文信息
+	keyID := r.Header.Get("X-Gateway-Key-ID")
+	proxyReq.GatewayKeyID = keyID
 
 	// 记录模型路由后的请求
 	if trace != nil {
@@ -262,7 +276,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 	// 8. 根据stream参数选择处理方式
 	if proxyReq.Stream != nil && *proxyReq.Stream {
 		// 流式响应处理
-		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime, trace)
+		h.handleStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime, trace, modelRouteContext)
 	} else {
 		// 非流式响应处理
 		h.handleNonStreamResponse(w, upstreamAccount, proxyReq, upstreamPath, requestFormat, keyID, startTime, trace)
@@ -331,7 +345,7 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 }
 
 // handleStreamResponse 处理流式响应
-func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) {
 	// 设置SSE响应头
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -350,7 +364,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 	}
 
 	// 调用上游流式API
-	err := h.callUpstreamStreamAPI(w, flusher, account, request, upstreamPath, requestFormat, keyID, startTime, trace)
+	err := h.callUpstreamStreamAPI(w, flusher, account, request, upstreamPath, requestFormat, keyID, startTime, trace, modelRouteContext)
 	if err != nil {
 		if trace != nil {
 			trace.SetError(err, "stream_processing")
@@ -358,17 +372,12 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 		}
 		// 流式响应中的错误处理
 		h.writeStreamError(w, flusher, err)
-		// 清理模型路由上下文
-		h.converter.ClearModelRouteContext()
 		return
 	}
-
-	// 清理模型路由上下文
-	h.converter.ClearModelRouteContext()
 }
 
 // callUpstreamStreamAPI 调用上游流式API
-func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) error {
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) error {
 	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
 
 	// 构建上游请求
@@ -410,11 +419,11 @@ func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http
 
 	logger.Debug("开始处理流式响应")
 	// 开始处理流式响应
-	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime, trace)
+	return h.processStreamResponse(w, flusher, resp.Body, account.Provider, requestFormat, keyID, account.ID, startTime, trace, modelRouteContext)
 }
 
 // processStreamResponse 处理流式响应
-func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.Format, keyID, upstreamID string, startTime time.Time, trace *debug.RequestTrace) error {
+func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http.Flusher, responseBody io.Reader, provider types.Provider, requestFormat converter.Format, keyID, upstreamID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) error {
 	var totalTokens int
 	logger.Debug("开始处理流式响应，Provider: %s, RequestFormat: %v", provider, requestFormat)
 
@@ -428,7 +437,7 @@ func (h *ProxyHandler) processStreamResponse(w http.ResponseWriter, flusher http
 		trace:       trace,
 	}
 
-	err := h.converter.ProcessStream(responseBody, provider, requestFormat, writer)
+	err := h.converter.ProcessStreamWithModelRoute(responseBody, provider, requestFormat, writer, modelRouteContext)
 
 	if err != nil {
 		logger.Debug("流式处理出现错误: %v", err)
