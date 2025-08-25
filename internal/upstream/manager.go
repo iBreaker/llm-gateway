@@ -165,6 +165,11 @@ func (m *UpstreamManager) RecordError(upstreamID string, err error) error {
 
 // UpdateOAuthTokens 更新OAuth token信息（业务逻辑）
 func (m *UpstreamManager) UpdateOAuthTokens(upstreamID, accessToken, refreshToken string, expiresAt time.Time) error {
+	return m.UpdateOAuthTokensWithResourceURL(upstreamID, accessToken, refreshToken, "", expiresAt)
+}
+
+// UpdateOAuthTokensWithResourceURL 更新OAuth token信息和resource_url（业务逻辑）
+func (m *UpstreamManager) UpdateOAuthTokensWithResourceURL(upstreamID, accessToken, refreshToken, resourceURL string, expiresAt time.Time) error {
 	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
 		if account.Type != types.UpstreamTypeOAuth {
 			return fmt.Errorf("账号类型不是OAuth: %s", upstreamID)
@@ -172,6 +177,9 @@ func (m *UpstreamManager) UpdateOAuthTokens(upstreamID, accessToken, refreshToke
 
 		account.AccessToken = accessToken
 		account.RefreshToken = refreshToken
+		if resourceURL != "" {
+			account.ResourceURL = resourceURL
+		}
 		account.ExpiresAt = &expiresAt
 		account.UpdatedAt = time.Now()
 		account.Status = "active"
@@ -265,6 +273,13 @@ func (m *UpstreamManager) GetAuthHeaders(upstreamID string) (map[string]string, 
 			headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 		}
 
+		// Qwen DashScope OAuth需要特殊处理
+		if account.Provider == types.ProviderQwen {
+			// DashScope 特殊头部
+			headers["X-DashScope-CacheControl"] = "enable"
+			headers["X-DashScope-UserAgent"] = "LLM-Gateway/1.0"
+		}
+
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", account.Type)
 	}
@@ -283,6 +298,42 @@ func (m *UpstreamManager) autoRefreshToken(account *types.UpstreamAccount) error
 	// RefreshToken内部会调用UpdateOAuthTokens更新配置中的数据
 	oauthMgr := NewOAuthManager(m)
 	return oauthMgr.RefreshToken(account.ID)
+}
+
+// GetBaseURL 获取上游账号的BaseURL
+func (m *UpstreamManager) GetBaseURL(account *types.UpstreamAccount) string {
+	// 1. 如果账号配置了自定义BaseURL，直接使用
+	if account.BaseURL != "" {
+		return account.BaseURL
+	}
+	
+	// 2. Qwen OAuth特殊处理 - 使用resource_url
+	if account.Provider == types.ProviderQwen && account.Type == types.UpstreamTypeOAuth {
+		if account.ResourceURL != "" {
+			return account.ResourceURL
+		}
+	}
+	
+	// 3. 根据提供商返回默认BaseURL
+	return m.getDefaultBaseURL(account.Provider)
+}
+
+// getDefaultBaseURL 获取提供商的默认BaseURL
+func (m *UpstreamManager) getDefaultBaseURL(provider types.Provider) string {
+	switch provider {
+	case types.ProviderAnthropic:
+		return "https://api.anthropic.com"
+	case types.ProviderOpenAI:
+		return "https://api.openai.com"
+	case types.ProviderGoogle:
+		return "https://generativelanguage.googleapis.com"
+	case types.ProviderAzure:
+		return "https://your-resource.openai.azure.com" // 需要配置
+	case types.ProviderQwen:
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	default:
+		return "https://api.anthropic.com"
+	}
 }
 
 // generateUpstreamID 生成上游账号ID

@@ -161,7 +161,7 @@ func (c *CLI) handleUpstream(args []string) error {
 
 func (c *CLI) handleUpstreamAdd(args []string) error {
 	// 解析参数
-	var accountType, name, apiKey, clientID, clientSecret string
+	var accountType, name, apiKey, provider string
 
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--type=") {
@@ -170,10 +170,8 @@ func (c *CLI) handleUpstreamAdd(args []string) error {
 			name = strings.TrimPrefix(arg, "--name=")
 		} else if strings.HasPrefix(arg, "--key=") {
 			apiKey = strings.TrimPrefix(arg, "--key=")
-		} else if strings.HasPrefix(arg, "--client-id=") {
-			clientID = strings.TrimPrefix(arg, "--client-id=")
-		} else if strings.HasPrefix(arg, "--client-secret=") {
-			clientSecret = strings.TrimPrefix(arg, "--client-secret=")
+		} else if strings.HasPrefix(arg, "--provider=") {
+			provider = strings.TrimPrefix(arg, "--provider=")
 		}
 	}
 
@@ -188,12 +186,24 @@ func (c *CLI) handleUpstreamAdd(args []string) error {
 	fmt.Printf("  类型: %s\n", accountType)
 	fmt.Printf("  名称: %s\n", name)
 
-	if accountType == "api-key" && apiKey == "" {
-		return fmt.Errorf("API Key类型账号缺少参数: --key")
+	if accountType == "api-key" {
+		if apiKey == "" {
+			return fmt.Errorf("API Key类型账号缺少参数: --key")
+		}
+		if provider == "" {
+			return fmt.Errorf("API Key类型账号缺少参数: --provider (支持: anthropic, openai, google, azure)")
+		}
 	}
 
-	if accountType == "oauth" && (clientID == "" || clientSecret == "") {
-		return fmt.Errorf("OAuth类型账号缺少参数: --client-id 或 --client-secret")
+	if accountType == "oauth" {
+		if provider == "" {
+			return fmt.Errorf("OAuth类型账号缺少参数: --provider (支持: anthropic, qwen)")
+		}
+		if provider != "anthropic" && provider != "qwen" {
+			return fmt.Errorf("OAuth目前仅支持provider: anthropic, qwen")
+		}
+		fmt.Printf("  Provider: %s\n", provider)
+		fmt.Println("注意: OAuth账号使用固定的Client ID，无需提供client-id和client-secret")
 	}
 
 	// TODO: 连接到实际的上游账号添加逻辑

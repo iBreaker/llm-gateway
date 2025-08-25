@@ -12,6 +12,9 @@ type Converter interface {
 	// GetFormat 获取转换器支持的格式
 	GetFormat() Format
 	
+	// GetUpstreamPath 根据客户端端点获取上游路径
+	GetUpstreamPath(clientEndpoint string) string
+	
 	// ParseRequest 解析请求到内部格式
 	ParseRequest(data []byte) (*types.ProxyRequest, error)
 	

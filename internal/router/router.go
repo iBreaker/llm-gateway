@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,4 +132,29 @@ func (r *RequestRouter) SetStrategy(strategy BalanceStrategy) {
 	defer r.mutex.Unlock()
 
 	r.strategy = strategy
+}
+
+// DetermineProvider 根据模型名称确定提供商
+func (r *RequestRouter) DetermineProvider(model string) types.Provider {
+	model = strings.ToLower(model)
+
+	// 根据模型名称前缀判断提供商
+	if strings.Contains(model, "claude") || strings.Contains(model, "anthropic") {
+		return types.ProviderAnthropic
+	}
+	if strings.Contains(model, "gpt") || strings.Contains(model, "openai") {
+		return types.ProviderOpenAI
+	}
+	if strings.Contains(model, "gemini") || strings.Contains(model, "google") {
+		return types.ProviderGoogle
+	}
+	if strings.Contains(model, "azure") {
+		return types.ProviderAzure
+	}
+	if strings.Contains(model, "qwen") {
+		return types.ProviderQwen
+	}
+
+	// 默认使用Anthropic
+	return types.ProviderAnthropic
 }

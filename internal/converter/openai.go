@@ -20,6 +20,12 @@ func (c *OpenAIConverter) GetFormat() Format {
 	return FormatOpenAI
 }
 
+// GetUpstreamPath 根据客户端端点获取上游路径
+func (c *OpenAIConverter) GetUpstreamPath(clientEndpoint string) string {
+	// OpenAI/Qwen 等 OpenAI 兼容提供商统一使用 /v1/chat/completions
+	return "/v1/chat/completions"
+}
+
 // ParseRequest 解析OpenAI请求到内部格式
 func (c *OpenAIConverter) ParseRequest(data []byte) (*types.ProxyRequest, error) {
 	var req types.OpenAIRequest
