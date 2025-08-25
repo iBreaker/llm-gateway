@@ -123,9 +123,10 @@ func (c *crossConverter) forwardStream(from Format, reader io.Reader, writer Str
 
 // convertStreamWriter 转换流写入器
 type convertStreamWriter struct {
-	sourceConverter Converter
-	targetWriter    StreamWriter
-	targetFormat    Format
+	sourceConverter    Converter
+	targetWriter       StreamWriter
+	targetFormat       Format
+	messageStartSent   bool // 跟踪是否已发送message_start（仅用于Anthropic目标格式）
 }
 
 // WriteChunk 写入转换后的数据块
@@ -137,6 +138,20 @@ func (w *convertStreamWriter) WriteChunk(chunk *StreamChunk) error {
 	}
 	
 	if convertedChunk != nil {
+		// 如果目标格式是Anthropic且还没发送message_start，检查是否需要先发送
+		if w.targetFormat == FormatAnthropic && !w.messageStartSent {
+			if convertedChunk.EventType == "content_block_delta" {
+				// 先发送message_start事件
+				messageStartChunk := w.createMessageStart()
+				if err := w.targetWriter.WriteChunk(messageStartChunk); err != nil {
+					return err
+				}
+				w.messageStartSent = true
+			} else if convertedChunk.EventType == "message_start" {
+				w.messageStartSent = true
+			}
+		}
+		
 		return w.targetWriter.WriteChunk(convertedChunk)
 	}
 	
@@ -153,6 +168,34 @@ func (w *convertStreamWriter) convertChunk(chunk *StreamChunk) (*StreamChunk, er
 	// 使用源格式converter进行格式转换
 	return w.sourceConverter.ConvertStreamChunk(chunk, w.targetFormat)
 }
+
+// createMessageStart 创建message_start事件
+func (w *convertStreamWriter) createMessageStart() *StreamChunk {
+	messageStart := map[string]interface{}{
+		"type": "message_start",
+		"message": map[string]interface{}{
+			"id":      "auto-generated-id",
+			"type":    "message",
+			"role":    "assistant",
+			"content": []interface{}{},
+			"model":   "unknown-model",
+			"stop_reason": nil,
+			"stop_sequence": nil,
+			"usage": map[string]interface{}{
+				"input_tokens":  0,
+				"output_tokens": 0,
+			},
+		},
+	}
+
+	return &StreamChunk{
+		EventType: "message_start",
+		Data:      messageStart,
+		Tokens:    0,
+		IsDone:    false,
+	}
+}
+
 
 // forwardStreamWriter 转发流写入器
 type forwardStreamWriter struct {

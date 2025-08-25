@@ -44,7 +44,7 @@ func NewServer(
 	rateLimitMW := NewRateLimitMiddleware(clientMgr)
 
 	// 创建代理处理器
-	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter, proxyConfig)
+	proxyHandler := NewProxyHandler(clientMgr, upstreamMgr, router, converter, proxyConfig, &config.ModelRoutes)
 
 	s := &HTTPServer{
 		mux:          mux,

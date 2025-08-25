@@ -23,11 +23,12 @@ import (
 
 // ProxyHandler 代理处理器
 type ProxyHandler struct {
-	gatewayKeyMgr *client.GatewayKeyManager
-	upstreamMgr   *upstream.UpstreamManager
-	router        *router.RequestRouter
-	converter     *converter.Manager
-	httpClient    *http.Client
+	gatewayKeyMgr     *client.GatewayKeyManager
+	upstreamMgr       *upstream.UpstreamManager
+	router            *router.RequestRouter
+	converter         *converter.Manager
+	httpClient        *http.Client
+	modelRouteConfig  *types.ModelRouteConfig
 }
 
 // httpStreamWriter HTTP流式写入器
@@ -97,6 +98,7 @@ func NewProxyHandler(
 	router *router.RequestRouter,
 	converter *converter.Manager,
 	proxyConfig *types.ProxyConfig,
+	modelRouteConfig *types.ModelRouteConfig,
 ) *ProxyHandler {
 	// 设置超时配置，使用传入的配置或默认值
 	streamTimeout := 5 * time.Minute // 默认5分钟
@@ -120,10 +122,11 @@ func NewProxyHandler(
 	}
 
 	return &ProxyHandler{
-		gatewayKeyMgr: gatewayKeyMgr,
-		upstreamMgr:   upstreamMgr,
-		router:        router,
-		converter:     converter,
+		gatewayKeyMgr:    gatewayKeyMgr,
+		upstreamMgr:      upstreamMgr,
+		router:           router,
+		converter:        converter,
+		modelRouteConfig: modelRouteConfig,
 		httpClient: &http.Client{
 			Timeout: streamTimeout,
 			Transport: &http.Transport{
@@ -185,7 +188,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		trace.SetClientRequest(requestBody)
 	}
 
-	// 2. 解析请求（自动检测格式）
+	// 2. 先进行初步解析以获取模型信息（不进行模型路由）
 	proxyReq, requestFormat, err := h.converter.ParseRequest(requestBody, clientEndpoint)
 	if err != nil || !requestFormat.IsValid() {
 		if trace != nil {
@@ -196,17 +199,34 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 记录中间格式请求
-	if trace != nil {
-		trace.SetProxyRequest(proxyReq)
-	}
-
 	// 4. 设置请求上下文信息
 	keyID := r.Header.Get("X-Gateway-Key-ID")
 	proxyReq.GatewayKeyID = keyID
 
-	// 5. 确定目标提供商（根据模型名称智能路由）
-	targetProvider := h.router.DetermineProvider(proxyReq.Model)
+	// 5. 模型路由处理（根据配置）
+	var modelRouteContext *types.ModelRouteContext
+	if h.modelRouteConfig != nil {
+		modelRouteContext = h.modelRouteConfig.CreateContext(proxyReq.Model)
+	}
+
+	// 设置converter的模型路由上下文并应用到请求
+	if modelRouteContext != nil {
+		h.converter.SetModelRouteContextAndApply(modelRouteContext, proxyReq)
+		defer h.converter.ClearModelRouteContext()
+	}
+
+	// 记录模型路由后的请求
+	if trace != nil {
+		trace.SetProxyRequest(proxyReq)
+	}
+
+	// 6. 确定目标提供商（根据模型路由上下文或模型名称）
+	var targetProvider types.Provider
+	if modelRouteContext != nil && modelRouteContext.Enabled {
+		targetProvider = modelRouteContext.TargetProvider
+	} else {
+		targetProvider = h.router.DetermineProvider(proxyReq.Model)
+	}
 
 	// 5.1. 通过 converter 获取上游路径
 	upstreamPath, err := h.converter.GetUpstreamPath(targetProvider, clientEndpoint)
@@ -338,8 +358,13 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 		}
 		// 流式响应中的错误处理
 		h.writeStreamError(w, flusher, err)
+		// 清理模型路由上下文
+		h.converter.ClearModelRouteContext()
 		return
 	}
+
+	// 清理模型路由上下文
+	h.converter.ClearModelRouteContext()
 }
 
 // callUpstreamStreamAPI 调用上游流式API
