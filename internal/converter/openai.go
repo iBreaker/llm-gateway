@@ -7,8 +7,13 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// OpenAIConverter OpenAI格式转换器
+// OpenAIConverter OpenAI格式转换器工厂
 type OpenAIConverter struct{}
+
+// OpenAIStreamConverter OpenAI流式转换器（有状态）
+type OpenAIStreamConverter struct {
+	// 目前OpenAI转换器不需要保存状态，保留结构体以便将来扩展
+}
 
 // NewOpenAIConverter 创建OpenAI转换器
 func NewOpenAIConverter() *OpenAIConverter {
@@ -27,13 +32,13 @@ func (c *OpenAIConverter) GetUpstreamPath(clientEndpoint string) string {
 }
 
 // ParseRequest 解析OpenAI请求到内部格式
-func (c *OpenAIConverter) ParseRequest(data []byte) (*types.ProxyRequest, error) {
+func (c *OpenAIConverter) ParseRequest(data []byte) (*types.UnifiedRequest, error) {
 	var req types.OpenAIRequest
 	if err := json.Unmarshal(data, &req); err != nil {
 		return nil, fmt.Errorf("解析OpenAI请求失败: %w", err)
 	}
 
-	return &types.ProxyRequest{
+	return &types.UnifiedRequest{
 		Model:          req.Model,
 		Messages:       req.Messages,
 		MaxTokens:      req.MaxTokens,
@@ -47,7 +52,7 @@ func (c *OpenAIConverter) ParseRequest(data []byte) (*types.ProxyRequest, error)
 }
 
 // BuildRequest 构建发送给上游OpenAI的请求
-func (c *OpenAIConverter) BuildRequest(request *types.ProxyRequest) ([]byte, error) {
+func (c *OpenAIConverter) BuildRequest(request *types.UnifiedRequest) ([]byte, error) {
 	req := types.OpenAIRequest{
 		Model:       request.Model,
 		Messages:    c.filterMessages(request.Messages),
@@ -63,8 +68,8 @@ func (c *OpenAIConverter) BuildRequest(request *types.ProxyRequest) ([]byte, err
 }
 
 // ParseResponse 解析OpenAI上游响应到内部格式
-func (c *OpenAIConverter) ParseResponse(data []byte) (*types.ProxyResponse, error) {
-	var resp types.ProxyResponse
+func (c *OpenAIConverter) ParseResponse(data []byte) (*types.UnifiedResponse, error) {
+	var resp types.UnifiedResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("解析OpenAI响应失败: %w", err)
 	}
@@ -89,13 +94,8 @@ func (c *OpenAIConverter) ParseResponse(data []byte) (*types.ProxyResponse, erro
 }
 
 // BuildResponse 构建返回给客户端的OpenAI格式响应
-func (c *OpenAIConverter) BuildResponse(response *types.ProxyResponse) ([]byte, error) {
+func (c *OpenAIConverter) BuildResponse(response *types.UnifiedResponse) ([]byte, error) {
 	return json.Marshal(response)
-}
-
-// CreateStreamProcessor 创建OpenAI流式处理器
-func (c *OpenAIConverter) CreateStreamProcessor() StreamProcessor {
-	return NewSSEStreamProcessor(FormatOpenAI)
 }
 
 // ValidateRequest 验证OpenAI请求格式
@@ -188,72 +188,184 @@ func (c *OpenAIConverter) convertTools(tools []map[string]interface{}) []map[str
 	return converted
 }
 
-// ConvertStreamChunk 转换流数据块到目标格式
-func (c *OpenAIConverter) ConvertStreamChunk(chunk *StreamChunk, targetFormat Format) (*StreamChunk, error) {
-	// 如果目标格式是OpenAI，直接返回
-	if targetFormat == FormatOpenAI {
-		return chunk, nil
-	}
-
-	// 如果目标格式是Anthropic，需要转换
-	if targetFormat == FormatAnthropic {
-		return c.convertOpenAIToAnthropic(chunk)
-	}
-
-	// 不支持的目标格式，直接返回原数据
-	return chunk, nil
+// NewStreamConverter 创建新的流式转换器实例
+func (c *OpenAIConverter) NewStreamConverter() StreamConverter {
+	return &OpenAIStreamConverter{}
 }
 
-// convertOpenAIToAnthropic 转换OpenAI流数据块到Anthropic格式
-func (c *OpenAIConverter) convertOpenAIToAnthropic(chunk *StreamChunk) (*StreamChunk, error) {
-	eventData, ok := chunk.Data.(map[string]interface{})
-	if !ok {
-		return chunk, nil
+// ParseStreamEvent 解析OpenAI流式事件到统一内部格式
+func (sc *OpenAIStreamConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
+	var eventData map[string]interface{}
+	if err := json.Unmarshal(data, &eventData); err != nil {
+		return nil, fmt.Errorf("解析事件数据失败: %w", err)
 	}
 
-	choices, ok := eventData["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		return nil, nil
+	// OpenAI格式没有命名事件，需要从数据结构判断事件类型
+	if choices, ok := eventData["choices"].([]interface{}); ok && len(choices) > 0 {
+		choice := choices[0].(map[string]interface{})
+
+		// 检查是否有delta
+		if delta, ok := choice["delta"].(map[string]interface{}); ok {
+			// 检查finish_reason确定是否结束
+			if finishReason, ok := choice["finish_reason"]; ok && finishReason != nil {
+				events := []*UnifiedStreamEvent{}
+
+				// 先发送ContentStop（无论是工具调用还是普通文本）
+				events = append(events, &UnifiedStreamEvent{
+					Type: StreamEventContentStop,
+					Content: &UnifiedStreamContent{
+						Index: 0,
+					},
+				})
+
+				// 然后发送MessageStop（不设置IsDone，让[DONE]来触发结束）
+				events = append(events, &UnifiedStreamEvent{
+					Type:   StreamEventMessageStop,
+					IsDone: false,
+				})
+
+				return events, nil
+			}
+
+			// 处理内容增量
+			if content, ok := delta["content"].(string); ok && content != "" {
+				return []*UnifiedStreamEvent{{
+					Type: StreamEventContentDelta,
+					Content: &UnifiedStreamContent{
+						Type:  "text",
+						Text:  content,
+						Index: 0,
+					},
+				}}, nil
+			}
+
+			// 处理工具调用增量
+			if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+				toolCall := toolCalls[0].(map[string]interface{})
+
+				// 提取工具调用ID（如果存在）
+				toolID, _ := toolCall["id"].(string)
+
+				if function, ok := toolCall["function"].(map[string]interface{}); ok {
+					// 提取工具名称（第一次调用时会有）
+					toolName, _ := function["name"].(string)
+					arguments, _ := function["arguments"].(string)
+
+					// 如果有工具名称，说明这是第一个chunk，需要生成ContentStart事件
+					if toolName != "" {
+						events := []*UnifiedStreamEvent{
+							{
+								Type: StreamEventContentStart,
+								Content: &UnifiedStreamContent{
+									Type:     "tool_use",
+									ToolID:   toolID,
+									ToolName: toolName,
+									Index:    0,
+								},
+							},
+						}
+
+						// 如果同时有arguments，也生成ContentDelta事件
+						if arguments != "" {
+							events = append(events, &UnifiedStreamEvent{
+								Type: StreamEventContentDelta,
+								Content: &UnifiedStreamContent{
+									Type:      "tool_use",
+									ToolInput: arguments,
+									Index:     0,
+								},
+							})
+						}
+
+						return events, nil
+					}
+
+					// 只有arguments的增量更新
+					if arguments != "" {
+						return []*UnifiedStreamEvent{{
+							Type: StreamEventContentDelta,
+							Content: &UnifiedStreamContent{
+								Type:      "tool_use",
+								ToolInput: arguments,
+								Index:     0,
+							},
+						}}, nil
+					}
+				}
+			}
+		}
 	}
 
-	choice := choices[0].(map[string]interface{})
-	delta, ok := choice["delta"].(map[string]interface{})
-	if !ok {
-		return nil, nil
-	}
+	return nil, nil // 跳过不识别的事件
+}
 
-	// 处理内容增量
-	if content, ok := delta["content"].(string); ok && content != "" {
-		contentBlockDelta := map[string]interface{}{
-			"type":  "content_block_delta",
-			"index": 0,
-			"delta": map[string]interface{}{
-				"type": "text_delta",
-				"text": content,
+// BuildStreamEvent 从统一内部格式构建OpenAI流式事件
+func (sc *OpenAIStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
+	switch event.Type {
+	case StreamEventContentDelta:
+		if event.Content != nil {
+			var delta map[string]interface{}
+
+			switch event.Content.Type {
+			case "text":
+				delta = map[string]interface{}{
+					"content": event.Content.Text,
+				}
+			case "tool_use":
+				delta = map[string]interface{}{
+					"tool_calls": []interface{}{
+						map[string]interface{}{
+							"index": event.Content.Index,
+							"function": map[string]interface{}{
+								"arguments": event.Content.ToolInput,
+							},
+						},
+					},
+				}
+			}
+
+			openAIData := map[string]interface{}{
+				"choices": []interface{}{
+					map[string]interface{}{
+						"index": event.Content.Index,
+						"delta": delta,
+					},
+				},
+			}
+
+			return &StreamChunk{
+				EventType: "",
+				Data:      openAIData,
+				Tokens:    0,
+				IsDone:    false,
+			}, nil
+		}
+
+	case StreamEventMessageStop:
+		finishReason := "stop"
+		openAIData := map[string]interface{}{
+			"choices": []interface{}{
+				map[string]interface{}{
+					"index":         0,
+					"delta":         map[string]interface{}{},
+					"finish_reason": finishReason,
+				},
 			},
 		}
 
 		return &StreamChunk{
-			EventType: "content_block_delta",
-			Data:      contentBlockDelta,
+			EventType: "",
+			Data:      openAIData,
 			Tokens:    0,
-			IsDone:    false,
-		}, nil
-	}
-
-	// 处理结束事件
-	if finishReason, ok := choice["finish_reason"]; ok && finishReason != nil {
-		messageStop := map[string]interface{}{
-			"type": "message_stop",
-		}
-
-		return &StreamChunk{
-			EventType: "message_stop",
-			Data:      messageStop,
-			Tokens:    chunk.Tokens,
 			IsDone:    true,
 		}, nil
 	}
 
-	return chunk, nil
+	return nil, nil
+}
+
+// NeedPreEvents 返回需要自动生成的前置事件
+func (sc *OpenAIStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent {
+	// OpenAI格式不需要额外的前置事件
+	return nil
 }

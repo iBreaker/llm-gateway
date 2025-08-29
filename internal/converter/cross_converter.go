@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -92,123 +93,123 @@ func (c *crossConverter) ConvertStream(from, to Format, reader io.Reader, writer
 		return c.forwardStream(from, reader, writer)
 	}
 
-	// 获取源格式流处理器
+	// 获取源格式转换器工厂和目标格式转换器工厂
 	fromConverter, err := c.registry.Get(from)
 	if err != nil {
 		return fmt.Errorf("获取源格式转换器失败: %w", err)
 	}
 
-	fromProcessor := fromConverter.CreateStreamProcessor()
-
-	// 创建转换写入器
-	convertWriter := &convertStreamWriter{
-		sourceConverter: fromConverter,
-		targetWriter:    writer,
-		targetFormat:    to,
+	toConverter, err := c.registry.Get(to)
+	if err != nil {
+		return fmt.Errorf("获取目标格式转换器失败: %w", err)
 	}
 
-	// 处理流式转换
-	return fromProcessor.ProcessStream(reader, convertWriter)
+	// 检查是否支持流式转换
+	fromFactory, ok := fromConverter.(ConverterFactory)
+	if !ok {
+		return fmt.Errorf("源格式转换器不支持流式转换")
+	}
+
+	toFactory, ok := toConverter.(ConverterFactory)
+	if !ok {
+		return fmt.Errorf("目标格式转换器不支持流式转换")
+	}
+
+	// 为这个流创建新的转换器实例
+	sourceStream := fromFactory.NewStreamConverter()
+	targetStream := toFactory.NewStreamConverter()
+
+	// 创建跨格式转换写入器
+	crossWriter := &crossFormatWriter{
+		sourceStream: sourceStream,
+		targetStream: targetStream,
+		targetWriter: writer,
+	}
+
+	// 使用SSE工具函数处理流式转换
+	return ProcessSSEStream(reader, fromConverter, crossWriter)
 }
 
 // forwardStream 直接转发流
 func (c *crossConverter) forwardStream(from Format, reader io.Reader, writer StreamWriter) error {
-	// 创建简单的转发写入器
-	forwardWriter := &forwardStreamWriter{writer: writer}
-	
-	// 使用相应格式的SSE处理器处理流
-	processor := NewSSEStreamProcessor(from)
-	return processor.ProcessStream(reader, forwardWriter)
+	// 获取转换器用于格式处理
+	converter, err := c.registry.Get(from)
+	if err != nil {
+		return fmt.Errorf("获取转换器失败: %w", err)
+	}
+
+	// 直接使用SSE工具函数转发
+	return ProcessSSEStream(reader, converter, writer)
 }
 
-// convertStreamWriter 转换流写入器
-type convertStreamWriter struct {
-	sourceConverter    Converter
-	targetWriter       StreamWriter
-	targetFormat       Format
-	messageStartSent   bool // 跟踪是否已发送message_start（仅用于Anthropic目标格式）
+// crossFormatWriter 跨格式流写入器
+type crossFormatWriter struct {
+	sourceStream StreamConverter
+	targetStream StreamConverter
+	targetWriter StreamWriter
 }
 
 // WriteChunk 写入转换后的数据块
-func (w *convertStreamWriter) WriteChunk(chunk *StreamChunk) error {
-	// 根据目标格式转换数据块
-	convertedChunk, err := w.convertChunk(chunk)
-	if err != nil {
-		return err
+func (w *crossFormatWriter) WriteChunk(chunk *StreamChunk) error {
+	var unifiedEvents []*UnifiedStreamEvent
+
+	// 检查chunk.Data是否已经是UnifiedStreamEvent
+	if unifiedEvent, ok := chunk.Data.(*UnifiedStreamEvent); ok {
+		// 数据已经是统一格式，直接使用
+		unifiedEvents = []*UnifiedStreamEvent{unifiedEvent}
+	} else {
+		// 需要解析原始数据
+		dataBytes, err := json.Marshal(chunk.Data)
+		if err != nil {
+			return fmt.Errorf("序列化流事件数据失败: %w", err)
+		}
+
+		// 先用源转换器将StreamChunk解析为统一格式
+		unifiedEvents, err = w.sourceStream.ParseStreamEvent(chunk.EventType, dataBytes)
+		if err != nil {
+			return fmt.Errorf("解析源格式流事件失败: %w", err)
+		}
 	}
-	
-	if convertedChunk != nil {
-		// 如果目标格式是Anthropic且还没发送message_start，检查是否需要先发送
-		if w.targetFormat == FormatAnthropic && !w.messageStartSent {
-			switch convertedChunk.EventType {
-			case "content_block_delta":
-				// 先发送message_start事件
-				messageStartChunk := w.createMessageStart()
-				if err := w.targetWriter.WriteChunk(messageStartChunk); err != nil {
+
+	// 如果解析结果为nil或空，跳过此事件
+	if len(unifiedEvents) == 0 {
+		return nil
+	}
+
+	// 处理每个统一格式事件
+	for _, unifiedEvent := range unifiedEvents {
+		// 检查是否需要插入前置事件
+		preEvents := w.targetStream.NeedPreEvents(unifiedEvent)
+		for _, preEvent := range preEvents {
+			result, err := w.targetStream.BuildStreamEvent(preEvent)
+			if err != nil {
+				return fmt.Errorf("构建前置事件失败: %w", err)
+			}
+			if result != nil {
+				if err := w.targetWriter.WriteChunk(result); err != nil {
 					return err
 				}
-				w.messageStartSent = true
-			case "message_start":
-				w.messageStartSent = true
 			}
 		}
-		
-		return w.targetWriter.WriteChunk(convertedChunk)
+
+		// 用目标转换器将统一格式转换为目标格式
+		result, err := w.targetStream.BuildStreamEvent(unifiedEvent)
+		if err != nil {
+			return fmt.Errorf("构建目标格式流事件失败: %w", err)
+		}
+
+		// 如果结果不为nil，写入目标写入器
+		if result != nil {
+			if err := w.targetWriter.WriteChunk(result); err != nil {
+				return err
+			}
+		}
 	}
-	
+
 	return nil
 }
 
 // WriteDone 写入完成信号
-func (w *convertStreamWriter) WriteDone() error {
+func (w *crossFormatWriter) WriteDone() error {
 	return w.targetWriter.WriteDone()
-}
-
-// convertChunk 转换数据块格式
-func (w *convertStreamWriter) convertChunk(chunk *StreamChunk) (*StreamChunk, error) {
-	// 使用源格式converter进行格式转换
-	return w.sourceConverter.ConvertStreamChunk(chunk, w.targetFormat)
-}
-
-// createMessageStart 创建message_start事件
-func (w *convertStreamWriter) createMessageStart() *StreamChunk {
-	messageStart := map[string]interface{}{
-		"type": "message_start",
-		"message": map[string]interface{}{
-			"id":      "auto-generated-id",
-			"type":    "message",
-			"role":    "assistant",
-			"content": []interface{}{},
-			"model":   "unknown-model",
-			"stop_reason": nil,
-			"stop_sequence": nil,
-			"usage": map[string]interface{}{
-				"input_tokens":  0,
-				"output_tokens": 0,
-			},
-		},
-	}
-
-	return &StreamChunk{
-		EventType: "message_start",
-		Data:      messageStart,
-		Tokens:    0,
-		IsDone:    false,
-	}
-}
-
-
-// forwardStreamWriter 转发流写入器
-type forwardStreamWriter struct {
-	writer StreamWriter
-}
-
-// WriteChunk 直接转发数据块
-func (w *forwardStreamWriter) WriteChunk(chunk *StreamChunk) error {
-	return w.writer.WriteChunk(chunk)
-}
-
-// WriteDone 转发完成信号
-func (w *forwardStreamWriter) WriteDone() error {
-	return w.writer.WriteDone()
 }

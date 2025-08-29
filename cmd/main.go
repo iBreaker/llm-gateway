@@ -39,7 +39,7 @@ func main() {
 		case "debug":
 			logger.SetDebugLevel()
 		}
-		
+
 		// 启用 trace 调试功能
 		if err := debug.EnableFromConfig(config.Logging.Level, config.Logging.File); err != nil {
 			log.Printf("启用调试模式失败: %v\n", err)
@@ -175,7 +175,6 @@ func handleAPIKeyAdd(args []string, app *app.Application) error {
 		return fmt.Errorf("创建API Key失败: %w", err)
 	}
 
-
 	fmt.Printf("成功创建Gateway API Key:\n")
 	fmt.Printf("  ID: %s\n", key.ID)
 	fmt.Printf("  名称: %s\n", key.Name)
@@ -273,7 +272,6 @@ func handleAPIKeyRemove(args []string, app *app.Application) error {
 		return fmt.Errorf("删除API Key失败: %w", err)
 	}
 
-
 	fmt.Printf("成功删除Gateway API Key: %s\n", keyID)
 	return nil
 }
@@ -289,7 +287,6 @@ func handleAPIKeyDisable(args []string, app *app.Application) error {
 	if err := app.GatewayKeyMgr.UpdateKeyStatus(keyID, "disabled"); err != nil {
 		return fmt.Errorf("禁用API Key失败: %w", err)
 	}
-
 
 	fmt.Printf("成功禁用Gateway API Key: %s\n", keyID)
 	return nil
@@ -412,7 +409,6 @@ func handleUpstreamAdd(args []string, app *app.Application) error {
 	if err := app.UpstreamMgr.AddAccount(account); err != nil {
 		return fmt.Errorf("添加上游账号失败: %w", err)
 	}
-
 
 	fmt.Printf("成功添加上游账号:\n")
 	fmt.Printf("  ID: %s\n", account.ID)
@@ -545,7 +541,6 @@ func handleUpstreamRemove(args []string, app *app.Application) error {
 		return fmt.Errorf("删除上游账号失败: %w", err)
 	}
 
-
 	fmt.Printf("成功删除上游账号: %s\n", upstreamID)
 	return nil
 }
@@ -562,7 +557,6 @@ func handleUpstreamEnable(args []string, app *app.Application) error {
 		return fmt.Errorf("启用上游账号失败: %w", err)
 	}
 
-
 	fmt.Printf("成功启用上游账号: %s\n", upstreamID)
 	return nil
 }
@@ -578,7 +572,6 @@ func handleUpstreamDisable(args []string, app *app.Application) error {
 	if err := app.UpstreamMgr.UpdateAccountStatus(upstreamID, "disabled"); err != nil {
 		return fmt.Errorf("禁用上游账号失败: %w", err)
 	}
-
 
 	fmt.Printf("成功禁用上游账号: %s\n", upstreamID)
 	return nil
@@ -793,7 +786,6 @@ func handleOAuthRefresh(args []string, app *app.Application) error {
 		return fmt.Errorf("刷新token失败: %w", err)
 	}
 
-
 	fmt.Printf("✅ Token刷新成功\n")
 	return nil
 }
@@ -834,11 +826,11 @@ func startInteractiveOAuth(app *app.Application, upstreamID string) error {
 		// Qwen使用Device Flow，自动轮询，等待授权完成
 		fmt.Printf("⏳ 正在等待授权完成（自动轮询中）...\n")
 		fmt.Printf("💡 按 Ctrl+C 可以取消等待，授权流程会在后台继续\n\n")
-		
+
 		// 等待足够长的时间让轮询完成（或者用户取消）
 		// 这里可以设置一个合理的等待时间，比如15分钟
 		<-make(chan struct{}) // 永不触发，等待用户中断
-		
+
 		return nil // 如果到达这里，通常是用户按了Ctrl+C
 	} else {
 		// Anthropic等使用Authorization Code Flow

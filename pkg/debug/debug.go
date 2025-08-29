@@ -36,8 +36,8 @@ type RequestTrace struct {
 	// 原始请求
 	RawClientRequest json.RawMessage `json:"raw_client_request"`
 
-	// 中间格式请求（ProxyRequest）
-	ProxyRequest *types.ProxyRequest `json:"proxy_request"`
+	// 中间格式请求（UnifiedRequest）
+	UnifiedRequest *types.UnifiedRequest `json:"unified_request"`
 
 	// 转换后的上游请求
 	UpstreamRequest json.RawMessage `json:"upstream_request"`
@@ -45,8 +45,8 @@ type RequestTrace struct {
 	// 原始上游响应
 	RawUpstreamResponse json.RawMessage `json:"raw_upstream_response,omitempty"`
 
-	// 中间格式响应（ProxyResponse）
-	ProxyResponse *types.ProxyResponse `json:"proxy_response,omitempty"`
+	// 中间格式响应（UnifiedResponse）
+	UnifiedResponse *types.UnifiedResponse `json:"unified_response,omitempty"`
 
 	// 转换后的客户端响应
 	ClientResponse json.RawMessage `json:"client_response,omitempty"`
@@ -137,11 +137,11 @@ func (t *RequestTrace) SetClientRequest(data []byte) {
 }
 
 // SetProxyRequest 设置中间格式请求
-func (t *RequestTrace) SetProxyRequest(req *types.ProxyRequest) {
+func (t *RequestTrace) SetUnifiedRequest(req *types.UnifiedRequest) {
 	if t == nil {
 		return
 	}
-	t.ProxyRequest = req
+	t.UnifiedRequest = req
 	if req != nil {
 		t.GatewayKeyID = req.GatewayKeyID
 		t.UpstreamID = req.UpstreamID
@@ -169,11 +169,11 @@ func (t *RequestTrace) SetUpstreamResponse(data []byte) {
 }
 
 // SetProxyResponse 设置中间格式响应
-func (t *RequestTrace) SetProxyResponse(resp *types.ProxyResponse) {
+func (t *RequestTrace) SetUnifiedResponse(resp *types.UnifiedResponse) {
 	if t == nil {
 		return
 	}
-	t.ProxyResponse = resp
+	t.UnifiedResponse = resp
 }
 
 // SetClientResponse 设置转换后的客户端响应

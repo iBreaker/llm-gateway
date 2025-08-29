@@ -161,7 +161,7 @@ func TestTransformRequestAnthropic(t *testing.T) {
 }
 
 func TestTransformResponse(t *testing.T) {
-	proxyResp := &types.ProxyResponse{
+	proxyResp := &types.UnifiedResponse{
 		ID:      "test-123",
 		Object:  "chat.completion",
 		Created: 1234567890,

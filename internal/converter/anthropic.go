@@ -10,8 +10,14 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// AnthropicConverter Anthropic格式转换器
+// AnthropicConverter Anthropic格式转换器工厂
 type AnthropicConverter struct{}
+
+// AnthropicStreamConverter Anthropic流式转换器（有状态）
+type AnthropicStreamConverter struct {
+	messageStartSent      bool
+	contentBlockStartSent bool
+}
 
 // NewAnthropicConverter 创建Anthropic转换器
 func NewAnthropicConverter() *AnthropicConverter {
@@ -30,7 +36,7 @@ func (c *AnthropicConverter) GetUpstreamPath(clientEndpoint string) string {
 }
 
 // ParseRequest 解析Anthropic请求到内部格式
-func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, error) {
+func (c *AnthropicConverter) ParseRequest(data []byte) (*types.UnifiedRequest, error) {
 	logger.Debug("解析Anthropic请求: %s", string(data))
 
 	var req types.AnthropicRequest
@@ -70,7 +76,7 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 				continue
 			}
 		}
-		
+
 		// 检查消息内容中是否有tool_use，需要转换格式
 		if msg.Role == "assistant" && msg.Content != nil {
 			if hasToolUse, convertedMsg := c.extractToolUse(msg.Content); hasToolUse {
@@ -79,7 +85,7 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 				continue
 			}
 		}
-		
+
 		// 普通消息直接添加
 		messages = append(messages, types.Message{
 			Role:    msg.Role,
@@ -87,7 +93,7 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 		})
 	}
 
-	return &types.ProxyRequest{
+	return &types.UnifiedRequest{
 		Model:            req.Model,
 		Messages:         messages,
 		MaxTokens:        req.MaxTokens,
@@ -102,7 +108,7 @@ func (c *AnthropicConverter) ParseRequest(data []byte) (*types.ProxyRequest, err
 }
 
 // BuildRequest 构建发送给上游Anthropic的请求
-func (c *AnthropicConverter) BuildRequest(request *types.ProxyRequest) ([]byte, error) {
+func (c *AnthropicConverter) BuildRequest(request *types.UnifiedRequest) ([]byte, error) {
 	var systemPrompt string
 	var messages []types.FlexibleMessage
 
@@ -161,20 +167,20 @@ func (c *AnthropicConverter) extractToolResults(content interface{}) (bool, []ty
 	if !ok {
 		return false, nil
 	}
-	
+
 	var toolMessages []types.Message
 	hasToolResult := false
-	
+
 	for _, item := range contentArray {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		// 检查是否为tool_result类型
 		if itemType, exists := itemMap["type"]; exists && itemType == "tool_result" {
 			hasToolResult = true
-			
+
 			// 提取tool_use_id
 			var toolCallID string
 			if id, exists := itemMap["tool_use_id"]; exists {
@@ -182,7 +188,7 @@ func (c *AnthropicConverter) extractToolResults(content interface{}) (bool, []ty
 					toolCallID = idStr
 				}
 			}
-			
+
 			// 提取content
 			var resultContent string
 			if contentField, exists := itemMap["content"]; exists {
@@ -206,7 +212,7 @@ func (c *AnthropicConverter) extractToolResults(content interface{}) (bool, []ty
 					}
 				}
 			}
-			
+
 			// 创建中间格式的tool消息
 			toolMsg := types.Message{
 				Role:       "tool",
@@ -215,11 +221,11 @@ func (c *AnthropicConverter) extractToolResults(content interface{}) (bool, []ty
 				// Name字段需要从上下文推断，这里暂时留空
 				// 实际使用中，OpenAI API对name字段要求不严格
 			}
-			
+
 			toolMessages = append(toolMessages, toolMsg)
 		}
 	}
-	
+
 	return hasToolResult, toolMessages
 }
 
@@ -230,46 +236,46 @@ func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Me
 	if !ok {
 		return false, types.Message{}
 	}
-	
+
 	var toolCalls []map[string]interface{}
 	var textContent string
 	hasToolUse := false
-	
+
 	for _, item := range contentArray {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		itemType, exists := itemMap["type"]
 		if !exists {
 			continue
 		}
-		
+
 		switch itemType {
 		case "tool_use":
 			hasToolUse = true
-			
+
 			// 提取tool_use信息
 			var toolID, toolName string
 			var toolInput interface{}
-			
+
 			if id, exists := itemMap["id"]; exists {
 				if idStr, ok := id.(string); ok {
 					toolID = idStr
 				}
 			}
-			
+
 			if name, exists := itemMap["name"]; exists {
 				if nameStr, ok := name.(string); ok {
 					toolName = nameStr
 				}
 			}
-			
+
 			if input, exists := itemMap["input"]; exists {
 				toolInput = input
 			}
-			
+
 			// 将input序列化为JSON字符串
 			var inputJSON string
 			if toolInput != nil {
@@ -277,7 +283,7 @@ func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Me
 					inputJSON = string(inputBytes)
 				}
 			}
-			
+
 			// 创建OpenAI格式的tool_call
 			toolCall := map[string]interface{}{
 				"id":   toolID,
@@ -287,9 +293,9 @@ func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Me
 					"arguments": inputJSON,
 				},
 			}
-			
+
 			toolCalls = append(toolCalls, toolCall)
-			
+
 		case "text":
 			// 保留文本内容
 			if text, exists := itemMap["text"]; exists {
@@ -303,24 +309,24 @@ func (c *AnthropicConverter) extractToolUse(content interface{}) (bool, types.Me
 			}
 		}
 	}
-	
+
 	if !hasToolUse {
 		return false, types.Message{}
 	}
-	
+
 	// 创建中间格式的assistant消息
 	msg := types.Message{
 		Role:      "assistant",
 		ToolCalls: toolCalls,
 	}
-	
+
 	// 如果有文本内容，设置content；否则设置为nil（OpenAI格式要求）
 	if textContent != "" {
 		msg.Content = textContent
 	} else {
 		msg.Content = nil
 	}
-	
+
 	return true, msg
 }
 
@@ -346,7 +352,7 @@ func (c *AnthropicConverter) convertToolMessageToAnthropic(msg types.Message) ty
 // convertToolCallsToAnthropic 将中间格式的tool_calls转换为Anthropic的tool_use格式
 func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) types.FlexibleMessage {
 	var content []interface{}
-	
+
 	// 如果有文本内容，先添加文本
 	if msg.Content != nil && msg.Content != "" {
 		textContent := map[string]interface{}{
@@ -355,7 +361,7 @@ func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) type
 		}
 		content = append(content, textContent)
 	}
-	
+
 	// 添加tool_use内容
 	for _, toolCall := range msg.ToolCalls {
 		toolUse := map[string]interface{}{
@@ -363,7 +369,7 @@ func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) type
 			"id":   toolCall["id"],
 			"name": toolCall["function"].(map[string]interface{})["name"],
 		}
-		
+
 		// 解析arguments JSON字符串为对象
 		if functionData, ok := toolCall["function"].(map[string]interface{}); ok {
 			if argsStr, ok := functionData["arguments"].(string); ok {
@@ -373,10 +379,10 @@ func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) type
 				}
 			}
 		}
-		
+
 		content = append(content, toolUse)
 	}
-	
+
 	return types.FlexibleMessage{
 		Role:    "assistant",
 		Content: content,
@@ -386,10 +392,10 @@ func (c *AnthropicConverter) convertToolCallsToAnthropic(msg types.Message) type
 // buildSystemField 构建system字段，确保Claude Code身份在最前面
 func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField, systemPrompt string) *types.SystemField {
 	claudeCodeIdentity := "You are Claude Code, Anthropic's official CLI for Claude."
-	
+
 	// 检查是否已经包含Claude Code身份
 	hasClaudeCodeIdentity := false
-	
+
 	// 检查原始system字段
 	if originalSystem != nil {
 		if originalSystem.IsString() {
@@ -405,14 +411,14 @@ func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField,
 			}
 		}
 	}
-	
+
 	// 检查从消息中提取的系统提示词
 	if !hasClaudeCodeIdentity && systemPrompt != "" {
 		if c.containsClaudeCode(systemPrompt) {
 			hasClaudeCodeIdentity = true
 		}
 	}
-	
+
 	// 如果已经有Claude Code身份，直接使用原有逻辑
 	if hasClaudeCodeIdentity {
 		if originalSystem != nil {
@@ -425,16 +431,16 @@ func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField,
 		}
 		return nil
 	}
-	
+
 	// 需要注入Claude Code身份
 	claudeCodeBlock := types.SystemBlock{
 		Type: "text",
 		Text: claudeCodeIdentity,
 	}
-	
+
 	var allBlocks []types.SystemBlock
 	allBlocks = append(allBlocks, claudeCodeBlock)
-	
+
 	// 添加原有的system内容
 	if originalSystem != nil {
 		if originalSystem.IsString() {
@@ -453,7 +459,7 @@ func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField,
 		}
 		allBlocks = append(allBlocks, userBlock)
 	}
-	
+
 	// 创建数组格式的SystemField
 	systemField := &types.SystemField{}
 	systemField.SetArray(allBlocks)
@@ -462,13 +468,13 @@ func (c *AnthropicConverter) buildSystemField(originalSystem *types.SystemField,
 
 // containsClaudeCode 检查内容是否包含Claude Code身份
 func (c *AnthropicConverter) containsClaudeCode(content string) bool {
-	return len(content) > 0 && 
+	return len(content) > 0 &&
 		(strings.Contains(content, "You are Claude Code") ||
-		 strings.Contains(content, "Claude Code"))
+			strings.Contains(content, "Claude Code"))
 }
 
 // ParseResponse 解析Anthropic上游响应到内部格式
-func (c *AnthropicConverter) ParseResponse(data []byte) (*types.ProxyResponse, error) {
+func (c *AnthropicConverter) ParseResponse(data []byte) (*types.UnifiedResponse, error) {
 	var resp types.AnthropicResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("解析Anthropic响应失败: %w", err)
@@ -523,7 +529,7 @@ func (c *AnthropicConverter) ParseResponse(data []byte) (*types.ProxyResponse, e
 	// 转换结束原因
 	finishReason := c.convertStopReason(resp.StopReason)
 
-	return &types.ProxyResponse{
+	return &types.UnifiedResponse{
 		ID:      resp.ID,
 		Object:  "chat.completion",
 		Created: time.Now().Unix(),
@@ -548,7 +554,7 @@ func (c *AnthropicConverter) ParseResponse(data []byte) (*types.ProxyResponse, e
 }
 
 // BuildResponse 构建返回给客户端的Anthropic格式响应
-func (c *AnthropicConverter) BuildResponse(response *types.ProxyResponse) ([]byte, error) {
+func (c *AnthropicConverter) BuildResponse(response *types.UnifiedResponse) ([]byte, error) {
 	resp := types.AnthropicResponse{
 		ID:    response.ID,
 		Type:  "message",
@@ -573,11 +579,6 @@ func (c *AnthropicConverter) BuildResponse(response *types.ProxyResponse) ([]byt
 	}
 
 	return json.Marshal(resp)
-}
-
-// CreateStreamProcessor 创建Anthropic流式处理器
-func (c *AnthropicConverter) CreateStreamProcessor() StreamProcessor {
-	return NewSSEStreamProcessor(FormatAnthropic)
 }
 
 // ValidateRequest 验证Anthropic请求格式
@@ -752,122 +753,263 @@ func (c *AnthropicConverter) convertFinishReason(finishReason string) string {
 	}
 }
 
-// ConvertStreamChunk 转换流数据块到目标格式
-func (c *AnthropicConverter) ConvertStreamChunk(chunk *StreamChunk, targetFormat Format) (*StreamChunk, error) {
-	// 如果目标格式是Anthropic，直接返回
-	if targetFormat == FormatAnthropic {
-		return chunk, nil
-	}
-
-	// 如果目标格式是OpenAI，需要转换
-	if targetFormat == FormatOpenAI {
-		return c.convertAnthropicToOpenAI(chunk)
-	}
-
-	// 不支持的目标格式，直接返回原数据
-	return chunk, nil
+// NewStreamConverter 创建新的流式转换器实例
+func (c *AnthropicConverter) NewStreamConverter() StreamConverter {
+	return &AnthropicStreamConverter{}
 }
 
-// convertAnthropicToOpenAI 转换Anthropic流数据块到OpenAI格式
-func (c *AnthropicConverter) convertAnthropicToOpenAI(chunk *StreamChunk) (*StreamChunk, error) {
-	eventData, ok := chunk.Data.(map[string]interface{})
-	if !ok {
-		return chunk, nil
+// ParseStreamEvent 解析Anthropic流式事件到统一内部格式
+func (sc *AnthropicStreamConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
+	var eventData map[string]interface{}
+	if err := json.Unmarshal(data, &eventData); err != nil {
+		return nil, fmt.Errorf("解析事件数据失败: %w", err)
 	}
 
-	switch chunk.EventType {
+	switch eventType {
 	case "message_start":
-		messageData, ok := eventData["message"].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("invalid message_start event")
+		if messageData, ok := eventData["message"].(map[string]interface{}); ok {
+			id := getString(messageData["id"])
+			model := getString(messageData["model"])
+
+			return []*UnifiedStreamEvent{{
+				Type:      StreamEventMessageStart,
+				MessageID: id,
+				Model:     model,
+			}}, nil
 		}
-
-		id, _ := messageData["id"].(string)
-		model, _ := messageData["model"].(string)
-
-		openAIChunk := types.OpenAIStreamChunk{
-			ID:      id,
-			Object:  "chat.completion.chunk",
-			Created: time.Now().Unix(),
-			Model:   model,
-			Choices: []types.OpenAIStreamChoice{
-				{
-					Index: 0,
-					Delta: types.OpenAIStreamDelta{
-						Role: "assistant",
-					},
-					FinishReason: nil,
-				},
-			},
-		}
-
-		return &StreamChunk{
-			EventType: "",
-			Data:      openAIChunk,
-			Tokens:    0,
-			IsDone:    false,
-		}, nil
 
 	case "content_block_delta":
-		delta, ok := eventData["delta"].(map[string]interface{})
-		if !ok {
-			return nil, nil
+		if delta, ok := eventData["delta"].(map[string]interface{}); ok {
+			index, _ := eventData["index"].(float64)
+
+			// 处理文本增量
+			if deltaType, ok := delta["type"].(string); ok && deltaType == "text_delta" {
+				if text, ok := delta["text"].(string); ok {
+					return []*UnifiedStreamEvent{{
+						Type: StreamEventContentDelta,
+						Content: &UnifiedStreamContent{
+							Type:  "text",
+							Text:  text,
+							Index: int(index),
+						},
+					}}, nil
+				}
+			}
+
+			// 处理工具调用参数增量
+			if deltaType, ok := delta["type"].(string); ok && deltaType == "input_json_delta" {
+				if partialJSON, ok := delta["partial_json"].(string); ok {
+					return []*UnifiedStreamEvent{{
+						Type: StreamEventContentDelta,
+						Content: &UnifiedStreamContent{
+							Type:      "tool_use",
+							ToolInput: partialJSON,
+							Index:     int(index),
+						},
+					}}, nil
+				}
+			}
 		}
 
-		text, ok := delta["text"].(string)
-		if !ok {
-			return nil, nil
-		}
+	case "message_stop":
+		return []*UnifiedStreamEvent{{
+			Type:   StreamEventMessageStop,
+			IsDone: false, // 不设置IsDone，让[DONE]来触发结束
+		}}, nil
+	}
 
-		openAIChunk := types.OpenAIStreamChunk{
-			ID:      "", // 需要从上下文获取
-			Object:  "chat.completion.chunk",
-			Created: time.Now().Unix(),
-			Model:   "", // 需要从上下文获取
-			Choices: []types.OpenAIStreamChoice{
-				{
-					Index: 0,
-					Delta: types.OpenAIStreamDelta{
-						Content: text,
-					},
-					FinishReason: nil,
+	return nil, nil // 跳过不识别的事件
+}
+
+// BuildStreamEvent 从统一内部格式构建Anthropic流式事件
+func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
+	switch event.Type {
+	case StreamEventMessageStart:
+		messageStart := map[string]interface{}{
+			"type": "message_start",
+			"message": map[string]interface{}{
+				"id":            event.MessageID,
+				"type":          "message",
+				"role":          "assistant",
+				"content":       []interface{}{},
+				"model":         event.Model,
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage": map[string]interface{}{
+					"input_tokens":  0,
+					"output_tokens": 0,
 				},
 			},
 		}
 
 		return &StreamChunk{
-			EventType: "",
-			Data:      openAIChunk,
+			EventType: "message_start",
+			Data:      messageStart,
 			Tokens:    0,
 			IsDone:    false,
 		}, nil
 
-	case "message_stop":
-		finishReason := "stop"
-		openAIChunk := types.OpenAIStreamChunk{
-			ID:      "", // 需要从上下文获取
-			Object:  "chat.completion.chunk",
-			Created: time.Now().Unix(),
-			Model:   "", // 需要从上下文获取
-			Choices: []types.OpenAIStreamChoice{
-				{
-					Index:        0,
-					Delta:        types.OpenAIStreamDelta{},
-					FinishReason: &finishReason,
-				},
-			},
+	case StreamEventContentStart:
+		if event.Content != nil {
+			var contentBlock map[string]interface{}
+
+			switch event.Content.Type {
+			case "text":
+				contentBlock = map[string]interface{}{
+					"type": "text",
+					"text": "",
+				}
+			case "tool_use":
+				// 如果没有提供工具ID或名称，生成默认值
+				toolID := event.Content.ToolID
+				if toolID == "" {
+					toolID = fmt.Sprintf("toolu_%d", time.Now().UnixNano())
+				}
+				toolName := event.Content.ToolName
+				if toolName == "" {
+					toolName = "unknown_tool"
+				}
+
+				contentBlock = map[string]interface{}{
+					"type":  "tool_use",
+					"id":    toolID,
+					"name":  toolName,
+					"input": map[string]interface{}{},
+				}
+			}
+
+			contentBlockStart := map[string]interface{}{
+				"type":          "content_block_start",
+				"index":         event.Content.Index,
+				"content_block": contentBlock,
+			}
+
+			return &StreamChunk{
+				EventType: "content_block_start",
+				Data:      contentBlockStart,
+				Tokens:    0,
+				IsDone:    false,
+			}, nil
+		}
+		return nil, nil
+
+	case StreamEventContentDelta:
+		if event.Content != nil {
+			var delta map[string]interface{}
+
+			switch event.Content.Type {
+			case "text":
+				delta = map[string]interface{}{
+					"type": "text_delta",
+					"text": event.Content.Text,
+				}
+			case "tool_use":
+				delta = map[string]interface{}{
+					"type":         "input_json_delta",
+					"partial_json": event.Content.ToolInput,
+				}
+			}
+
+			contentBlockDelta := map[string]interface{}{
+				"type":  "content_block_delta",
+				"index": event.Content.Index,
+				"delta": delta,
+			}
+
+			return &StreamChunk{
+				EventType: "content_block_delta",
+				Data:      contentBlockDelta,
+				Tokens:    0,
+				IsDone:    false,
+			}, nil
+		}
+
+	case StreamEventContentStop:
+		contentBlockStop := map[string]interface{}{
+			"type":  "content_block_stop",
+			"index": 0,
+		}
+		if event.Content != nil {
+			contentBlockStop["index"] = event.Content.Index
+		}
+		return &StreamChunk{
+			EventType: "content_block_stop",
+			Data:      contentBlockStop,
+			Tokens:    0,
+			IsDone:    false,
+		}, nil
+
+	case StreamEventMessageStop:
+		messageStop := map[string]interface{}{
+			"type": "message_stop",
 		}
 
 		return &StreamChunk{
-			EventType: "",
-			Data:      openAIChunk,
-			Tokens:    chunk.Tokens,
-			IsDone:    true,
+			EventType: "message_stop",
+			Data:      messageStop,
+			Tokens:    0,
+			IsDone:    false, // 不设置IsDone，让[DONE]来触发结束
 		}, nil
-
-	default:
-		// 其他事件类型直接透传
-		return chunk, nil
 	}
+
+	return nil, nil
 }
 
+// NeedPreEvents 返回需要自动生成的前置事件
+func (sc *AnthropicStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent {
+	var events []*UnifiedStreamEvent
+
+	// Anthropic需要严格的事件顺序
+	if event.Type == StreamEventContentDelta || event.Type == StreamEventContentStart {
+		// 如果还没发送message_start，需要先发送
+		if !sc.messageStartSent {
+			sc.messageStartSent = true
+			events = append(events, &UnifiedStreamEvent{
+				Type:      StreamEventMessageStart,
+				MessageID: "auto-generated-id",
+				Model:     "unknown-model",
+			})
+		}
+
+		// 如果是ContentDelta但还没发送content_block_start，需要先发送
+		if event.Type == StreamEventContentDelta && !sc.contentBlockStartSent {
+			sc.contentBlockStartSent = true
+
+			contentType := "text"
+			contentIndex := 0
+
+			if event.Content != nil {
+				contentType = event.Content.Type
+				contentIndex = event.Content.Index
+			}
+
+			events = append(events, &UnifiedStreamEvent{
+				Type: StreamEventContentStart,
+				Content: &UnifiedStreamContent{
+					Type:  contentType,
+					Index: contentIndex,
+				},
+			})
+		}
+	}
+
+	// 如果是ContentStart，标记已发送
+	if event.Type == StreamEventContentStart {
+		sc.contentBlockStartSent = true
+	}
+
+	// 如果是ContentStop，重置contentBlockStartSent
+	if event.Type == StreamEventContentStop {
+		sc.contentBlockStartSent = false
+	}
+
+	return events
+}
+
+// getString 安全地获取字符串值
+func getString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}

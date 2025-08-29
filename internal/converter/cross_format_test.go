@@ -111,7 +111,6 @@ func TestCrossFormatRequests(t *testing.T) {
 	}
 }
 
-
 // validateRequiredFields 验证输出包含必要字段
 func validateRequiredFields(output []byte, requiredFields []string) error {
 	var jsonData map[string]interface{}
@@ -429,7 +428,6 @@ func TestCrossFormatResponses(t *testing.T) {
 		})
 	}
 }
-
 
 // 响应转换验证函数
 func validateOpenAIToAnthropicResponse(input, output []byte) error {

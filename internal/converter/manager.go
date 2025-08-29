@@ -10,8 +10,8 @@ import (
 
 // Manager 转换器管理器 - 系统的主要入口点
 type Manager struct {
-	registry      ConverterRegistry
-	detector      *FormatDetector
+	registry       ConverterRegistry
+	detector       *FormatDetector
 	crossConverter CrossConverter
 }
 
@@ -31,12 +31,12 @@ func (m *Manager) DetectFormat(requestBody []byte, endpoint string) Format {
 }
 
 // ParseRequest 解析请求（自动检测格式）
-func (m *Manager) ParseRequest(requestBody []byte, endpoint string) (*types.ProxyRequest, Format, error) {
+func (m *Manager) ParseRequest(requestBody []byte, endpoint string) (*types.UnifiedRequest, Format, error) {
 	return m.ParseRequestWithModelRoute(requestBody, endpoint, nil)
 }
 
 // ParseRequestWithModelRoute 解析请求并应用模型路由
-func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string, modelRouteContext *types.ModelRouteContext) (*types.ProxyRequest, Format, error) {
+func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string, modelRouteContext *types.ModelRouteContext) (*types.UnifiedRequest, Format, error) {
 	format := m.DetectFormat(requestBody, endpoint)
 	if !format.IsValid() {
 		return nil, format, fmt.Errorf("无法检测请求格式")
@@ -56,7 +56,7 @@ func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		if err := m.applyModelRouteToRequest(request, modelRouteContext); err != nil {
 			// 记录错误但不中断处理，使用原始模型继续
-			logger.Warn("模型路由应用失败，使用原始模型 %s 继续: %v", 
+			logger.Warn("模型路由应用失败，使用原始模型 %s 继续: %v",
 				request.Model, err)
 		}
 	}
@@ -65,10 +65,10 @@ func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string
 }
 
 // BuildUpstreamRequest 构建上游请求
-func (m *Manager) BuildUpstreamRequest(request *types.ProxyRequest, provider types.Provider) ([]byte, error) {
+func (m *Manager) BuildUpstreamRequest(request *types.UnifiedRequest, provider types.Provider) ([]byte, error) {
 	// 根据提供商确定上游格式
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	converter, err := m.registry.Get(upstreamFormat)
 	if err != nil {
 		return nil, fmt.Errorf("获取上游转换器失败: %w", err)
@@ -78,9 +78,9 @@ func (m *Manager) BuildUpstreamRequest(request *types.ProxyRequest, provider typ
 }
 
 // ParseUpstreamResponse 解析上游响应
-func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.ProxyResponse, error) {
+func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.UnifiedResponse, error) {
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	converter, err := m.registry.Get(upstreamFormat)
 	if err != nil {
 		return nil, fmt.Errorf("获取上游转换器失败: %w", err)
@@ -90,12 +90,12 @@ func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Prov
 }
 
 // BuildClientResponse 构建客户端响应
-func (m *Manager) BuildClientResponse(response *types.ProxyResponse, clientFormat Format) ([]byte, error) {
+func (m *Manager) BuildClientResponse(response *types.UnifiedResponse, clientFormat Format) ([]byte, error) {
 	return m.BuildClientResponseWithModelRoute(response, clientFormat, nil)
 }
 
 // BuildClientResponseWithModelRoute 构建客户端响应并恢复模型名称
-func (m *Manager) BuildClientResponseWithModelRoute(response *types.ProxyResponse, clientFormat Format, modelRouteContext *types.ModelRouteContext) ([]byte, error) {
+func (m *Manager) BuildClientResponseWithModelRoute(response *types.UnifiedResponse, clientFormat Format, modelRouteContext *types.ModelRouteContext) ([]byte, error) {
 	// 如果有模型路由配置，恢复原始模型名称
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		m.restoreModelInResponse(response, modelRouteContext)
@@ -168,21 +168,21 @@ func (m *Manager) ProcessStream(reader io.Reader, provider types.Provider, clien
 // ProcessStreamWithModelRoute 处理流式响应并应用模型路由
 func (m *Manager) ProcessStreamWithModelRoute(reader io.Reader, provider types.Provider, clientFormat Format, writer StreamWriter, modelRouteContext *types.ModelRouteContext) error {
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	// 如果需要模型替换，包装writer
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		writer = &modelReplaceStreamWriter{
-			originalWriter:     writer,
+			originalWriter:    writer,
 			modelRouteContext: modelRouteContext,
 			format:            clientFormat,
 		}
 	}
-	
+
 	return m.crossConverter.ConvertStream(upstreamFormat, clientFormat, reader, writer)
 }
 
 // InjectSystemPrompt 注入系统提示词
-func (m *Manager) InjectSystemPrompt(request *types.ProxyRequest, provider types.Provider, upstreamType types.UpstreamType) {
+func (m *Manager) InjectSystemPrompt(request *types.UnifiedRequest, provider types.Provider, upstreamType types.UpstreamType) {
 	// Anthropic转换器会自动处理Claude Code身份注入
 	// 这里不需要做任何操作，让具体的转换器自己决定
 }
@@ -209,26 +209,25 @@ func (m *Manager) GetUpstreamPath(provider types.Provider, clientEndpoint string
 	if err != nil {
 		return "", fmt.Errorf("获取提供商转换器失败: %w", err)
 	}
-	
+
 	return converter.GetUpstreamPath(clientEndpoint), nil
 }
 
-
 // applyModelRouteToRequest 对请求应用模型路由
-func (m *Manager) applyModelRouteToRequest(request *types.ProxyRequest, modelRouteContext *types.ModelRouteContext) error {
+func (m *Manager) applyModelRouteToRequest(request *types.UnifiedRequest, modelRouteContext *types.ModelRouteContext) error {
 	if modelRouteContext == nil {
 		return fmt.Errorf("模型路由上下文为空")
 	}
-	
+
 	if !modelRouteContext.HasModelRoute() {
 		logger.Debug("模型路由未启用或配置不完整")
 		return nil
 	}
-	
+
 	if request == nil {
 		return fmt.Errorf("请求对象为空")
 	}
-	
+
 	if request.Model == "" {
 		return fmt.Errorf("请求模型名称为空")
 	}
@@ -237,18 +236,18 @@ func (m *Manager) applyModelRouteToRequest(request *types.ProxyRequest, modelRou
 	if request.Model == modelRouteContext.OriginalModel {
 		originalModel := request.Model
 		request.Model = modelRouteContext.TargetModel
-		logger.Info("模型路由应用成功: %s -> %s (规则ID: %s)", 
+		logger.Info("模型路由应用成功: %s -> %s (规则ID: %s)",
 			originalModel, modelRouteContext.TargetModel, modelRouteContext.RouteRuleID)
 	} else {
-		logger.Debug("请求模型 %s 与路由原始模型 %s 不匹配，跳过替换", 
+		logger.Debug("请求模型 %s 与路由原始模型 %s 不匹配，跳过替换",
 			request.Model, modelRouteContext.OriginalModel)
 	}
-	
+
 	return nil
 }
 
 // restoreModelInResponse 在响应中恢复原始模型名称
-func (m *Manager) restoreModelInResponse(response *types.ProxyResponse, modelRouteContext *types.ModelRouteContext) {
+func (m *Manager) restoreModelInResponse(response *types.UnifiedResponse, modelRouteContext *types.ModelRouteContext) {
 	if modelRouteContext == nil || !modelRouteContext.HasModelRoute() {
 		return
 	}
@@ -261,7 +260,7 @@ func (m *Manager) restoreModelInResponse(response *types.ProxyResponse, modelRou
 
 // modelReplaceStreamWriter 模型替换流式写入器
 type modelReplaceStreamWriter struct {
-	originalWriter     StreamWriter
+	originalWriter    StreamWriter
 	modelRouteContext *types.ModelRouteContext
 	format            Format
 }
@@ -287,7 +286,7 @@ func (w *modelReplaceStreamWriter) replaceModelInChunk(chunk *StreamChunk) {
 	}
 
 	// 如果Data是ProxyResponse类型，直接恢复原始模型名称
-	if response, ok := chunk.Data.(*types.ProxyResponse); ok {
+	if response, ok := chunk.Data.(*types.UnifiedResponse); ok {
 		// 创建临时Manager实例来调用restoreModelInResponse方法
 		tempManager := &Manager{}
 		tempManager.restoreModelInResponse(response, w.modelRouteContext)
@@ -315,4 +314,3 @@ func (m *Manager) getProviderFormat(provider types.Provider) Format {
 		return FormatOpenAI // 默认OpenAI格式，Qwen等也使用此格式
 	}
 }
-

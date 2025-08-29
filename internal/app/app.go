@@ -57,4 +57,3 @@ func NewApplication(configPath string) (*Application, error) {
 
 	return app, nil
 }
-
