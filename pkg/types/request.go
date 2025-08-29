@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// ProxyRequest - 统一的请求结构
-type ProxyRequest struct {
+// UnifiedRequest - 统一的请求结构
+type UnifiedRequest struct {
 	Model            string                   `json:"model"`
 	Messages         []Message                `json:"messages"`
 	MaxTokens        int                      `json:"max_tokens,omitempty"`

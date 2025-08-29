@@ -31,12 +31,12 @@ func (m *Manager) DetectFormat(requestBody []byte, endpoint string) Format {
 }
 
 // ParseRequest 解析请求（自动检测格式）
-func (m *Manager) ParseRequest(requestBody []byte, endpoint string) (*types.ProxyRequest, Format, error) {
+func (m *Manager) ParseRequest(requestBody []byte, endpoint string) (*types.UnifiedRequest, Format, error) {
 	return m.ParseRequestWithModelRoute(requestBody, endpoint, nil)
 }
 
 // ParseRequestWithModelRoute 解析请求并应用模型路由
-func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string, modelRouteContext *types.ModelRouteContext) (*types.ProxyRequest, Format, error) {
+func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string, modelRouteContext *types.ModelRouteContext) (*types.UnifiedRequest, Format, error) {
 	format := m.DetectFormat(requestBody, endpoint)
 	if !format.IsValid() {
 		return nil, format, fmt.Errorf("无法检测请求格式")
@@ -65,7 +65,7 @@ func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string
 }
 
 // BuildUpstreamRequest 构建上游请求
-func (m *Manager) BuildUpstreamRequest(request *types.ProxyRequest, provider types.Provider) ([]byte, error) {
+func (m *Manager) BuildUpstreamRequest(request *types.UnifiedRequest, provider types.Provider) ([]byte, error) {
 	// 根据提供商确定上游格式
 	upstreamFormat := m.getProviderFormat(provider)
 	
@@ -78,7 +78,7 @@ func (m *Manager) BuildUpstreamRequest(request *types.ProxyRequest, provider typ
 }
 
 // ParseUpstreamResponse 解析上游响应
-func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.ProxyResponse, error) {
+func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.UnifiedResponse, error) {
 	upstreamFormat := m.getProviderFormat(provider)
 	
 	converter, err := m.registry.Get(upstreamFormat)
@@ -90,12 +90,12 @@ func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Prov
 }
 
 // BuildClientResponse 构建客户端响应
-func (m *Manager) BuildClientResponse(response *types.ProxyResponse, clientFormat Format) ([]byte, error) {
+func (m *Manager) BuildClientResponse(response *types.UnifiedResponse, clientFormat Format) ([]byte, error) {
 	return m.BuildClientResponseWithModelRoute(response, clientFormat, nil)
 }
 
 // BuildClientResponseWithModelRoute 构建客户端响应并恢复模型名称
-func (m *Manager) BuildClientResponseWithModelRoute(response *types.ProxyResponse, clientFormat Format, modelRouteContext *types.ModelRouteContext) ([]byte, error) {
+func (m *Manager) BuildClientResponseWithModelRoute(response *types.UnifiedResponse, clientFormat Format, modelRouteContext *types.ModelRouteContext) ([]byte, error) {
 	// 如果有模型路由配置，恢复原始模型名称
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		m.restoreModelInResponse(response, modelRouteContext)
@@ -182,7 +182,7 @@ func (m *Manager) ProcessStreamWithModelRoute(reader io.Reader, provider types.P
 }
 
 // InjectSystemPrompt 注入系统提示词
-func (m *Manager) InjectSystemPrompt(request *types.ProxyRequest, provider types.Provider, upstreamType types.UpstreamType) {
+func (m *Manager) InjectSystemPrompt(request *types.UnifiedRequest, provider types.Provider, upstreamType types.UpstreamType) {
 	// Anthropic转换器会自动处理Claude Code身份注入
 	// 这里不需要做任何操作，让具体的转换器自己决定
 }
@@ -215,7 +215,7 @@ func (m *Manager) GetUpstreamPath(provider types.Provider, clientEndpoint string
 
 
 // applyModelRouteToRequest 对请求应用模型路由
-func (m *Manager) applyModelRouteToRequest(request *types.ProxyRequest, modelRouteContext *types.ModelRouteContext) error {
+func (m *Manager) applyModelRouteToRequest(request *types.UnifiedRequest, modelRouteContext *types.ModelRouteContext) error {
 	if modelRouteContext == nil {
 		return fmt.Errorf("模型路由上下文为空")
 	}
@@ -248,7 +248,7 @@ func (m *Manager) applyModelRouteToRequest(request *types.ProxyRequest, modelRou
 }
 
 // restoreModelInResponse 在响应中恢复原始模型名称
-func (m *Manager) restoreModelInResponse(response *types.ProxyResponse, modelRouteContext *types.ModelRouteContext) {
+func (m *Manager) restoreModelInResponse(response *types.UnifiedResponse, modelRouteContext *types.ModelRouteContext) {
 	if modelRouteContext == nil || !modelRouteContext.HasModelRoute() {
 		return
 	}
@@ -287,7 +287,7 @@ func (w *modelReplaceStreamWriter) replaceModelInChunk(chunk *StreamChunk) {
 	}
 
 	// 如果Data是ProxyResponse类型，直接恢复原始模型名称
-	if response, ok := chunk.Data.(*types.ProxyResponse); ok {
+	if response, ok := chunk.Data.(*types.UnifiedResponse); ok {
 		// 创建临时Manager实例来调用restoreModelInResponse方法
 		tempManager := &Manager{}
 		tempManager.restoreModelInResponse(response, w.modelRouteContext)

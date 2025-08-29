@@ -231,7 +231,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 
 	// 记录模型路由后的请求
 	if trace != nil {
-		trace.SetProxyRequest(proxyReq)
+		trace.SetUnifiedRequest(proxyReq)
 	}
 
 	// 6. 确定目标提供商（根据模型路由上下文或模型名称）
@@ -284,7 +284,7 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 }
 
 // handleNonStreamResponse 处理非流式响应
-func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
+func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.UnifiedRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace) {
 	conversionStart := time.Now()
 
 	// 调用上游API获取原始响应
@@ -345,7 +345,7 @@ func (h *ProxyHandler) handleNonStreamResponse(w http.ResponseWriter, account *t
 }
 
 // handleStreamResponse 处理流式响应
-func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.ProxyRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) {
+func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *types.UpstreamAccount, request *types.UnifiedRequest, upstreamPath string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) {
 	// 设置SSE响应头
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -377,7 +377,7 @@ func (h *ProxyHandler) handleStreamResponse(w http.ResponseWriter, account *type
 }
 
 // callUpstreamStreamAPI 调用上游流式API
-func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.ProxyRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) error {
+func (h *ProxyHandler) callUpstreamStreamAPI(w http.ResponseWriter, flusher http.Flusher, account *types.UpstreamAccount, request *types.UnifiedRequest, path string, requestFormat converter.Format, keyID string, startTime time.Time, trace *debug.RequestTrace, modelRouteContext *types.ModelRouteContext) error {
 	logger.Debug("开始流式请求，上游ID: %s, Provider: %s", account.ID, account.Provider)
 
 	// 构建上游请求
@@ -474,7 +474,7 @@ func (h *ProxyHandler) writeStreamError(w http.ResponseWriter, flusher http.Flus
 }
 
 // callUpstreamAPIRaw 调用上游API并返回原始响应字节
-func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.ProxyRequest, path string, trace *debug.RequestTrace) ([]byte, error) {
+func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, request *types.UnifiedRequest, path string, trace *debug.RequestTrace) ([]byte, error) {
 	// 1. 构建上游请求
 	upstreamReq, err := h.buildUpstreamRequest(account, request, path, trace)
 	if err != nil {
@@ -508,7 +508,7 @@ func (h *ProxyHandler) callUpstreamAPIRaw(account *types.UpstreamAccount, reques
 }
 
 // buildUpstreamRequest 构建上游请求
-func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.ProxyRequest, path string, trace *debug.RequestTrace) (*http.Request, error) {
+func (h *ProxyHandler) buildUpstreamRequest(account *types.UpstreamAccount, request *types.UnifiedRequest, path string, trace *debug.RequestTrace) (*http.Request, error) {
 	// 1. 根据上游提供商转换请求格式
 	requestBody, err := h.converter.BuildUpstreamRequest(request, account.Provider)
 

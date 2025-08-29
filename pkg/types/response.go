@@ -1,7 +1,7 @@
 package types
 
-// ProxyResponse - 统一的响应结构
-type ProxyResponse struct {
+// UnifiedResponse - 统一的响应结构
+type UnifiedResponse struct {
 	ID      string           `json:"id"`
 	Object  string           `json:"object"`
 	Created int64            `json:"created"`

@@ -11,46 +11,32 @@ import (
 type Converter interface {
 	// GetFormat 获取转换器支持的格式
 	GetFormat() Format
-	
+
 	// GetUpstreamPath 根据客户端端点获取上游路径
 	GetUpstreamPath(clientEndpoint string) string
-	
+
 	// ParseRequest 解析请求到内部格式
-	ParseRequest(data []byte) (*types.ProxyRequest, error)
-	
+	ParseRequest(data []byte) (*types.UnifiedRequest, error)
+
 	// BuildRequest 构建发送给上游的请求
-	BuildRequest(request *types.ProxyRequest) ([]byte, error)
-	
+	BuildRequest(request *types.UnifiedRequest) ([]byte, error)
+
 	// ParseResponse 解析上游响应到内部格式
-	ParseResponse(data []byte) (*types.ProxyResponse, error)
-	
+	ParseResponse(data []byte) (*types.UnifiedResponse, error)
+
 	// BuildResponse 构建返回给客户端的响应
-	BuildResponse(response *types.ProxyResponse) ([]byte, error)
-	
-	// CreateStreamProcessor 创建流式处理器
-	CreateStreamProcessor() StreamProcessor
-	
+	BuildResponse(response *types.UnifiedResponse) ([]byte, error)
+
+	// ParseStreamEvent 解析流式事件到统一内部格式
+	ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error)
+
+	// BuildStreamEvent 从统一内部格式构建流式事件
+	BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error)
+
 	// ValidateRequest 验证请求格式
 	ValidateRequest(data []byte) error
-	
-	// ConvertStreamChunk 转换流数据块到目标格式
-	ConvertStreamChunk(chunk *StreamChunk, targetFormat Format) (*StreamChunk, error)
 }
 
-// StreamProcessor 流式处理器接口
-type StreamProcessor interface {
-	// GetFormat 获取处理器格式
-	GetFormat() Format
-	
-	// ProcessStream 处理流式响应
-	ProcessStream(reader io.Reader, writer StreamWriter) error
-	
-	// ProcessEvent 处理单个流式事件
-	ProcessEvent(eventType string, data []byte) (*StreamChunk, error)
-	
-	// Reset 重置处理器状态
-	Reset()
-}
 
 // StreamWriter 流式写入器接口
 type StreamWriter interface {
@@ -59,6 +45,39 @@ type StreamWriter interface {
 }
 
 // StreamChunk 统一的流式数据块
+// StreamEventType 统一流式事件类型
+type StreamEventType int
+
+const (
+	StreamEventUnknown StreamEventType = iota
+	StreamEventMessageStart
+	StreamEventContentStart
+	StreamEventContentDelta
+	StreamEventContentStop
+	StreamEventMessageStop
+)
+
+// UnifiedStreamContent 统一流式内容
+type UnifiedStreamContent struct {
+	Type      string `json:"type"`                 // text, tool_use
+	Text      string `json:"text,omitempty"`       // 文本内容
+	ToolName  string `json:"tool_name,omitempty"`  // 工具名称
+	ToolID    string `json:"tool_id,omitempty"`    // 工具ID
+	ToolInput string `json:"tool_input,omitempty"` // 工具输入(JSON字符串)
+	Index     int    `json:"index"`                // 内容块索引
+}
+
+// UnifiedStreamEvent 统一内部流式事件
+type UnifiedStreamEvent struct {
+	Type      StreamEventType       `json:"type"`
+	Content   *UnifiedStreamContent `json:"content,omitempty"`
+	MessageID string                `json:"message_id,omitempty"`
+	Model     string                `json:"model,omitempty"`
+	Usage     map[string]int        `json:"usage,omitempty"`
+	IsDone    bool                  `json:"is_done"`
+}
+
+// StreamChunk 流式数据块 (保持向后兼容)
 type StreamChunk struct {
 	EventType string      `json:"event_type,omitempty"` // Anthropic事件类型
 	Data      interface{} `json:"data"`                 // 事件数据
@@ -77,10 +96,10 @@ type ConverterRegistry interface {
 type CrossConverter interface {
 	// ConvertRequest 跨格式请求转换
 	ConvertRequest(from, to Format, data []byte) ([]byte, error)
-	
+
 	// ConvertResponse 跨格式响应转换
 	ConvertResponse(from, to Format, data []byte) ([]byte, error)
-	
+
 	// ConvertStream 跨格式流式转换
 	ConvertStream(from, to Format, reader io.Reader, writer StreamWriter) error
 }
@@ -95,11 +114,11 @@ func NewConverterRegistry() ConverterRegistry {
 	registry := &defaultConverterRegistry{
 		converters: make(map[Format]Converter),
 	}
-	
+
 	// 注册内置转换器
 	registry.Register(FormatOpenAI, NewOpenAIConverter())
 	registry.Register(FormatAnthropic, NewAnthropicConverter())
-	
+
 	return registry
 }
 
