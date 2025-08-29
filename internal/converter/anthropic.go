@@ -10,8 +10,14 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// AnthropicConverter Anthropic格式转换器
+// AnthropicConverter Anthropic格式转换器工厂
 type AnthropicConverter struct{}
+
+// AnthropicStreamConverter Anthropic流式转换器（有状态）  
+type AnthropicStreamConverter struct {
+	messageStartSent      bool
+	contentBlockStartSent bool
+}
 
 // NewAnthropicConverter 创建Anthropic转换器
 func NewAnthropicConverter() *AnthropicConverter {
@@ -747,8 +753,13 @@ func (c *AnthropicConverter) convertFinishReason(finishReason string) string {
 	}
 }
 
+// NewStreamConverter 创建新的流式转换器实例
+func (c *AnthropicConverter) NewStreamConverter() StreamConverter {
+	return &AnthropicStreamConverter{}
+}
+
 // ParseStreamEvent 解析Anthropic流式事件到统一内部格式
-func (c *AnthropicConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
+func (sc *AnthropicStreamConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
 	var eventData map[string]interface{}
 	if err := json.Unmarshal(data, &eventData); err != nil {
 		return nil, fmt.Errorf("解析事件数据失败: %w", err)
@@ -811,7 +822,7 @@ func (c *AnthropicConverter) ParseStreamEvent(eventType string, data []byte) ([]
 }
 
 // BuildStreamEvent 从统一内部格式构建Anthropic流式事件
-func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
+func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
 	switch event.Type {
 	case StreamEventMessageStart:
 		messageStart := map[string]interface{}{
@@ -864,7 +875,6 @@ func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*Strea
 					"name":  toolName,
 					"input": map[string]interface{}{},
 				}
-				fmt.Printf("[DEBUG Anthropic] Building content_block_start for tool: ID=%s, Name=%s\n", toolID, toolName)
 			}
 			
 			contentBlockStart := map[string]interface{}{
@@ -886,8 +896,6 @@ func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*Strea
 		if event.Content != nil {
 			var delta map[string]interface{}
 			
-			fmt.Printf("[DEBUG Anthropic] Building content_block_delta: Type=%s, Text='%s', ToolInput='%s'\n", 
-				event.Content.Type, event.Content.Text, event.Content.ToolInput)
 
 			if event.Content.Type == "text" {
 				delta = map[string]interface{}{
@@ -916,7 +924,6 @@ func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*Strea
 		}
 
 	case StreamEventContentStop:
-		fmt.Printf("[DEBUG Anthropic] Building content_block_stop\n")
 		contentBlockStop := map[string]interface{}{
 			"type":  "content_block_stop",
 			"index": 0,
@@ -932,7 +939,6 @@ func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*Strea
 		}, nil
 		
 	case StreamEventMessageStop:
-		fmt.Printf("[DEBUG Anthropic] Building message_stop\n")
 		messageStop := map[string]interface{}{
 			"type": "message_stop",
 		}
@@ -946,6 +952,57 @@ func (c *AnthropicConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*Strea
 	}
 
 	return nil, nil
+}
+
+// NeedPreEvents 返回需要自动生成的前置事件
+func (sc *AnthropicStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent {
+	var events []*UnifiedStreamEvent
+	
+	// Anthropic需要严格的事件顺序
+	if event.Type == StreamEventContentDelta || event.Type == StreamEventContentStart {
+		// 如果还没发送message_start，需要先发送
+		if !sc.messageStartSent {
+			sc.messageStartSent = true
+			events = append(events, &UnifiedStreamEvent{
+				Type:      StreamEventMessageStart,
+				MessageID: "auto-generated-id",
+				Model:     "unknown-model",
+			})
+		}
+		
+		// 如果是ContentDelta但还没发送content_block_start，需要先发送
+		if event.Type == StreamEventContentDelta && !sc.contentBlockStartSent {
+			sc.contentBlockStartSent = true
+			
+			contentType := "text"
+			contentIndex := 0
+			
+			if event.Content != nil {
+				contentType = event.Content.Type
+				contentIndex = event.Content.Index
+			}
+			
+			events = append(events, &UnifiedStreamEvent{
+				Type: StreamEventContentStart,
+				Content: &UnifiedStreamContent{
+					Type:  contentType,
+					Index: contentIndex,
+				},
+			})
+		}
+	}
+	
+	// 如果是ContentStart，标记已发送
+	if event.Type == StreamEventContentStart {
+		sc.contentBlockStartSent = true
+	}
+	
+	// 如果是ContentStop，重置contentBlockStartSent
+	if event.Type == StreamEventContentStop {
+		sc.contentBlockStartSent = false
+	}
+	
+	return events
 }
 
 // getString 安全地获取字符串值

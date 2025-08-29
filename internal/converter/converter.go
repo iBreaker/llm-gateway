@@ -27,14 +27,27 @@ type Converter interface {
 	// BuildResponse 构建返回给客户端的响应
 	BuildResponse(response *types.UnifiedResponse) ([]byte, error)
 
+	// ValidateRequest 验证请求格式
+	ValidateRequest(data []byte) error
+}
+
+// StreamConverter 流式转换器接口（有状态）
+type StreamConverter interface {
 	// ParseStreamEvent 解析流式事件到统一内部格式
 	ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error)
 
 	// BuildStreamEvent 从统一内部格式构建流式事件
 	BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error)
 
-	// ValidateRequest 验证请求格式
-	ValidateRequest(data []byte) error
+	// NeedPreEvents 返回需要自动生成的前置事件
+	NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent
+}
+
+// ConverterFactory 转换器工厂接口
+type ConverterFactory interface {
+	Converter
+	// NewStreamConverter 为每个流创建新的转换器实例
+	NewStreamConverter() StreamConverter
 }
 
 

@@ -2,7 +2,6 @@ package converter
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"strings"
 )
@@ -10,6 +9,16 @@ import (
 // ProcessSSEStream 处理SSE流的工具函数
 // 解析SSE协议，委托给converter处理格式转换
 func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter) error {
+	// 检查converter是否实现了ConverterFactory接口
+	factory, ok := converter.(ConverterFactory)
+	if !ok {
+		// 如果不支持流式转换，返回错误
+		return nil
+	}
+	
+	// 创建流式转换器实例
+	streamConverter := factory.NewStreamConverter()
+	
 	supportNamedEvents := converter.GetFormat() == FormatAnthropic
 	
 	scanner := bufio.NewScanner(reader)
@@ -32,7 +41,7 @@ func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter
 				if strings.HasPrefix(dataLine, "data: ") {
 					data := dataLine[6:]
 
-					if err := processSSEEvent(eventType, []byte(data), converter, writer); err != nil {
+					if err := processSSEEvent(eventType, []byte(data), streamConverter, writer); err != nil {
 						return err
 					}
 
@@ -50,7 +59,7 @@ func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter
 				return writer.WriteDone()
 			}
 
-			if err := processSSEEvent("", []byte(data), converter, writer); err != nil {
+			if err := processSSEEvent("", []byte(data), streamConverter, writer); err != nil {
 				return err
 			}
 		}
@@ -60,14 +69,9 @@ func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter
 }
 
 // processSSEEvent 处理单个SSE事件
-func processSSEEvent(eventType string, data []byte, converter Converter, writer StreamWriter) error {
-	// 调试：打印原始SSE数据
-	if len(data) > 0 && len(data) < 1000 {
-		fmt.Printf("[DEBUG SSE] eventType: %s, data: %s\n", eventType, string(data))
-	}
-	
+func processSSEEvent(eventType string, data []byte, streamConverter StreamConverter, writer StreamWriter) error {
 	// 委托给转换器解析
-	unifiedEvents, err := converter.ParseStreamEvent(eventType, data)
+	unifiedEvents, err := streamConverter.ParseStreamEvent(eventType, data)
 	if err != nil {
 		return nil // 跳过无法解析的事件
 	}

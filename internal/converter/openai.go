@@ -7,8 +7,14 @@ import (
 	"github.com/iBreaker/llm-gateway/pkg/types"
 )
 
-// OpenAIConverter OpenAI格式转换器
-type OpenAIConverter struct {}
+// OpenAIConverter OpenAI格式转换器工厂
+type OpenAIConverter struct{}
+
+// OpenAIStreamConverter OpenAI流式转换器（有状态）
+type OpenAIStreamConverter struct {
+	currentToolID   string
+	currentToolName string
+}
 
 // NewOpenAIConverter 创建OpenAI转换器
 func NewOpenAIConverter() *OpenAIConverter {
@@ -183,8 +189,13 @@ func (c *OpenAIConverter) convertTools(tools []map[string]interface{}) []map[str
 	return converted
 }
 
+// NewStreamConverter 创建新的流式转换器实例
+func (c *OpenAIConverter) NewStreamConverter() StreamConverter {
+	return &OpenAIStreamConverter{}
+}
+
 // ParseStreamEvent 解析OpenAI流式事件到统一内部格式
-func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
+func (sc *OpenAIStreamConverter) ParseStreamEvent(eventType string, data []byte) ([]*UnifiedStreamEvent, error) {
 	var eventData map[string]interface{}
 	if err := json.Unmarshal(data, &eventData); err != nil {
 		return nil, fmt.Errorf("解析事件数据失败: %w", err)
@@ -199,7 +210,7 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 			// 检查finish_reason确定是否结束
 			if finishReason, ok := choice["finish_reason"]; ok && finishReason != nil {
 				events := []*UnifiedStreamEvent{}
-				
+
 				// 先发送ContentStop（无论是工具调用还是普通文本）
 				events = append(events, &UnifiedStreamEvent{
 					Type: StreamEventContentStop,
@@ -207,13 +218,13 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 						Index: 0,
 					},
 				})
-				
+
 				// 然后发送MessageStop（不设置IsDone，让[DONE]来触发结束）
 				events = append(events, &UnifiedStreamEvent{
 					Type:   StreamEventMessageStop,
 					IsDone: false,
 				})
-				
+
 				return events, nil
 			}
 
@@ -232,18 +243,17 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 			// 处理工具调用增量
 			if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 				toolCall := toolCalls[0].(map[string]interface{})
-				
+
 				// 提取工具调用ID（如果存在）
 				toolID, _ := toolCall["id"].(string)
-				
+
 				if function, ok := toolCall["function"].(map[string]interface{}); ok {
 					// 提取工具名称（第一次调用时会有）
 					toolName, _ := function["name"].(string)
 					arguments, _ := function["arguments"].(string)
-					
+
 					// 如果有工具名称，说明这是第一个chunk，需要生成ContentStart事件
 					if toolName != "" {
-						fmt.Printf("[DEBUG OpenAI] Found tool call: ID=%s, Name=%s\n", toolID, toolName)
 						events := []*UnifiedStreamEvent{
 							{
 								Type: StreamEventContentStart,
@@ -255,10 +265,9 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 								},
 							},
 						}
-						
+
 						// 如果同时有arguments，也生成ContentDelta事件
 						if arguments != "" {
-							fmt.Printf("[DEBUG OpenAI] First chunk also has arguments: %s\n", arguments)
 							events = append(events, &UnifiedStreamEvent{
 								Type: StreamEventContentDelta,
 								Content: &UnifiedStreamContent{
@@ -268,11 +277,10 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 								},
 							})
 						}
-						
-						fmt.Printf("[DEBUG OpenAI] Returning %d events from first tool chunk\n", len(events))
+
 						return events, nil
 					}
-					
+
 					// 只有arguments的增量更新
 					if arguments != "" {
 						return []*UnifiedStreamEvent{{
@@ -292,9 +300,8 @@ func (c *OpenAIConverter) ParseStreamEvent(eventType string, data []byte) ([]*Un
 	return nil, nil // 跳过不识别的事件
 }
 
-
 // BuildStreamEvent 从统一内部格式构建OpenAI流式事件
-func (c *OpenAIConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
+func (sc *OpenAIStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamChunk, error) {
 	switch event.Type {
 	case StreamEventContentDelta:
 		if event.Content != nil {
@@ -355,4 +362,10 @@ func (c *OpenAIConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*StreamCh
 	}
 
 	return nil, nil
+}
+
+// NeedPreEvents 返回需要自动生成的前置事件
+func (sc *OpenAIStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent {
+	// OpenAI格式不需要额外的前置事件
+	return nil
 }
