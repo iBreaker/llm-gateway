@@ -63,22 +63,22 @@ func matchPattern(pattern, str string) bool {
 	if pattern == "" || str == "" {
 		return false
 	}
-	
+
 	// 防止DoS攻击，限制模式长度
 	if len(pattern) > 1000 || len(str) > 1000 {
 		return false
 	}
-	
+
 	// 完全匹配通配符
 	if pattern == "*" {
 		return true
 	}
-	
+
 	// 精确匹配
 	if pattern == str {
 		return true
 	}
-	
+
 	// 后缀通配符匹配
 	if len(pattern) > 1 && pattern[len(pattern)-1] == '*' {
 		prefix := pattern[:len(pattern)-1]
@@ -88,7 +88,7 @@ func matchPattern(pattern, str string) bool {
 		}
 		return str[:len(prefix)] == prefix
 	}
-	
+
 	return false
 }
 
@@ -105,9 +105,9 @@ type ModelRouteConfig struct {
 
 	// 内部优化索引（不序列化）
 	exactMatches   map[string]*ModelRoute `yaml:"-" json:"-"`
-	prefixMatches  []*prefixEntry        `yaml:"-" json:"-"`
-	wildcardRoutes []*ModelRoute         `yaml:"-" json:"-"`
-	initialized    bool                  `yaml:"-" json:"-"`
+	prefixMatches  []*prefixEntry         `yaml:"-" json:"-"`
+	wildcardRoutes []*ModelRoute          `yaml:"-" json:"-"`
+	initialized    bool                   `yaml:"-" json:"-"`
 }
 
 // prefixEntry 前缀匹配项
@@ -212,7 +212,7 @@ func (config *ModelRouteConfig) CreateContext(originalModel string) *ModelRouteC
 	if originalModel == "" {
 		return nil
 	}
-	
+
 	route := config.FindRoute(originalModel)
 	if route == nil {
 		return nil
@@ -232,7 +232,7 @@ func (config *ModelRouteConfig) Validate() error {
 	if config == nil {
 		return fmt.Errorf("配置对象为空")
 	}
-	
+
 	// 验证默认行为
 	switch config.DefaultBehavior {
 	case "", "passthrough", "reject":
@@ -240,14 +240,14 @@ func (config *ModelRouteConfig) Validate() error {
 	default:
 		return fmt.Errorf("无效的默认行为: %s，必须是 passthrough 或 reject", config.DefaultBehavior)
 	}
-	
+
 	// 验证路由规则
 	idSet := make(map[string]bool)
 	for i, route := range config.Routes {
 		if err := route.validate(); err != nil {
 			return fmt.Errorf("路由规则 [%d] 验证失败: %w", i, err)
 		}
-		
+
 		// 检查ID唯一性
 		if route.ID != "" {
 			if idSet[route.ID] {
@@ -256,10 +256,10 @@ func (config *ModelRouteConfig) Validate() error {
 			idSet[route.ID] = true
 		}
 	}
-	
+
 	// 验证成功后重置索引，确保配置变更时重新初始化
 	config.ResetIndices()
-	
+
 	return nil
 }
 
@@ -268,33 +268,33 @@ func (route *ModelRoute) validate() error {
 	if route == nil {
 		return fmt.Errorf("路由规则为空")
 	}
-	
+
 	if route.ID == "" {
 		return fmt.Errorf("路由规则ID不能为空")
 	}
-	
+
 	if route.SourceModel == "" {
 		return fmt.Errorf("源模型不能为空")
 	}
-	
+
 	if route.TargetModel == "" {
 		return fmt.Errorf("目标模型不能为空")
 	}
-	
+
 	// 验证模型名长度
 	if len(route.SourceModel) > 200 {
 		return fmt.Errorf("源模型名称过长 (>200字符): %s", route.SourceModel)
 	}
-	
+
 	if len(route.TargetModel) > 200 {
 		return fmt.Errorf("目标模型名称过长 (>200字符): %s", route.TargetModel)
 	}
-	
+
 	// 验证优先级范围
 	if route.Priority < 0 {
 		return fmt.Errorf("优先级不能为负数: %d", route.Priority)
 	}
-	
+
 	// 验证提供商
 	switch route.TargetProvider {
 	case ProviderOpenAI, ProviderAnthropic, ProviderQwen:
@@ -302,6 +302,6 @@ func (route *ModelRoute) validate() error {
 	default:
 		return fmt.Errorf("不支持的目标提供商: %s", route.TargetProvider)
 	}
-	
+
 	return nil
 }

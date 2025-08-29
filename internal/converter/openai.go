@@ -12,8 +12,7 @@ type OpenAIConverter struct{}
 
 // OpenAIStreamConverter OpenAI流式转换器（有状态）
 type OpenAIStreamConverter struct {
-	currentToolID   string
-	currentToolName string
+	// 目前OpenAI转换器不需要保存状态，保留结构体以便将来扩展
 }
 
 // NewOpenAIConverter 创建OpenAI转换器
@@ -307,11 +306,12 @@ func (sc *OpenAIStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) (*S
 		if event.Content != nil {
 			var delta map[string]interface{}
 
-			if event.Content.Type == "text" {
+			switch event.Content.Type {
+			case "text":
 				delta = map[string]interface{}{
 					"content": event.Content.Text,
 				}
-			} else if event.Content.Type == "tool_use" {
+			case "tool_use":
 				delta = map[string]interface{}{
 					"tool_calls": []interface{}{
 						map[string]interface{}{

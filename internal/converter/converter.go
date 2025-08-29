@@ -50,7 +50,6 @@ type ConverterFactory interface {
 	NewStreamConverter() StreamConverter
 }
 
-
 // StreamWriter 流式写入器接口
 type StreamWriter interface {
 	WriteChunk(chunk *StreamChunk) error

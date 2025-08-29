@@ -15,12 +15,12 @@ func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter
 		// 如果不支持流式转换，返回错误
 		return nil
 	}
-	
+
 	// 创建流式转换器实例
 	streamConverter := factory.NewStreamConverter()
-	
+
 	supportNamedEvents := converter.GetFormat() == FormatAnthropic
-	
+
 	scanner := bufio.NewScanner(reader)
 
 	for scanner.Scan() {
@@ -34,7 +34,7 @@ func ProcessSSEStream(reader io.Reader, converter Converter, writer StreamWriter
 		// 处理命名事件（Anthropic风格）
 		if supportNamedEvents && strings.HasPrefix(line, "event: ") {
 			eventType := line[7:] // 移除"event: "前缀
-			
+
 			// 读取下一行的data
 			if scanner.Scan() {
 				dataLine := scanner.Text()
@@ -86,7 +86,7 @@ func processSSEEvent(eventType string, data []byte, streamConverter StreamConver
 				Data:      unifiedEvent,
 				IsDone:    unifiedEvent.IsDone,
 			}
-			
+
 			if err := writer.WriteChunk(chunk); err != nil {
 				return err
 			}
@@ -96,6 +96,6 @@ func processSSEEvent(eventType string, data []byte, streamConverter StreamConver
 			}
 		}
 	}
-	
+
 	return nil
 }

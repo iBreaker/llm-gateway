@@ -306,14 +306,14 @@ func (m *UpstreamManager) GetBaseURL(account *types.UpstreamAccount) string {
 	if account.BaseURL != "" {
 		return account.BaseURL
 	}
-	
+
 	// 2. Qwen OAuth特殊处理 - 使用resource_url
 	if account.Provider == types.ProviderQwen && account.Type == types.UpstreamTypeOAuth {
 		if account.ResourceURL != "" {
 			return account.ResourceURL
 		}
 	}
-	
+
 	// 3. 根据提供商返回默认BaseURL
 	return m.getDefaultBaseURL(account.Provider)
 }

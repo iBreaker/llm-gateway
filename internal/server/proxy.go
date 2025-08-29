@@ -23,12 +23,12 @@ import (
 
 // ProxyHandler 代理处理器
 type ProxyHandler struct {
-	gatewayKeyMgr     *client.GatewayKeyManager
-	upstreamMgr       *upstream.UpstreamManager
-	router            *router.RequestRouter
-	converter         *converter.Manager
-	httpClient        *http.Client
-	modelRouteConfig  *types.ModelRouteConfig
+	gatewayKeyMgr    *client.GatewayKeyManager
+	upstreamMgr      *upstream.UpstreamManager
+	router           *router.RequestRouter
+	converter        *converter.Manager
+	httpClient       *http.Client
+	modelRouteConfig *types.ModelRouteConfig
 }
 
 // httpStreamWriter HTTP流式写入器

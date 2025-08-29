@@ -49,7 +49,7 @@ func TestRequestConsistency(t *testing.T) {
 				t.Errorf("格式检测不一致: 期望 %s, 得到 %s", format, detectedFormat)
 			}
 
-			// 步骤2: 中间格式 -> 原始格式  
+			// 步骤2: 中间格式 -> 原始格式
 			var rebuiltData []byte
 			converter, err := manager.GetRegistry().Get(format)
 			if err != nil {

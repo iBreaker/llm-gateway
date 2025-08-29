@@ -10,8 +10,8 @@ import (
 
 // Manager 转换器管理器 - 系统的主要入口点
 type Manager struct {
-	registry      ConverterRegistry
-	detector      *FormatDetector
+	registry       ConverterRegistry
+	detector       *FormatDetector
 	crossConverter CrossConverter
 }
 
@@ -56,7 +56,7 @@ func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		if err := m.applyModelRouteToRequest(request, modelRouteContext); err != nil {
 			// 记录错误但不中断处理，使用原始模型继续
-			logger.Warn("模型路由应用失败，使用原始模型 %s 继续: %v", 
+			logger.Warn("模型路由应用失败，使用原始模型 %s 继续: %v",
 				request.Model, err)
 		}
 	}
@@ -68,7 +68,7 @@ func (m *Manager) ParseRequestWithModelRoute(requestBody []byte, endpoint string
 func (m *Manager) BuildUpstreamRequest(request *types.UnifiedRequest, provider types.Provider) ([]byte, error) {
 	// 根据提供商确定上游格式
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	converter, err := m.registry.Get(upstreamFormat)
 	if err != nil {
 		return nil, fmt.Errorf("获取上游转换器失败: %w", err)
@@ -80,7 +80,7 @@ func (m *Manager) BuildUpstreamRequest(request *types.UnifiedRequest, provider t
 // ParseUpstreamResponse 解析上游响应
 func (m *Manager) ParseUpstreamResponse(responseBody []byte, provider types.Provider) (*types.UnifiedResponse, error) {
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	converter, err := m.registry.Get(upstreamFormat)
 	if err != nil {
 		return nil, fmt.Errorf("获取上游转换器失败: %w", err)
@@ -168,16 +168,16 @@ func (m *Manager) ProcessStream(reader io.Reader, provider types.Provider, clien
 // ProcessStreamWithModelRoute 处理流式响应并应用模型路由
 func (m *Manager) ProcessStreamWithModelRoute(reader io.Reader, provider types.Provider, clientFormat Format, writer StreamWriter, modelRouteContext *types.ModelRouteContext) error {
 	upstreamFormat := m.getProviderFormat(provider)
-	
+
 	// 如果需要模型替换，包装writer
 	if modelRouteContext != nil && modelRouteContext.HasModelRoute() {
 		writer = &modelReplaceStreamWriter{
-			originalWriter:     writer,
+			originalWriter:    writer,
 			modelRouteContext: modelRouteContext,
 			format:            clientFormat,
 		}
 	}
-	
+
 	return m.crossConverter.ConvertStream(upstreamFormat, clientFormat, reader, writer)
 }
 
@@ -209,26 +209,25 @@ func (m *Manager) GetUpstreamPath(provider types.Provider, clientEndpoint string
 	if err != nil {
 		return "", fmt.Errorf("获取提供商转换器失败: %w", err)
 	}
-	
+
 	return converter.GetUpstreamPath(clientEndpoint), nil
 }
-
 
 // applyModelRouteToRequest 对请求应用模型路由
 func (m *Manager) applyModelRouteToRequest(request *types.UnifiedRequest, modelRouteContext *types.ModelRouteContext) error {
 	if modelRouteContext == nil {
 		return fmt.Errorf("模型路由上下文为空")
 	}
-	
+
 	if !modelRouteContext.HasModelRoute() {
 		logger.Debug("模型路由未启用或配置不完整")
 		return nil
 	}
-	
+
 	if request == nil {
 		return fmt.Errorf("请求对象为空")
 	}
-	
+
 	if request.Model == "" {
 		return fmt.Errorf("请求模型名称为空")
 	}
@@ -237,13 +236,13 @@ func (m *Manager) applyModelRouteToRequest(request *types.UnifiedRequest, modelR
 	if request.Model == modelRouteContext.OriginalModel {
 		originalModel := request.Model
 		request.Model = modelRouteContext.TargetModel
-		logger.Info("模型路由应用成功: %s -> %s (规则ID: %s)", 
+		logger.Info("模型路由应用成功: %s -> %s (规则ID: %s)",
 			originalModel, modelRouteContext.TargetModel, modelRouteContext.RouteRuleID)
 	} else {
-		logger.Debug("请求模型 %s 与路由原始模型 %s 不匹配，跳过替换", 
+		logger.Debug("请求模型 %s 与路由原始模型 %s 不匹配，跳过替换",
 			request.Model, modelRouteContext.OriginalModel)
 	}
-	
+
 	return nil
 }
 
@@ -261,7 +260,7 @@ func (m *Manager) restoreModelInResponse(response *types.UnifiedResponse, modelR
 
 // modelReplaceStreamWriter 模型替换流式写入器
 type modelReplaceStreamWriter struct {
-	originalWriter     StreamWriter
+	originalWriter    StreamWriter
 	modelRouteContext *types.ModelRouteContext
 	format            Format
 }
@@ -315,4 +314,3 @@ func (m *Manager) getProviderFormat(provider types.Provider) Format {
 		return FormatOpenAI // 默认OpenAI格式，Qwen等也使用此格式
 	}
 }
-

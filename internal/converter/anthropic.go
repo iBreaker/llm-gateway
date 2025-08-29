@@ -13,7 +13,7 @@ import (
 // AnthropicConverter Anthropic格式转换器工厂
 type AnthropicConverter struct{}
 
-// AnthropicStreamConverter Anthropic流式转换器（有状态）  
+// AnthropicStreamConverter Anthropic流式转换器（有状态）
 type AnthropicStreamConverter struct {
 	messageStartSent      bool
 	contentBlockStartSent bool
@@ -814,7 +814,7 @@ func (sc *AnthropicStreamConverter) ParseStreamEvent(eventType string, data []by
 	case "message_stop":
 		return []*UnifiedStreamEvent{{
 			Type:   StreamEventMessageStop,
-			IsDone: false,  // 不设置IsDone，让[DONE]来触发结束
+			IsDone: false, // 不设置IsDone，让[DONE]来触发结束
 		}}, nil
 	}
 
@@ -852,13 +852,14 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 	case StreamEventContentStart:
 		if event.Content != nil {
 			var contentBlock map[string]interface{}
-			
-			if event.Content.Type == "text" {
+
+			switch event.Content.Type {
+			case "text":
 				contentBlock = map[string]interface{}{
 					"type": "text",
 					"text": "",
 				}
-			} else if event.Content.Type == "tool_use" {
+			case "tool_use":
 				// 如果没有提供工具ID或名称，生成默认值
 				toolID := event.Content.ToolID
 				if toolID == "" {
@@ -868,7 +869,7 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 				if toolName == "" {
 					toolName = "unknown_tool"
 				}
-				
+
 				contentBlock = map[string]interface{}{
 					"type":  "tool_use",
 					"id":    toolID,
@@ -876,13 +877,13 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 					"input": map[string]interface{}{},
 				}
 			}
-			
+
 			contentBlockStart := map[string]interface{}{
 				"type":          "content_block_start",
 				"index":         event.Content.Index,
 				"content_block": contentBlock,
 			}
-			
+
 			return &StreamChunk{
 				EventType: "content_block_start",
 				Data:      contentBlockStart,
@@ -895,14 +896,14 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 	case StreamEventContentDelta:
 		if event.Content != nil {
 			var delta map[string]interface{}
-			
 
-			if event.Content.Type == "text" {
+			switch event.Content.Type {
+			case "text":
 				delta = map[string]interface{}{
 					"type": "text_delta",
 					"text": event.Content.Text,
 				}
-			} else if event.Content.Type == "tool_use" {
+			case "tool_use":
 				delta = map[string]interface{}{
 					"type":         "input_json_delta",
 					"partial_json": event.Content.ToolInput,
@@ -937,7 +938,7 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 			Tokens:    0,
 			IsDone:    false,
 		}, nil
-		
+
 	case StreamEventMessageStop:
 		messageStop := map[string]interface{}{
 			"type": "message_stop",
@@ -947,7 +948,7 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 			EventType: "message_stop",
 			Data:      messageStop,
 			Tokens:    0,
-			IsDone:    false,  // 不设置IsDone，让[DONE]来触发结束
+			IsDone:    false, // 不设置IsDone，让[DONE]来触发结束
 		}, nil
 	}
 
@@ -957,7 +958,7 @@ func (sc *AnthropicStreamConverter) BuildStreamEvent(event *UnifiedStreamEvent) 
 // NeedPreEvents 返回需要自动生成的前置事件
 func (sc *AnthropicStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*UnifiedStreamEvent {
 	var events []*UnifiedStreamEvent
-	
+
 	// Anthropic需要严格的事件顺序
 	if event.Type == StreamEventContentDelta || event.Type == StreamEventContentStart {
 		// 如果还没发送message_start，需要先发送
@@ -969,19 +970,19 @@ func (sc *AnthropicStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*
 				Model:     "unknown-model",
 			})
 		}
-		
+
 		// 如果是ContentDelta但还没发送content_block_start，需要先发送
 		if event.Type == StreamEventContentDelta && !sc.contentBlockStartSent {
 			sc.contentBlockStartSent = true
-			
+
 			contentType := "text"
 			contentIndex := 0
-			
+
 			if event.Content != nil {
 				contentType = event.Content.Type
 				contentIndex = event.Content.Index
 			}
-			
+
 			events = append(events, &UnifiedStreamEvent{
 				Type: StreamEventContentStart,
 				Content: &UnifiedStreamContent{
@@ -991,17 +992,17 @@ func (sc *AnthropicStreamConverter) NeedPreEvents(event *UnifiedStreamEvent) []*
 			})
 		}
 	}
-	
+
 	// 如果是ContentStart，标记已发送
 	if event.Type == StreamEventContentStart {
 		sc.contentBlockStartSent = true
 	}
-	
+
 	// 如果是ContentStop，重置contentBlockStartSent
 	if event.Type == StreamEventContentStop {
 		sc.contentBlockStartSent = false
 	}
-	
+
 	return events
 }
 

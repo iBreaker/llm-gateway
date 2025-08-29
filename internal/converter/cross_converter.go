@@ -152,7 +152,7 @@ type crossFormatWriter struct {
 // WriteChunk 写入转换后的数据块
 func (w *crossFormatWriter) WriteChunk(chunk *StreamChunk) error {
 	var unifiedEvents []*UnifiedStreamEvent
-	
+
 	// 检查chunk.Data是否已经是UnifiedStreamEvent
 	if unifiedEvent, ok := chunk.Data.(*UnifiedStreamEvent); ok {
 		// 数据已经是统一格式，直接使用
@@ -191,7 +191,7 @@ func (w *crossFormatWriter) WriteChunk(chunk *StreamChunk) error {
 				}
 			}
 		}
-		
+
 		// 用目标转换器将统一格式转换为目标格式
 		result, err := w.targetStream.BuildStreamEvent(unifiedEvent)
 		if err != nil {
