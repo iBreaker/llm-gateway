@@ -7,7 +7,9 @@
 ## 🌟 Features
 
 - **Multi-Provider Support**: Seamlessly integrate with Anthropic, OpenAI, Google, and Azure LLMs
-- **Format Auto-Detection**: Automatically detects and converts between different API formats (OpenAI ↔ Anthropic)
+- **Unified Format Architecture**: Advanced bi-directional format conversion with unified internal representation
+- **Streaming Support**: Full support for Server-Sent Events (SSE) with intelligent event ordering and tool calling
+- **Stateful Stream Processing**: Per-stream converter instances with proper state management for consistent streaming
 - **Intelligent Load Balancing**: Health-first routing strategy with automatic failover
 - **OAuth & API Key Support**: Supports both standard API keys and OAuth flows (including Claude Code integration)
 - **CLI Management**: Comprehensive command-line interface for account and key management
@@ -17,13 +19,22 @@
 ## 🏗️ Architecture
 
 ```
-Client Request (Any Format) → Format Detection → Account Selection → Request Transform → Upstream Call → Response Transform → Client Response
+Client Request (Any Format) → Format Detection → Unified Internal Format → Account Selection → Provider-Specific Format → Upstream Call → Streaming Response Processing → Client Response
+```
+
+### Stream Processing Architecture
+
+```
+Streaming Request → Create Stream Converter → Parse SSE Events → Unified Stream Events → Provider-Specific Events → Client Stream
 ```
 
 ### Key Components
 
 - **Server**: HTTP proxy server with middleware chain (Auth → Rate Limit → CORS → Logging)
-- **Converter**: Bi-directional format conversion between OpenAI and Anthropic APIs
+- **Converter Manager**: Factory-based converter system with unified internal formats
+  - **Format Detection**: Automatic request/response format identification
+  - **Stream Converters**: Stateful per-stream processing with event ordering
+  - **Cross-Format Processing**: Intelligent event generation and state management
 - **Router**: Intelligent upstream selection with health monitoring
 - **Client Manager**: Gateway API key management and authentication  
 - **Upstream Manager**: Multi-provider account management with OAuth support
@@ -88,11 +99,42 @@ docker run -p 3847:3847 -v $(pwd)/config:/app/config llm-gateway
 ### 5. Test with OpenAI-Compatible Request
 
 ```bash
+# Standard completion request
 curl -X POST http://localhost:3847/v1/chat/completions \
   -H "Authorization: Bearer your-gateway-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-sonnet-20240229",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+
+# Streaming request with tool calling
+curl -X POST http://localhost:3847/v1/chat/completions \
+  -H "Authorization: Bearer your-gateway-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-sonnet-20240229",
+    "messages": [{"role": "user", "content": "What is the weather like?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {"type": "object", "properties": {}}
+      }
+    }],
+    "stream": true,
+    "max_tokens": 100
+  }'
+
+# Native Anthropic format request
+curl -X POST http://localhost:3847/v1/messages \
+  -H "Authorization: Bearer your-gateway-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-sonnet-20240229",
+    "system": "You are a helpful assistant.",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'
@@ -213,8 +255,15 @@ environment:
 ### Supported Request Formats
 
 The gateway automatically detects and converts between:
-- **OpenAI Format**: Compatible with OpenAI GPT models
-- **Anthropic Format**: Native Anthropic Claude API format
+- **OpenAI Format**: Compatible with OpenAI GPT models and OpenAI-compatible providers (Qwen, etc.)
+- **Anthropic Format**: Native Anthropic Claude API format with full system message support
+
+#### Advanced Streaming Features
+
+- **Intelligent Event Ordering**: Ensures proper Anthropic event sequences (message_start → content_block_start → content_block_delta → content_block_stop → message_stop)
+- **Tool Calling Support**: Seamless conversion of tool/function calls between OpenAI and Anthropic formats
+- **State Management**: Per-stream converter instances prevent state pollution between concurrent streams
+- **Event Generation**: Automatic insertion of missing events for format compatibility
 
 ### Authentication
 
@@ -233,9 +282,17 @@ go test ./...
 go test -cover ./...
 
 # Run specific test suites
-go test ./internal/converter/...
-go test ./internal/client/...
-go test ./internal/upstream/...
+go test ./internal/converter/...           # Format conversion tests
+go test ./internal/client/...              # API key management tests  
+go test ./internal/upstream/...            # Upstream account tests
+go test ./tests/...                        # Integration tests
+
+# Run consistency tests (format round-trip validation)
+go test ./internal/converter/ -run TestRequestConsistency
+go test ./internal/converter/ -run TestSpecificFieldPreservation
+
+# Run streaming tests
+go test ./internal/converter/ -run TestStreamProcessing
 
 # Integration tests
 ./scripts/integration-test.sh
@@ -265,6 +322,50 @@ The gateway implements a health-first routing strategy:
 - **Usage Statistics**: Request counts, success rates, and latency tracking
 - **Health Metrics**: Account status and performance monitoring
 - **Error Tracking**: Detailed error logging and categorization
+- **Stream Debugging**: Detailed logging for streaming request processing and format conversion
+
+## 🔧 Troubleshooting
+
+### Common Streaming Issues
+
+**Problem**: "Content block not found" error in streaming responses
+- **Cause**: Missing `content_block_start` events in Anthropic format streams
+- **Solution**: The gateway now automatically generates missing events using the NeedPreEvents mechanism
+
+**Problem**: Tool calling not working in streaming mode
+- **Cause**: Tool names/IDs may be distributed across multiple stream chunks
+- **Solution**: The gateway buffers and reassembles tool information from initial chunks
+
+**Problem**: "request ended without sending any chunks" error
+- **Cause**: Stream state pollution between concurrent requests
+- **Solution**: Each stream now gets its own converter instance with isolated state
+
+### Debug Mode
+
+```bash
+# Enable debug logging for detailed stream processing information
+LOG_LEVEL=debug ./llm-gateway server start
+
+# Check specific stream processing
+curl -X POST http://localhost:3847/v1/chat/completions \
+  -H "Authorization: Bearer your-gateway-api-key" \
+  -H "X-Debug-Stream: true" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+```
+
+### Health Check Endpoints
+
+```bash
+# Overall system health
+curl http://localhost:3847/health
+
+# Check upstream account status
+./llm-gateway upstream list
+
+# Verify format conversion consistency
+go test ./internal/converter/ -run TestRequestConsistency -v
+```
 
 ## 🤝 Contributing
 
@@ -300,8 +401,30 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Discussions**: [GitHub Discussions](https://github.com/iBreaker/llm-gateway/discussions)
 - **Documentation**: Check the `/docs` directory for detailed documentation
 
+## 🏗️ Recent Architecture Improvements
+
+### v1.2.0 - Unified Format Architecture
+
+- **Stateful Stream Processing**: Each streaming request now gets its own converter instance, preventing state pollution between concurrent streams
+- **Unified Internal Format**: All requests/responses are converted to a common internal format before provider-specific transformation
+- **Intelligent Event Ordering**: Automatic generation of missing events for proper Anthropic streaming format compliance
+- **Enhanced Tool Calling**: Seamless conversion of tool/function calls between different provider formats
+- **Cross-Format Stream Processing**: Format-agnostic stream handling with provider-specific event generation
+- **Comprehensive Testing**: Added consistency tests and round-trip validation for format conversions
+
+### Key Technical Improvements
+
+- Removed direct format-to-format conversion (e.g., `convertOpenAIToAnthropic`)
+- Implemented ConverterFactory pattern for stateful stream processing
+- Added NeedPreEvents mechanism for intelligent event insertion
+- Enhanced SSE (Server-Sent Events) processing with unified utilities
+- Improved error handling and debugging for streaming scenarios
+
 ## 🗺️ Roadmap
 
+- [x] ~~Unified internal format architecture~~
+- [x] ~~Stateful streaming support~~
+- [x] ~~Tool calling format conversion~~
 - [ ] Support for more LLM providers (Google Gemini, Azure OpenAI)
 - [ ] WebUI for management and monitoring
 - [ ] Prometheus metrics export
