@@ -224,6 +224,13 @@ func (c *CLI) Run(args []string) error {
 	}
 
 	commandName := args[1]
+	
+	// Handle global help flags
+	if commandName == "help" || commandName == "--help" || commandName == "-h" {
+		c.printUsage()
+		return nil
+	}
+	
 	cmd, exists := c.app.Commands[commandName]
 	if !exists {
 		fmt.Printf("未知命令: %s\n\n", commandName)

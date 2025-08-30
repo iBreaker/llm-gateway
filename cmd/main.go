@@ -60,6 +60,13 @@ func runCLI(args []string, app *app.Application) error {
 	}
 
 	command := args[1]
+	
+	// Handle help flags
+	if command == "help" || command == "--help" || command == "-h" {
+		printUsage()
+		return nil
+	}
+	
 	switch command {
 	case "apikey":
 		return handleAPIKey(args[2:], app)

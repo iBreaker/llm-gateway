@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Gateway - Web Management</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 data-i18n="header.title">LLM Gateway</h1>
+            <div class="header-info">
+                <span data-i18n="header.subtitle">Management Console</span>
+                <span>•</span>
+                <span id="header-status" data-i18n="header.status">Online</span>
+            </div>
+        </div>
+    </header>
+
+    <nav class="nav">
+        <div class="container">
+            <button class="nav-btn active" data-tab="dashboard" data-i18n="nav.dashboard">Dashboard</button>
+            <button class="nav-btn" data-tab="upstream" data-i18n="nav.upstream">Upstream Accounts</button>
+            <button class="nav-btn" data-tab="apikeys" data-i18n="nav.apikeys">API Keys</button>
+            <button class="nav-btn" data-tab="config" data-i18n="nav.config">Configuration</button>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title" data-i18n="dashboard.title">System Dashboard</h1>
+                        <p class="page-subtitle" data-i18n="dashboard.subtitle">Monitor system health and performance metrics</p>
+                    </div>
+                </div>
+                
+                <div class="cards">
+                    <div class="card">
+                        <h3 data-i18n="dashboard.system_status">System Status</h3>
+                        <div class="status-indicator">
+                            <span class="status-dot" id="system-status"></span>
+                            <span id="system-status-text" data-i18n="dashboard.loading">Loading...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3 data-i18n="dashboard.upstream_accounts">Upstream Accounts</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="upstream-count">-</span>
+                            <span class="metric-label" data-i18n="dashboard.total_accounts">Total Accounts</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3 data-i18n="dashboard.api_keys">API Keys</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="apikey-count">-</span>
+                            <span class="metric-label" data-i18n="dashboard.active_keys">Active Keys</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3 data-i18n="dashboard.server_info">Server Info</h3>
+                        <div class="server-info">
+                            <div><span data-i18n="config.host">Host:</span> <span id="server-host">-</span></div>
+                            <div><span data-i18n="config.port">Port:</span> <span id="server-port">-</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upstream Accounts Tab -->
+            <div id="upstream" class="tab-content">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title" data-i18n="upstream.title">Upstream Accounts</h1>
+                        <p class="page-subtitle" data-i18n="upstream.subtitle">Manage AI provider connections and configurations</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="showAddUpstreamModal()" data-i18n="upstream.add_account">+ Add Account</button>
+                </div>
+                
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="refreshUpstreamAccounts()" data-i18n="upstream.refresh">Refresh</button>
+                </div>
+                
+                <!-- Statistics Cards -->
+                <div class="cards" id="upstream-stats" style="display: none;">
+                    <div class="card stat-card stat-total">
+                        <h3 data-i18n="stats.total">Total</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="upstream-stats-total">0</span>
+                            <span class="metric-label" data-i18n="stats.accounts">Accounts</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-active">
+                        <h3 data-i18n="stats.active">Active</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="upstream-stats-active">0</span>
+                            <span class="metric-label" data-i18n="stats.active">Active</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-healthy">
+                        <h3 data-i18n="stats.healthy">Healthy</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="upstream-stats-healthy">0</span>
+                            <span class="metric-label" data-i18n="stats.healthy">Healthy</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-providers">
+                        <h3 data-i18n="stats.providers">Providers</h3>
+                        <div class="metric providers-list">
+                            <div id="upstream-stats-providers">-</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="table" id="upstream-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="upstream.table.name">Name</th>
+                                <th data-i18n="upstream.table.provider">Provider</th>
+                                <th data-i18n="upstream.table.type">Type</th>
+                                <th data-i18n="upstream.table.status">Status</th>
+                                <th data-i18n="upstream.table.health">Health</th>
+                                <th data-i18n="upstream.table.usage">Usage</th>
+                                <th data-i18n="upstream.table.actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="upstream-tbody">
+                            <tr>
+                                <td colspan="7" class="loading" data-i18n="upstream.loading">Loading upstream accounts...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- API Keys Tab -->
+            <div id="apikeys" class="tab-content">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">API Keys</h1>
+                        <p class="page-subtitle" data-i18n="apikeys.subtitle">Manage gateway authentication tokens and access controls</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="showAddApiKeyModal()" data-i18n="apikeys.generate_key">+ Generate Key</button>
+                </div>
+                
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="refreshApiKeys()" data-i18n="apikeys.refresh">Refresh</button>
+                </div>
+                
+                <!-- Statistics Cards -->
+                <div class="cards" id="apikey-stats" style="display: none;">
+                    <div class="card stat-card stat-total">
+                        <h3 data-i18n="stats.total">Total</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="apikey-stats-total">0</span>
+                            <span class="metric-label" data-i18n="stats.keys">Keys</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-active">
+                        <h3 data-i18n="stats.active">Active</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="apikey-stats-active">0</span>
+                            <span class="metric-label" data-i18n="stats.active">Active</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-requests">
+                        <h3 data-i18n="stats.total_requests">Total Requests</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="apikey-stats-requests">0</span>
+                            <span class="metric-label" data-i18n="stats.requests">Requests</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-recent">
+                        <h3 data-i18n="stats.recent_usage">Recent Usage</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="apikey-stats-recent">0</span>
+                            <span class="metric-label" data-i18n="stats.last_24h">Last 24h</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="table" id="apikey-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="apikeys.table.name">Name</th>
+                                <th data-i18n="apikeys.table.permissions">Permissions</th>
+                                <th data-i18n="apikeys.table.status">Status</th>
+                                <th data-i18n="apikeys.table.usage">Usage</th>
+                                <th data-i18n="apikeys.table.created">Created</th>
+                                <th data-i18n="apikeys.table.actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="apikey-tbody">
+                            <tr>
+                                <td colspan="6" class="loading" data-i18n="apikeys.loading">Loading API keys...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Configuration Tab -->
+            <div id="config" class="tab-content">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title" data-i18n="config.title">System Configuration</h1>
+                        <p class="page-subtitle" data-i18n="config.subtitle">View current system settings and operational parameters</p>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3 data-i18n="config.server">Server Configuration</h3>
+                    <div class="config-item">
+                        <label data-i18n="config.host">Host:</label>
+                        <span id="config-host">-</span>
+                    </div>
+                    <div class="config-item">
+                        <label data-i18n="config.port">Port:</label>
+                        <span id="config-port">-</span>
+                    </div>
+                    <div class="config-item">
+                        <label data-i18n="config.timeout">Timeout:</label>
+                        <span id="config-timeout">-</span>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3 data-i18n="config.proxy">Proxy Configuration</h3>
+                    <div class="config-item">
+                        <label data-i18n="config.request_timeout">Request Timeout:</label>
+                        <span id="config-request-timeout">-</span>
+                    </div>
+                    <div class="config-item">
+                        <label data-i18n="config.stream_timeout">Stream Timeout:</label>
+                        <span id="config-stream-timeout">-</span>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3 data-i18n="config.logging">Logging</h3>
+                    <div class="config-item">
+                        <label data-i18n="config.level">Level:</label>
+                        <span id="config-log-level">-</span>
+                    </div>
+                    <div class="config-item">
+                        <label data-i18n="config.format">Format:</label>
+                        <span id="config-log-format">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Add Upstream Account Modal -->
+    <div id="add-upstream-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-upstream-modal')">&times;</span>
+            <h3 data-i18n="modal.add_upstream">Add Upstream Account</h3>
+            <form id="add-upstream-form">
+                <div class="form-group">
+                    <label for="upstream-name" data-i18n="form.name">Name:</label>
+                    <input type="text" id="upstream-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="upstream-provider" data-i18n="form.provider">Provider:</label>
+                    <select id="upstream-provider" required>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="google">Google</option>
+                        <option value="azure">Azure</option>
+                        <option value="qwen">Qwen</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="upstream-type" data-i18n="form.type">Type:</label>
+                    <select id="upstream-type" required>
+                        <option value="api-key">API Key</option>
+                        <option value="oauth">OAuth</option>
+                    </select>
+                </div>
+                <div class="form-group" id="api-key-group">
+                    <label for="upstream-api-key" data-i18n="form.api_key">API Key:</label>
+                    <input type="password" id="upstream-api-key" placeholder="sk-ant-... or sk-...">
+                </div>
+                <div class="form-group" id="oauth-info" style="display: none;">
+                    <div class="alert alert-info">
+                        <span data-i18n="form.oauth_info">OAuth accounts use predefined client credentials. Only Anthropic and Qwen providers support OAuth.</span>
+                    </div>
+                </div>
+                <div class="form-group" id="base-url-group" style="display: none;">
+                    <label for="upstream-base-url" data-i18n="form.base_url">Base URL (optional):</label>
+                    <input type="url" id="upstream-base-url" data-i18n-placeholder="form.base_url_placeholder" placeholder="https://custom-api-endpoint.com">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-upstream-modal')" data-i18n="modal.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="modal.add">Add Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add API Key Modal -->
+    <div id="add-apikey-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-apikey-modal')">&times;</span>
+            <h3 data-i18n="modal.generate_key">Generate API Key</h3>
+            <form id="add-apikey-form">
+                <div class="form-group">
+                    <label for="apikey-name" data-i18n="form.name">Name:</label>
+                    <input type="text" id="apikey-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="apikey-permissions" data-i18n="form.permissions">Permissions:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" value="read" checked> <span data-i18n="form.read">Read</span></label>
+                        <label><input type="checkbox" value="write" checked> <span data-i18n="form.write">Write</span></label>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-apikey-modal')" data-i18n="modal.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="modal.generate">Generate Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Generated API Key Modal -->
+    <div id="generated-key-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="modal.key_generated">API Key Generated</h3>
+            <div class="alert alert-warning">
+                <span data-i18n="modal.warning">⚠️ Important: This is the only time you'll see this key. Please copy and store it securely.</span>
+            </div>
+            <div class="generated-key">
+                <code id="generated-key-value"></code>
+                <button class="btn btn-copy" onclick="copyToClipboard('generated-key-value')" data-i18n="modal.copy">Copy</button>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" onclick="closeModal('generated-key-modal')" data-i18n="modal.saved">I've Saved It</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
