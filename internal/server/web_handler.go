@@ -260,8 +260,8 @@ func (h *WebHandler) handleCreateUpstream(w http.ResponseWriter, r *http.Request
 		logger.Info("Creating OAuth account for provider: %s", req.Provider)
 	}
 	
-	// 保存到配置
-	if err := h.configMgr.CreateUpstreamAccount(account); err != nil {
+	// 通过UpstreamManager添加账号（包含业务逻辑初始化）
+	if err := h.upstreamMgr.AddAccount(account); err != nil {
 		logger.Error("Failed to create upstream account: %v", err)
 		h.writeError(w, http.StatusInternalServerError, "Failed to create upstream account")
 		return

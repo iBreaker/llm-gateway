@@ -60,3 +60,4 @@ __debug_bin*
 # __debug_bin2887680977
 main
 *.backup
+bin/

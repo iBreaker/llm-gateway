@@ -79,25 +79,36 @@ func (r *RequestRouter) selectRandom(accounts []*types.UpstreamAccount) (*types.
 	return accounts[index], nil
 }
 
-// selectHealthFirst 优先选择健康的账号
+// selectHealthFirst 优先选择健康的账号，在所有可用账号间轮询
 func (r *RequestRouter) selectHealthFirst(accounts []*types.UpstreamAccount) (*types.UpstreamAccount, error) {
-	// 先尝试选择健康的账号
-	healthyAccounts := make([]*types.UpstreamAccount, 0)
+	// 过滤出可用的账号（非unhealthy状态）
+	availableAccounts := make([]*types.UpstreamAccount, 0)
+	
 	for _, account := range accounts {
-		if account.HealthStatus == "healthy" || account.HealthStatus == "" {
-			healthyAccounts = append(healthyAccounts, account)
+		// 接受 healthy, unknown, 空状态，拒绝 unhealthy
+		if account.HealthStatus != "unhealthy" {
+			availableAccounts = append(availableAccounts, account)
 		}
 	}
 
-	// 如果有健康的账号，从中随机选择
-	if len(healthyAccounts) > 0 {
-		index := rand.Intn(len(healthyAccounts))
-		return healthyAccounts[index], nil
+	// 如果没有可用账号，使用所有账号（包括unhealthy）
+	if len(availableAccounts) == 0 {
+		availableAccounts = accounts
 	}
 
-	// 如果没有健康的账号，从所有账号中选择
-	index := rand.Intn(len(accounts))
-	return accounts[index], nil
+	// 在可用账号中轮询选择
+	if len(availableAccounts) > 0 {
+		provider := availableAccounts[0].Provider
+		index := r.rrIndex[provider]
+		if index >= len(availableAccounts) {
+			index = 0
+		}
+		selected := availableAccounts[index]
+		r.rrIndex[provider] = (index + 1) % len(availableAccounts)
+		return selected, nil
+	}
+
+	return nil, fmt.Errorf("没有可用的上游账号")
 }
 
 // MarkUpstreamError 标记上游账号错误

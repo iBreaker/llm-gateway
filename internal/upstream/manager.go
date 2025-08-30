@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/iBreaker/llm-gateway/pkg/types"
@@ -310,6 +311,10 @@ func (m *UpstreamManager) GetBaseURL(account *types.UpstreamAccount) string {
 	// 2. Qwen OAuth特殊处理 - 使用resource_url
 	if account.Provider == types.ProviderQwen && account.Type == types.UpstreamTypeOAuth {
 		if account.ResourceURL != "" {
+			// 确保URL包含协议前缀
+			if !strings.HasPrefix(account.ResourceURL, "http://") && !strings.HasPrefix(account.ResourceURL, "https://") {
+				return "https://" + account.ResourceURL
+			}
 			return account.ResourceURL
 		}
 	}
@@ -453,6 +458,25 @@ type QwenOAuthResult struct {
 	VerificationURI string `json:"verification_uri"`
 	ExpiresIn       int    `json:"expires_in"`
 	Interval        int    `json:"interval"`
+}
+
+// InitializeMissingUsageStats 为缺少使用统计的账号初始化统计信息
+func (m *UpstreamManager) InitializeMissingUsageStats(upstreamID string) error {
+	return m.configMgr.UpdateUpstreamAccount(upstreamID, func(account *types.UpstreamAccount) error {
+		if account.Usage == nil {
+			account.Usage = &types.UpstreamUsageStats{
+				TotalRequests:      0,
+				SuccessfulRequests: 0,
+				ErrorRequests:      0,
+				TokensUsed:         0,
+				LastUsedAt:         time.Now(),
+				AvgLatency:         0,
+				ErrorRate:          0,
+			}
+			account.UpdatedAt = time.Now()
+		}
+		return nil
+	})
 }
 
 // generateUpstreamID 生成上游账号ID
