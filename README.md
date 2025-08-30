@@ -1,5 +1,7 @@
 # LLM Gateway
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 🚀 A high-performance LLM API gateway with intelligent format conversion and request routing.
 
 ## 🌟 Features
