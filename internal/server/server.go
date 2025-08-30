@@ -38,6 +38,7 @@ type HTTPServer struct {
 	rateLimitMW  *RateLimitMiddleware
 	proxyHandler *ProxyHandler
 	configMgr    ConfigManager
+	oauthMgr     *upstream.OAuthManager
 }
 
 // NewServer 创建新的HTTP服务器
@@ -48,6 +49,7 @@ func NewServer(
 	router *router.RequestRouter,
 	converter *converter.Manager,
 	configMgr ConfigManager,
+	oauthMgr *upstream.OAuthManager,
 ) *HTTPServer {
 	mux := http.NewServeMux()
 
@@ -69,6 +71,7 @@ func NewServer(
 		rateLimitMW:  rateLimitMW,
 		proxyHandler: proxyHandler,
 		configMgr:    configMgr,
+		oauthMgr:     oauthMgr,
 	}
 
 	s.setupRoutes()
@@ -92,7 +95,7 @@ func (s *HTTPServer) setupWebRoutes() {
 	// 由于接口限制，这里需要具体的ConfigManager实现类型
 	// 这个方法需要在调用方传入具体的类型
 	if configMgr, ok := s.configMgr.(*config.ConfigManager); ok {
-		webHandler := NewWebHandler(configMgr, s.upstreamMgr, s.clientMgr)
+		webHandler := NewWebHandler(configMgr, s.upstreamMgr, s.clientMgr, s.oauthMgr)
 		
 		// 根路径提供web管理界面
 		s.mux.HandleFunc("/", webHandler.ServeStatic)
@@ -107,6 +110,11 @@ func (s *HTTPServer) setupWebRoutes() {
 		s.mux.HandleFunc("/api/v1/upstream/", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIUpstreamDelete)))
 		s.mux.HandleFunc("/api/v1/apikeys", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIKeys)))
 		s.mux.HandleFunc("/api/v1/apikeys/", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIKeyDelete)))
+		
+		// OAuth API 端点
+		s.mux.HandleFunc("/api/v1/oauth/start", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthStart)))
+		s.mux.HandleFunc("/api/v1/oauth/callback", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthCallback)))
+		s.mux.HandleFunc("/api/v1/oauth/status/", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthStatus)))
 	}
 }
 

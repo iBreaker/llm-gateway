@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -40,6 +39,16 @@ func NewOAuthManager(upstreamMgr *UpstreamManager) *OAuthManager {
 			Transport: transport,
 		},
 	}
+}
+
+// StorePKCEVerifier 存储PKCE验证码 (公开方法)
+func (m *OAuthManager) StorePKCEVerifier(upstreamID, verifier string) {
+	m.pkceVerifiers[upstreamID] = verifier
+}
+
+// PollQwenToken 启动Qwen Token轮询 (公开方法)
+func (m *OAuthManager) PollQwenToken(upstreamID, deviceCode, codeVerifier string, interval, expiresIn int) {
+	go m.pollQwenToken(upstreamID, deviceCode, codeVerifier, interval, expiresIn)
 }
 
 // AnthropicOAuthConfig Anthropic OAuth配置
@@ -80,8 +89,8 @@ func generateRandomString() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
-// generatePKCE 生成PKCE参数
-func generatePKCE() (codeVerifier, codeChallenge string, err error) {
+// GeneratePKCE 生成PKCE参数 (公开函数)
+func GeneratePKCE() (codeVerifier, codeChallenge string, err error) {
 	// 生成code_verifier
 	codeVerifier, err = generateRandomString()
 	if err != nil {
@@ -106,8 +115,8 @@ func (m *OAuthManager) getAnthropicConfig() AnthropicOAuthConfig {
 	}
 }
 
-// getQwenConfig 获取Qwen OAuth配置
-func (m *OAuthManager) getQwenConfig() QwenOAuthConfig {
+// GetQwenConfig 获取Qwen OAuth配置 (公开方法)
+func (m *OAuthManager) GetQwenConfig() QwenOAuthConfig {
 	return QwenOAuthConfig{
 		DeviceAuthURL: "https://chat.qwen.ai/api/v1/oauth2/device/code",
 		TokenURL:      "https://chat.qwen.ai/api/v1/oauth2/token",
@@ -143,7 +152,7 @@ func (m *OAuthManager) startAnthropicOAuth(upstreamID string, account *types.Ups
 	config := m.getAnthropicConfig()
 
 	// 生成PKCE参数
-	codeVerifier, codeChallenge, err := generatePKCE()
+	codeVerifier, codeChallenge, err := GeneratePKCE()
 	if err != nil {
 		return "", fmt.Errorf("生成PKCE参数失败: %w", err)
 	}
@@ -175,10 +184,10 @@ func (m *OAuthManager) startAnthropicOAuth(upstreamID string, account *types.Ups
 
 // startQwenOAuth 启动Qwen OAuth Device Flow授权流程
 func (m *OAuthManager) startQwenOAuth(upstreamID string, account *types.UpstreamAccount) (string, error) {
-	config := m.getQwenConfig()
+	config := m.GetQwenConfig()
 
 	// 生成PKCE参数（Qwen Device Flow也需要PKCE）
-	codeVerifier, codeChallenge, err := generatePKCE()
+	codeVerifier, codeChallenge, err := GeneratePKCE()
 	if err != nil {
 		return "", fmt.Errorf("生成PKCE参数失败: %w", err)
 	}
@@ -192,7 +201,7 @@ func (m *OAuthManager) startQwenOAuth(upstreamID string, account *types.Upstream
 	}
 
 	// 发送设备授权请求
-	deviceResp, err := m.requestQwenDeviceCode(config.DeviceAuthURL, deviceReq)
+	deviceResp, err := m.RequestQwenDeviceCode(config.DeviceAuthURL, deviceReq)
 	if err != nil {
 		return "", fmt.Errorf("请求设备授权码失败: %w", err)
 	}
@@ -356,7 +365,7 @@ func (m *OAuthManager) refreshAnthropicToken(upstreamID string, account *types.U
 
 // refreshQwenToken 刷新Qwen OAuth token
 func (m *OAuthManager) refreshQwenToken(upstreamID string, account *types.UpstreamAccount) error {
-	config := m.getQwenConfig()
+	config := m.GetQwenConfig()
 
 	// 使用refresh token获取新的access token
 	tokenReq := map[string]string{
@@ -444,8 +453,8 @@ type QwenDeviceCodeResponse struct {
 	Interval        int    `json:"interval"`
 }
 
-// requestQwenDeviceCode 请求Qwen设备授权码
-func (m *OAuthManager) requestQwenDeviceCode(deviceAuthURL string, deviceReq map[string]string) (*QwenDeviceCodeResponse, error) {
+// RequestQwenDeviceCode 请求Qwen设备授权码 (公开方法)
+func (m *OAuthManager) RequestQwenDeviceCode(deviceAuthURL string, deviceReq map[string]string) (*QwenDeviceCodeResponse, error) {
 	// 构建请求体
 	formData := url.Values{}
 	for k, v := range deviceReq {
@@ -492,7 +501,7 @@ func (m *OAuthManager) requestQwenDeviceCode(deviceAuthURL string, deviceReq map
 
 // pollQwenToken 轮询Qwen token状态 (Device Flow)
 func (m *OAuthManager) pollQwenToken(upstreamID, deviceCode, codeVerifier string, interval, expiresIn int) {
-	config := m.getQwenConfig()
+	config := m.GetQwenConfig()
 
 	// 设置轮询间隔，默认5秒
 	pollInterval := 5 * time.Second
@@ -577,10 +586,8 @@ func (m *OAuthManager) pollQwenToken(upstreamID, deviceCode, codeVerifier string
 			fmt.Printf("  Token有效期: %s\n", account.ExpiresAt.Format("2006-01-02 15:04:05"))
 		}
 
-		// 成功完成授权，退出程序
-		fmt.Printf("\n程序即将退出...\n")
-		time.Sleep(2 * time.Second) // 给用户时间看到成功消息
-		os.Exit(0)
+		// 成功完成授权
+		logger.Info("Qwen OAuth授权流程完成: upstream_id=%s", upstreamID)
 		return
 	}
 }

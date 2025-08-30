@@ -336,6 +336,125 @@ func (m *UpstreamManager) getDefaultBaseURL(provider types.Provider) string {
 	}
 }
 
+// StartAnthropicOAuth 启动Anthropic OAuth授权流程
+func (m *UpstreamManager) StartAnthropicOAuth(upstreamID string) (*AnthropicOAuthResult, error) {
+	oauthMgr := NewOAuthManager(m)
+	
+	account, err := m.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		return nil, err
+	}
+	
+	if account.Provider != types.ProviderAnthropic {
+		return nil, fmt.Errorf("account is not an Anthropic provider")
+	}
+	
+	// 使用通用的StartOAuthFlow方法，它会根据provider分发
+	authURL, err := oauthMgr.StartOAuthFlow(upstreamID)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &AnthropicOAuthResult{
+		AuthURL: authURL,
+	}, nil
+}
+
+// StartQwenOAuth 启动Qwen OAuth设备流程
+func (m *UpstreamManager) StartQwenOAuth(upstreamID string) (*QwenOAuthResult, error) {
+	oauthMgr := NewOAuthManager(m)
+	
+	account, err := m.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		return nil, err
+	}
+	
+	if account.Provider != types.ProviderQwen {
+		return nil, fmt.Errorf("account is not a Qwen provider")
+	}
+	
+	// 获取Qwen配置
+	config := oauthMgr.GetQwenConfig()
+	
+	// 生成PKCE参数
+	codeVerifier, codeChallenge, err := GeneratePKCE()
+	if err != nil {
+		return nil, fmt.Errorf("生成PKCE参数失败: %w", err)
+	}
+	
+	// 构建设备授权请求
+	deviceReq := map[string]string{
+		"client_id":             config.ClientID,
+		"scope":                 config.Scope,
+		"code_challenge":        codeChallenge,
+		"code_challenge_method": "S256",
+	}
+	
+	// 发送设备授权请求
+	deviceResp, err := oauthMgr.RequestQwenDeviceCode(config.DeviceAuthURL, deviceReq)
+	if err != nil {
+		return nil, fmt.Errorf("请求设备授权码失败: %w", err)
+	}
+	
+	// 存储device_code和code_verifier用于后续轮询
+	verifierData := fmt.Sprintf("%s|%s", deviceResp.DeviceCode, codeVerifier)
+	oauthMgr.StorePKCEVerifier(upstreamID, verifierData)
+	
+	// 启动自动轮询
+	oauthMgr.PollQwenToken(upstreamID, deviceResp.DeviceCode, codeVerifier, deviceResp.Interval, deviceResp.ExpiresIn)
+	
+	return &QwenOAuthResult{
+		DeviceCode:      deviceResp.DeviceCode,
+		UserCode:        deviceResp.UserCode,
+		VerificationURI: deviceResp.VerificationURI,
+		ExpiresIn:       deviceResp.ExpiresIn,
+		Interval:        deviceResp.Interval,
+	}, nil
+}
+
+// CompleteAnthropicOAuth 完成Anthropic OAuth授权流程
+func (m *UpstreamManager) CompleteAnthropicOAuth(upstreamID, code string) error {
+	oauthMgr := NewOAuthManager(m)
+	return oauthMgr.HandleCallback(upstreamID, code)
+}
+
+// GetOAuthStatus 获取OAuth状态
+func (m *UpstreamManager) GetOAuthStatus(upstreamID string) (string, error) {
+	account, err := m.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		return "error", err
+	}
+	
+	if account.Type != types.UpstreamTypeOAuth {
+		return "not_oauth", nil
+	}
+	
+	if account.AccessToken == "" {
+		return "not_authorized", nil
+	}
+	
+	// 检查token是否过期
+	if account.ExpiresAt != nil && time.Now().After(*account.ExpiresAt) {
+		return "expired", nil
+	}
+	
+	return "authorized", nil
+}
+
+// AnthropicOAuthResult Anthropic OAuth授权结果
+type AnthropicOAuthResult struct {
+	AuthURL string `json:"auth_url"`
+}
+
+// QwenOAuthResult Qwen OAuth设备流程结果
+type QwenOAuthResult struct {
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	ExpiresIn       int    `json:"expires_in"`
+	Interval        int    `json:"interval"`
+}
+
 // generateUpstreamID 生成上游账号ID
 func generateUpstreamID() string {
 	return fmt.Sprintf("upstream_%d", time.Now().UnixNano())

@@ -20,14 +20,16 @@ type WebHandler struct {
 	configMgr   *config.ConfigManager
 	upstreamMgr *upstream.UpstreamManager
 	keyMgr      *client.GatewayKeyManager
+	oauthMgr    *upstream.OAuthManager
 }
 
 // NewWebHandler 创建 Web 处理器
-func NewWebHandler(configMgr *config.ConfigManager, upstreamMgr *upstream.UpstreamManager, keyMgr *client.GatewayKeyManager) *WebHandler {
+func NewWebHandler(configMgr *config.ConfigManager, upstreamMgr *upstream.UpstreamManager, keyMgr *client.GatewayKeyManager, oauthMgr *upstream.OAuthManager) *WebHandler {
 	return &WebHandler{
 		configMgr:   configMgr,
 		upstreamMgr: upstreamMgr,
 		keyMgr:      keyMgr,
+		oauthMgr:    oauthMgr,
 	}
 }
 
@@ -444,5 +446,156 @@ func (h *WebHandler) writeError(w http.ResponseWriter, status int, message strin
 func (h *WebHandler) generateID(prefix string) string {
 	timestamp := time.Now().Unix()
 	return fmt.Sprintf("%s_%d", prefix, timestamp)
+}
+
+// HandleOAuthStart 启动OAuth流程
+func (h *WebHandler) HandleOAuthStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		UpstreamID string `json:"upstream_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if req.UpstreamID == "" {
+		h.writeError(w, http.StatusBadRequest, "upstream_id is required")
+		return
+	}
+
+	// 获取上游账号信息
+	account, err := h.configMgr.GetUpstreamAccount(req.UpstreamID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "Upstream account not found")
+		return
+	}
+
+	// 根据提供商类型启动不同的OAuth流程
+	switch account.Provider {
+	case "anthropic":
+		authURL, err := h.oauthMgr.StartOAuthFlow(req.UpstreamID)
+		if err != nil {
+			logger.Error("Failed to start Anthropic OAuth: %v", err)
+			h.writeError(w, http.StatusInternalServerError, "Failed to start OAuth flow")
+			return
+		}
+		h.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"flow_type": "authorization_code",
+			"auth_url":  authURL,
+			"message":   "Please visit the URL and authorize the application, then return the authorization code.",
+		})
+	case "qwen":
+		result, err := h.upstreamMgr.StartQwenOAuth(req.UpstreamID)
+		if err != nil {
+			logger.Error("Failed to start Qwen OAuth: %v", err)
+			h.writeError(w, http.StatusInternalServerError, "Failed to start OAuth flow")
+			return
+		}
+		// 构造完整的授权链接，包含user_code参数
+		fullVerificationURI := fmt.Sprintf("https://chat.qwen.ai/authorize?user_code=%s&client=llm-gateway", result.UserCode)
+		
+		h.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"flow_type":         "device_code",
+			"device_code":       result.DeviceCode,
+			"user_code":         result.UserCode,
+			"verification_uri":  fullVerificationURI,
+			"expires_in":        result.ExpiresIn,
+			"interval":          result.Interval,
+			"message":           fmt.Sprintf("Please visit %s to authorize", fullVerificationURI),
+		})
+	default:
+		h.writeError(w, http.StatusBadRequest, "OAuth not supported for this provider")
+		return
+	}
+}
+
+// HandleOAuthCallback 处理OAuth回调
+func (h *WebHandler) HandleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		UpstreamID string `json:"upstream_id"`
+		Code       string `json:"code"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if req.UpstreamID == "" || req.Code == "" {
+		h.writeError(w, http.StatusBadRequest, "upstream_id and code are required")
+		return
+	}
+
+	// 获取上游账号信息
+	account, err := h.configMgr.GetUpstreamAccount(req.UpstreamID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "Upstream account not found")
+		return
+	}
+
+	// 仅支持Anthropic的授权码回调
+	if account.Provider != "anthropic" {
+		h.writeError(w, http.StatusBadRequest, "This callback is only for Anthropic OAuth")
+		return
+	}
+
+	if err := h.oauthMgr.HandleCallback(req.UpstreamID, req.Code); err != nil {
+		logger.Error("Failed to complete Anthropic OAuth: %v", err)
+		h.writeError(w, http.StatusInternalServerError, "Failed to complete OAuth flow")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]string{
+		"message": "OAuth flow completed successfully",
+	})
+}
+
+// HandleOAuthStatus 查看OAuth状态
+func (h *WebHandler) HandleOAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// 从URL路径中提取ID
+	pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(pathParts) < 5 {
+		h.writeError(w, http.StatusBadRequest, "Invalid upstream ID")
+		return
+	}
+
+	upstreamID := pathParts[4] // /api/v1/oauth/status/{id}
+
+	// 获取上游账号信息
+	account, err := h.configMgr.GetUpstreamAccount(upstreamID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "Upstream account not found")
+		return
+	}
+
+	// 检查OAuth状态
+	status, err := h.upstreamMgr.GetOAuthStatus(upstreamID)
+	if err != nil {
+		logger.Error("Failed to get OAuth status: %v", err)
+		h.writeError(w, http.StatusInternalServerError, "Failed to get OAuth status")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"upstream_id": upstreamID,
+		"provider":    account.Provider,
+		"status":      status,
+	})
 }
 

@@ -420,16 +420,159 @@ class LLMGatewayApp {
         if (data.type === 'api-key') {
             data.api_key = document.getElementById('upstream-api-key').value;
         }
-        // OAuth doesn't need additional parameters - uses predefined client credentials
 
         try {
-            await this.apiCall('/upstream', 'POST', data);
+            // 先创建上游账号
+            const result = await this.apiCall('/upstream', 'POST', data);
             this.closeModal('add-upstream-modal');
             this.loadUpstreamAccounts();
             this.showSuccess(window.i18n.t('msg.upstream_added'));
+            
+            // 如果是OAuth类型，启动OAuth流程
+            if (data.type === 'oauth') {
+                this.startOAuthFlow(result.id, data.provider);
+            }
         } catch (error) {
             this.showError('Failed to add upstream account: ' + error.message);
         }
+    }
+
+    async startOAuthFlow(upstreamId, provider) {
+        try {
+            const result = await this.apiCall('/oauth/start', 'POST', {
+                upstream_id: upstreamId
+            });
+
+            if (result.flow_type === 'authorization_code') {
+                // Anthropic OAuth: 跳转到授权URL
+                this.handleAnthropicOAuth(result, upstreamId);
+            } else if (result.flow_type === 'device_code') {
+                // Qwen OAuth: 显示设备码
+                this.handleQwenOAuth(result, upstreamId);
+            }
+        } catch (error) {
+            this.showError('Failed to start OAuth flow: ' + error.message);
+        }
+    }
+
+    handleAnthropicOAuth(oauthResult, upstreamId) {
+        // 显示Anthropic OAuth指引模态框
+        const modal = this.createOAuthModal('anthropic-oauth-modal', 'Anthropic OAuth Authorization');
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="app.closeModal('anthropic-oauth-modal')">&times;</span>
+                <h3>Anthropic OAuth Authorization</h3>
+                <p>${oauthResult.message}</p>
+                <div class="oauth-action">
+                    <a href="${oauthResult.auth_url}" target="_blank" class="btn btn-primary">Open Authorization Page</a>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>After authorization, paste the code here:</label>
+                    <input type="text" id="oauth-code" placeholder="Enter authorization code">
+                    <button class="btn btn-success" onclick="app.completeAnthropicOAuth('${upstreamId}')">Complete Authorization</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        this.showModal('anthropic-oauth-modal');
+    }
+
+    handleQwenOAuth(oauthResult, upstreamId) {
+        // 显示Qwen OAuth设备码模态框
+        const modal = this.createOAuthModal('qwen-oauth-modal', 'Qwen OAuth Device Authorization');
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="app.closeModal('qwen-oauth-modal')">&times;</span>
+                <h3>Qwen OAuth Device Authorization</h3>
+                <p>${oauthResult.message}</p>
+                <div class="device-code-info">
+                    <div class="code-display">
+                        <strong>User Code:</strong> <code id="user-code">${oauthResult.user_code}</code>
+                        <button class="btn btn-copy" onclick="app.copyToClipboard('user-code')">Copy</button>
+                    </div>
+                    <div class="oauth-action" style="margin: 15px 0;">
+                        <a href="${oauthResult.verification_uri}" target="_blank" class="btn btn-primary">Open Verification Page</a>
+                    </div>
+                    <div class="oauth-status" id="oauth-status">
+                        <div class="spinner"></div>
+                        <span>Waiting for authorization... (${Math.floor(oauthResult.expires_in/60)} minutes remaining)</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        this.showModal('qwen-oauth-modal');
+        
+        // 启动状态轮询
+        this.pollOAuthStatus(upstreamId, oauthResult.expires_in);
+    }
+
+    async completeAnthropicOAuth(upstreamId) {
+        const code = document.getElementById('oauth-code').value.trim();
+        if (!code) {
+            this.showError('Please enter the authorization code');
+            return;
+        }
+
+        try {
+            await this.apiCall('/oauth/callback', 'POST', {
+                upstream_id: upstreamId,
+                code: code
+            });
+            this.closeModal('anthropic-oauth-modal');
+            this.loadUpstreamAccounts();
+            this.showSuccess('OAuth authorization completed successfully');
+        } catch (error) {
+            this.showError('Failed to complete OAuth authorization: ' + error.message);
+        }
+    }
+
+    async pollOAuthStatus(upstreamId, expiresIn) {
+        const startTime = Date.now();
+        const maxTime = expiresIn * 1000;
+        
+        const poll = async () => {
+            if (Date.now() - startTime > maxTime) {
+                this.showError('OAuth authorization timed out');
+                this.closeModal('qwen-oauth-modal');
+                return;
+            }
+
+            try {
+                const status = await this.apiCall(`/oauth/status/${upstreamId}`);
+                if (status.status === 'authorized') {
+                    this.closeModal('qwen-oauth-modal');
+                    this.loadUpstreamAccounts();
+                    this.showSuccess('OAuth authorization completed successfully');
+                    return;
+                } else if (status.status === 'error') {
+                    this.showError('OAuth authorization failed');
+                    this.closeModal('qwen-oauth-modal');
+                    return;
+                }
+                
+                // 继续轮询
+                setTimeout(poll, 5000);
+            } catch (error) {
+                console.error('Failed to poll OAuth status:', error);
+                setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+    }
+
+    createOAuthModal(id, title) {
+        // 清理现有的模态框
+        const existing = document.getElementById(id);
+        if (existing) {
+            existing.remove();
+        }
+
+        const modal = document.createElement('div');
+        modal.id = id;
+        modal.className = 'modal';
+        return modal;
     }
 
     async generateApiKey() {
