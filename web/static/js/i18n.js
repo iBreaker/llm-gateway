@@ -9,6 +9,35 @@ class I18n {
                 'header.subtitle': 'Management Console',
                 'header.status': 'Online',
                 
+                // Login
+                'login.title': 'LLM Gateway',
+                'login.subtitle': 'Management Console',
+                'login.password': 'Password',
+                'login.password_placeholder': 'Enter your password',
+                'login.sign_in': 'Sign In',
+                'login.footer': 'Secure access to your LLM Gateway instance',
+                
+                // Settings
+                'settings.title': 'Settings',
+                'settings.subtitle': 'Manage system security and configuration',
+                'settings.security': 'Security Settings',
+                'settings.security_subtitle': 'Update your system password',
+                'settings.change_password': 'Change Password',
+                'settings.current_password': 'Current Password',
+                'settings.current_password_placeholder': 'Enter your current password',
+                'settings.new_password': 'New Password',
+                'settings.new_password_placeholder': 'Enter your new password (min 6 characters)',
+                'settings.confirm_password': 'Confirm New Password',
+                'settings.confirm_password_placeholder': 'Confirm your new password',
+                'settings.update_password': 'Update Password',
+                'settings.cancel': 'Cancel',
+                'settings.session': 'Session Management',
+                'settings.session_subtitle': 'Manage active sessions',
+                'settings.active_sessions': 'Active Sessions',
+                'settings.current_session': 'Current Session',
+                'settings.logged_in_at': 'Logged in at:',
+                'settings.logout': 'Logout',
+                
                 // Navigation
                 'nav.dashboard': 'Dashboard',
                 'nav.upstream': 'Upstream Accounts',
@@ -147,6 +176,35 @@ class I18n {
                 'header.title': 'LLM Gateway',
                 'header.subtitle': '管理控制台',
                 'header.status': '在线',
+                
+                // Login
+                'login.title': 'LLM Gateway',
+                'login.subtitle': '管理控制台',
+                'login.password': '密码',
+                'login.password_placeholder': '请输入密码',
+                'login.sign_in': '登录',
+                'login.footer': '安全访问您的 LLM Gateway 实例',
+                
+                // Settings
+                'settings.title': '设置',
+                'settings.subtitle': '管理系统安全和配置',
+                'settings.security': '安全设置',
+                'settings.security_subtitle': '更新您的系统密码',
+                'settings.change_password': '修改密码',
+                'settings.current_password': '当前密码',
+                'settings.current_password_placeholder': '请输入当前密码',
+                'settings.new_password': '新密码',
+                'settings.new_password_placeholder': '请输入新密码（至少6位）',
+                'settings.confirm_password': '确认新密码',
+                'settings.confirm_password_placeholder': '请确认新密码',
+                'settings.update_password': '更新密码',
+                'settings.cancel': '取消',
+                'settings.session': '会话管理',
+                'settings.session_subtitle': '管理活动会话',
+                'settings.active_sessions': '活动会话',
+                'settings.current_session': '当前会话',
+                'settings.logged_in_at': '登录时间：',
+                'settings.logout': '注销',
                 
                 // Navigation
                 'nav.dashboard': '仪表板',

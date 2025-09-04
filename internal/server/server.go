@@ -103,18 +103,23 @@ func (s *HTTPServer) setupWebRoutes() {
 		// 静态资源路径
 		s.mux.HandleFunc("/static/", webHandler.ServeStatic)
 		
-		// Web API 端点
-		s.mux.HandleFunc("/api/v1/health", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIHealth)))
-		s.mux.HandleFunc("/api/v1/config", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIConfig)))
-		s.mux.HandleFunc("/api/v1/upstream", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIUpstream)))
-		s.mux.HandleFunc("/api/v1/upstream/", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIUpstreamDelete)))
-		s.mux.HandleFunc("/api/v1/apikeys", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIKeys)))
-		s.mux.HandleFunc("/api/v1/apikeys/", CORSMiddleware(LoggingMiddleware(webHandler.HandleAPIKeyDelete)))
+		// 公开的认证端点（不需要认证）
+		s.mux.HandleFunc("/api/v1/login", CORSMiddleware(LoggingMiddleware(webHandler.HandleLogin)))
+		s.mux.HandleFunc("/api/v1/logout", CORSMiddleware(LoggingMiddleware(webHandler.HandleLogout)))
+		s.mux.HandleFunc("/api/v1/change-password", CORSMiddleware(LoggingMiddleware(webHandler.HandleChangePassword)))
 		
-		// OAuth API 端点
-		s.mux.HandleFunc("/api/v1/oauth/start", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthStart)))
-		s.mux.HandleFunc("/api/v1/oauth/callback", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthCallback)))
-		s.mux.HandleFunc("/api/v1/oauth/status/", CORSMiddleware(LoggingMiddleware(webHandler.HandleOAuthStatus)))
+		// 受保护的Web API 端点（需要认证）
+		s.mux.HandleFunc("/api/v1/health", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIHealth))))
+		s.mux.HandleFunc("/api/v1/config", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIConfig))))
+		s.mux.HandleFunc("/api/v1/upstream", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIUpstream))))
+		s.mux.HandleFunc("/api/v1/upstream/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIUpstreamDelete))))
+		s.mux.HandleFunc("/api/v1/apikeys", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIKeys))))
+		s.mux.HandleFunc("/api/v1/apikeys/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIKeyDelete))))
+		
+		// 受保护的OAuth API 端点（需要认证）
+		s.mux.HandleFunc("/api/v1/oauth/start", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleOAuthStart))))
+		s.mux.HandleFunc("/api/v1/oauth/callback", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleOAuthCallback))))
+		s.mux.HandleFunc("/api/v1/oauth/status/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleOAuthStatus))))
 	}
 }
 

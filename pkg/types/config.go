@@ -13,9 +13,16 @@ type Config struct {
 
 // ServerConfig - 服务器配置
 type ServerConfig struct {
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port"`
-	Timeout int    `yaml:"timeout_seconds"`
+	Host    string    `yaml:"host"`
+	Port    int       `yaml:"port"`
+	Timeout int       `yaml:"timeout_seconds"`
+	Web     WebConfig `yaml:"web"`
+}
+
+// WebConfig - Web 管理界面配置
+type WebConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Password string `yaml:"password"`
 }
 
 // ProxyConfig - 代理配置

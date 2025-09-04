@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - LLM Gateway</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/settings.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 data-i18n="header.title">LLM Gateway</h1>
+            <div class="header-info">
+                <span data-i18n="header.subtitle">Management Console</span>
+                <span>•</span>
+                <span data-i18n="settings.title">Settings</span>
+                <span>•</span>
+                <button class="btn btn-secondary btn-sm" onclick="logout()" data-i18n="settings.logout">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <nav class="nav">
+        <div class="container">
+            <a href="/" class="nav-btn" data-i18n="nav.dashboard">Dashboard</a>
+            <button class="nav-btn active" data-i18n="settings.title">Settings</button>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title" data-i18n="settings.title">System Settings</h1>
+                    <p class="page-subtitle" data-i18n="settings.subtitle">Manage system security and configuration</p>
+                </div>
+            </div>
+            
+            <!-- Password Management Section -->
+            <div class="settings-section">
+                <div class="section-header">
+                    <h2 data-i18n="settings.security">Security Settings</h2>
+                    <p data-i18n="settings.security_subtitle">Update your system password</p>
+                </div>
+                
+                <div class="card settings-card">
+                    <div class="card-header">
+                        <h3 data-i18n="settings.change_password">Change Password</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="change-password-form" class="password-form">
+                            <div class="form-group">
+                                <label for="current-password" data-i18n="settings.current_password">Current Password</label>
+                                <div class="password-input-group">
+                                    <input 
+                                        type="password" 
+                                        id="current-password" 
+                                        name="current-password" 
+                                        required
+                                        data-i18n-placeholder="settings.current_password_placeholder"
+                                        placeholder="Enter your current password"
+                                    >
+                                    <button type="button" class="password-toggle" onclick="togglePassword('current-password')">
+                                        👁️
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="new-password" data-i18n="settings.new_password">New Password</label>
+                                <div class="password-input-group">
+                                    <input 
+                                        type="password" 
+                                        id="new-password" 
+                                        name="new-password" 
+                                        required
+                                        minlength="6"
+                                        data-i18n-placeholder="settings.new_password_placeholder"
+                                        placeholder="Enter your new password (min 6 characters)"
+                                    >
+                                    <button type="button" class="password-toggle" onclick="togglePassword('new-password')">
+                                        👁️
+                                    </button>
+                                </div>
+                                <div class="password-strength" id="password-strength" style="display: none;">
+                                    <div class="strength-bar">
+                                        <div class="strength-fill" id="strength-fill"></div>
+                                    </div>
+                                    <span class="strength-text" id="strength-text">Weak</span>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="confirm-password" data-i18n="settings.confirm_password">Confirm New Password</label>
+                                <div class="password-input-group">
+                                    <input 
+                                        type="password" 
+                                        id="confirm-password" 
+                                        name="confirm-password" 
+                                        required
+                                        data-i18n-placeholder="settings.confirm_password_placeholder"
+                                        placeholder="Confirm your new password"
+                                    >
+                                    <button type="button" class="password-toggle" onclick="togglePassword('confirm-password')">
+                                        👁️
+                                    </button>
+                                </div>
+                                <div class="password-match" id="password-match" style="display: none;">
+                                    <span class="match-text" id="match-text"></span>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="resetForm()" data-i18n="settings.cancel">Cancel</button>
+                                <button type="submit" class="btn btn-primary" data-i18n="settings.update_password">Update Password</button>
+                            </div>
+                            
+                            <div id="password-message" class="message" style="display: none;"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session Management Section -->
+            <div class="settings-section">
+                <div class="section-header">
+                    <h2 data-i18n="settings.session">Session Management</h2>
+                    <p data-i18n="settings.session_subtitle">Manage active sessions</p>
+                </div>
+                
+                <div class="card settings-card">
+                    <div class="card-header">
+                        <h3 data-i18n="settings.active_sessions">Active Sessions</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="session-info">
+                            <div class="session-item">
+                                <div class="session-details">
+                                    <strong data-i18n="settings.current_session">Current Session</strong>
+                                    <div class="session-meta">
+                                        <span data-i18n="settings.logged_in_at">Logged in at:</span>
+                                        <span id="login-time">-</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-danger btn-sm" onclick="logout()" data-i18n="settings.logout">Logout</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

@@ -214,12 +214,16 @@ class LLMGatewayApp {
     }
 
     updateDashboardCounts(upstream, apikeys, config) {
-        document.getElementById('upstream-count').textContent = upstream.length || 0;
-        document.getElementById('apikey-count').textContent = apikeys.length || 0;
+        // 使用stats数据或fallback到data数组长度
+        const upstreamCount = upstream.stats?.total || upstream.data?.length || 0;
+        const apikeysCount = apikeys.stats?.total || apikeys.data?.length || 0;
+        
+        document.getElementById('upstream-count').textContent = upstreamCount;
+        document.getElementById('apikey-count').textContent = apikeysCount;
         
         if (config) {
-            document.getElementById('server-host').textContent = config.server?.host || '-';
-            document.getElementById('server-port').textContent = config.server?.port || '-';
+            document.getElementById('server-host').textContent = config.server?.Host || config.server?.host || '-';
+            document.getElementById('server-port').textContent = config.server?.Port || config.server?.port || '-';
         }
     }
 
@@ -389,18 +393,22 @@ class LLMGatewayApp {
     }
 
     renderConfiguration(config) {
-        // Server config
-        document.getElementById('config-host').textContent = config.server?.host || '-';
-        document.getElementById('config-port').textContent = config.server?.port || '-';
-        document.getElementById('config-timeout').textContent = config.server?.timeout ? `${config.server.timeout}s` : '-';
+        // Server config - 兼容大小写字段名
+        document.getElementById('config-host').textContent = config.server?.Host || config.server?.host || '-';
+        document.getElementById('config-port').textContent = config.server?.Port || config.server?.port || '-';
+        document.getElementById('config-timeout').textContent = 
+            (config.server?.Timeout || config.server?.timeout) ? `${config.server.Timeout || config.server.timeout}s` : '-';
         
-        // Proxy config
-        document.getElementById('config-request-timeout').textContent = config.proxy?.request_timeout ? `${config.proxy.request_timeout}s` : '-';
-        document.getElementById('config-stream-timeout').textContent = config.proxy?.stream_timeout ? `${config.proxy.stream_timeout}s` : '-';
+        // Proxy config - 兼容大小写和不同命名约定
+        const requestTimeout = config.proxy?.RequestTimeout || config.proxy?.request_timeout || 0;
+        const streamTimeout = config.proxy?.StreamTimeout || config.proxy?.stream_timeout || 0;
         
-        // Logging config
-        document.getElementById('config-log-level').textContent = config.logging?.level || '-';
-        document.getElementById('config-log-format').textContent = config.logging?.format || '-';
+        document.getElementById('config-request-timeout').textContent = requestTimeout ? `${requestTimeout}s` : '-';
+        document.getElementById('config-stream-timeout').textContent = streamTimeout ? `${streamTimeout}s` : '-';
+        
+        // Logging config - 兼容大小写字段名
+        document.getElementById('config-log-level').textContent = config.logging?.Level || config.logging?.level || '-';
+        document.getElementById('config-log-format').textContent = config.logging?.Format || config.logging?.format || '-';
     }
 
     async addUpstreamAccount() {
@@ -630,6 +638,7 @@ class LLMGatewayApp {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // 包含cookies用于认证
         };
 
         if (data && method !== 'GET') {

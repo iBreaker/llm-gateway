@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,6 +23,14 @@ type WebHandler struct {
 	upstreamMgr *upstream.UpstreamManager
 	keyMgr      *client.GatewayKeyManager
 	oauthMgr    *upstream.OAuthManager
+	sessions    map[string]*Session // 简单的内存session存储
+}
+
+// Session 会话信息
+type Session struct {
+	Token     string
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 // NewWebHandler 创建 Web 处理器
@@ -30,6 +40,7 @@ func NewWebHandler(configMgr *config.ConfigManager, upstreamMgr *upstream.Upstre
 		upstreamMgr: upstreamMgr,
 		keyMgr:      keyMgr,
 		oauthMgr:    oauthMgr,
+		sessions:    make(map[string]*Session),
 	}
 }
 
@@ -37,9 +48,13 @@ func NewWebHandler(configMgr *config.ConfigManager, upstreamMgr *upstream.Upstre
 func (h *WebHandler) ServeStatic(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	
-	// 根路径返回首页
+	// 根路径根据认证状态返回不同页面
 	if path == "" || path == "/" {
-		path = "/static/html/index.html"
+		if h.isAuthenticated(r) {
+			path = "/static/html/index.html"  // 已认证用户看到管理页面
+		} else {
+			path = "/static/html/login.html"  // 未认证用户看到登录页面
+		}
 	}
 	
 	// 安全检查：只允许访问 /static/ 路径下的文件
@@ -597,5 +612,203 @@ func (h *WebHandler) HandleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"provider":    account.Provider,
 		"status":      status,
 	})
+}
+
+// HandleLogin 处理登录请求
+func (h *WebHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	// 获取配置
+	config, err := h.configMgr.Load()
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to load configuration")
+		return
+	}
+
+	// 验证密码
+	if req.Password != config.Server.Web.Password {
+		h.writeError(w, http.StatusUnauthorized, "Invalid password")
+		return
+	}
+
+	// 生成会话token
+	token, err := h.generateSessionToken()
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to generate session")
+		return
+	}
+
+	// 创建会话
+	session := &Session{
+		Token:     token,
+		ExpiresAt: time.Now().Add(24 * time.Hour), // 24小时过期
+		CreatedAt: time.Now(),
+	}
+
+	h.sessions[token] = session
+
+	// 设置cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Login successful",
+		"token":   token,
+	})
+}
+
+// HandleLogout 处理登出请求
+func (h *WebHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// 获取token
+	token := h.getTokenFromRequest(r)
+	if token != "" {
+		// 删除会话
+		delete(h.sessions, token)
+	}
+
+	// 清除cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Expires:  time.Now().Add(-1 * time.Hour),
+		HttpOnly: true,
+		Path:     "/",
+	})
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Logout successful",
+	})
+}
+
+// HandleChangePassword 处理密码修改请求
+func (h *WebHandler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if req.NewPassword == "" {
+		h.writeError(w, http.StatusBadRequest, "New password cannot be empty")
+		return
+	}
+
+	// 获取配置
+	config, err := h.configMgr.Load()
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to load configuration")
+		return
+	}
+
+	// 验证旧密码
+	if req.OldPassword != config.Server.Web.Password {
+		h.writeError(w, http.StatusUnauthorized, "Invalid old password")
+		return
+	}
+
+	// 更新密码
+	config.Server.Web.Password = req.NewPassword
+	if err := h.configMgr.Save(config); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to save configuration")
+		return
+	}
+
+	logger.Info("Web password changed successfully")
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Password changed successfully",
+	})
+}
+
+// generateSessionToken 生成会话token
+func (h *WebHandler) generateSessionToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// getTokenFromRequest 从请求中获取token
+func (h *WebHandler) getTokenFromRequest(r *http.Request) string {
+	// 先从cookie中获取
+	if cookie, err := r.Cookie("auth_token"); err == nil {
+		return cookie.Value
+	}
+
+	// 再从Header中获取
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		if strings.HasPrefix(auth, "Bearer ") {
+			return strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+
+	return ""
+}
+
+// isAuthenticated 检查是否已认证
+func (h *WebHandler) isAuthenticated(r *http.Request) bool {
+	token := h.getTokenFromRequest(r)
+	if token == "" {
+		return false
+	}
+
+	session, exists := h.sessions[token]
+	if !exists {
+		return false
+	}
+
+	// 检查是否过期
+	if time.Now().After(session.ExpiresAt) {
+		delete(h.sessions, token)
+		return false
+	}
+
+	return true
+}
+
+// requireAuth 认证中间件
+func (h *WebHandler) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.isAuthenticated(r) {
+			h.writeError(w, http.StatusUnauthorized, "Authentication required")
+			return
+		}
+		handler(w, r)
+	}
 }
 

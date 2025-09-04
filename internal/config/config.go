@@ -55,6 +55,9 @@ func (m *ConfigManager) loadUnsafe() (*types.Config, error) {
 
 	m.config = &config
 
+	// 设置默认值（向后兼容）
+	m.setDefaultValues(&config)
+
 	// 应用环境变量配置
 	m.applyEnvironmentConfig(&config)
 
@@ -183,6 +186,15 @@ func (m *ConfigManager) validateGatewayKey(key *types.GatewayAPIKey, index int) 
 	return nil
 }
 
+// setDefaultValues 设置配置的默认值（向后兼容）
+func (m *ConfigManager) setDefaultValues(config *types.Config) {
+	// Web 配置默认值
+	if config.Server.Web.Password == "" {
+		config.Server.Web.Enabled = true
+		config.Server.Web.Password = "admin123"
+	}
+}
+
 // createDefaultConfig 创建默认配置
 func (m *ConfigManager) createDefaultConfig() *types.Config {
 	return &types.Config{
@@ -190,6 +202,10 @@ func (m *ConfigManager) createDefaultConfig() *types.Config {
 			Host:    "0.0.0.0",
 			Port:    3847, // 使用随机端口避免冲突
 			Timeout: 30,
+			Web: types.WebConfig{
+				Enabled:  true,
+				Password: "admin123", // 默认密码，建议首次启动后修改
+			},
 		},
 		Proxy: types.ProxyConfig{
 			RequestTimeout:  60,  // 普通请求60秒
