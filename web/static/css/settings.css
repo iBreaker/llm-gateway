@@ -1,60 +1,50 @@
-/* Settings Page Styles */
-.settings-section {
-    margin-bottom: 32px;
-}
-
-.section-header {
-    margin-bottom: 24px;
-}
-
-.section-header h2 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #1a202c;
-    margin: 0 0 8px 0;
-}
-
-.section-header p {
-    font-size: 16px;
-    color: #718096;
-    margin: 0;
-}
-
-.settings-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
+/* Configuration Style - 参考主页面布局 */
+.config-section {
     background: white;
-    overflow: hidden;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border: 1px solid #e1e5e9;
 }
 
-.card-header {
-    padding: 20px 24px;
-    background: #f9fafb;
-    border-bottom: 1px solid #e5e7eb;
+.config-section h3 {
+    margin-bottom: 1rem;
+    color: #333;
+    border-bottom: 2px solid #e1e5e9;
+    padding-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 700;
 }
 
-.card-header h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: #374151;
-    margin: 0;
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f8f9fa;
 }
 
-.card-body {
-    padding: 24px;
+.config-item:last-child {
+    border-bottom: none;
+}
+
+.config-item label {
+    font-weight: 500;
+    color: #495057;
 }
 
 /* Password Form */
 .password-form .form-group {
-    margin-bottom: 24px;
+    margin-bottom: 1.5rem;
 }
 
 .password-form label {
     display: block;
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
     color: #374151;
-    margin-bottom: 8px;
+    margin-bottom: 0.5rem;
 }
 
 .password-input-group {
@@ -65,50 +55,53 @@
 
 .password-input-group input {
     flex: 1;
-    padding: 12px 48px 12px 16px;
+    padding: 16px 48px 16px 20px;
     font-size: 16px;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    background-color: white;
-    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background-color: #ffffff;
+    transition: all 0.15s ease;
     box-sizing: border-box;
+    font-weight: 500;
 }
 
 .password-input-group input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #1e3a8a;
+    box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+    background-color: #ffffff;
 }
 
 .password-toggle {
     position: absolute;
-    right: 12px;
+    right: 16px;
     background: none;
     border: none;
     cursor: pointer;
     font-size: 16px;
-    color: #6b7280;
-    padding: 4px;
+    color: #4b5563;
+    padding: 6px;
     border-radius: 4px;
-    transition: color 0.2s ease;
+    transition: all 0.15s ease;
 }
 
 .password-toggle:hover {
-    color: #374151;
+    color: #1f2937;
     background-color: #f3f4f6;
 }
 
 /* Password Strength Indicator */
 .password-strength {
-    margin-top: 8px;
+    margin-top: 12px;
 }
 
 .strength-bar {
-    height: 4px;
-    background-color: #e5e7eb;
-    border-radius: 2px;
+    height: 6px;
+    background-color: #e2e8f0;
+    border-radius: 3px;
     overflow: hidden;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    border: 1px solid #e2e8f0;
 }
 
 .strength-fill {
@@ -124,22 +117,23 @@
 
 .strength-fill.fair {
     width: 50%;
-    background-color: #f59e0b;
+    background-color: #d97706;
 }
 
 .strength-fill.good {
     width: 75%;
-    background-color: #10b981;
+    background-color: #059669;
 }
 
 .strength-fill.strong {
     width: 100%;
-    background-color: #059669;
+    background-color: #047857;
 }
 
 .strength-text {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
 }
 
 .strength-text.weak {
@@ -160,12 +154,13 @@
 
 /* Password Match Indicator */
 .password-match {
-    margin-top: 8px;
+    margin-top: 12px;
 }
 
 .match-text {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
 }
 
 .match-text.match {
@@ -179,151 +174,74 @@
 /* Form Actions */
 .form-actions {
     display: flex;
-    gap: 12px;
+    gap: 1rem;
     justify-content: flex-end;
-    margin-top: 32px;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e1e5e9;
 }
 
 /* Messages */
 .message {
-    margin-top: 16px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-size: 14px;
+    margin-top: 24px;
+    padding: 16px 20px;
+    border-radius: 6px;
+    font-size: 15px;
     text-align: center;
+    font-weight: 500;
+    border-width: 2px;
+    border-style: solid;
 }
 
 .message.success {
     background-color: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    color: #166534;
+    border-color: #10b981;
+    color: #064e3b;
 }
 
 .message.error {
     background-color: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #dc2626;
+    border-color: #dc2626;
+    color: #7f1d1d;
 }
 
 .message.info {
     background-color: #eff6ff;
-    border: 1px solid #bfdbfe;
-    color: #1e40af;
+    border-color: #1e40af;
+    color: #1e3a8a;
 }
 
 /* Session Management */
-.session-info {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: #f9fafb;
-}
-
-.session-item {
+.session-details {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
-.session-details strong {
-    display: block;
-    color: #374151;
+.session-details label {
     font-weight: 600;
-    margin-bottom: 4px;
+    color: #333;
+    margin-bottom: 0;
 }
 
 .session-meta {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: #6b7280;
 }
 
 .session-meta span:first-child {
     font-weight: 500;
+    color: #495057;
 }
 
-/* Buttons */
-.btn {
-    padding: 8px 16px;
-    font-size: 14px;
-    font-weight: 500;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-sm {
-    padding: 6px 12px;
-    font-size: 12px;
-}
-
-.btn-primary {
-    background-color: #667eea;
-    color: white;
-}
-
-.btn-primary:hover {
-    background-color: #5a67d8;
-}
-
-.btn-secondary {
-    background-color: #e5e7eb;
-    color: #374151;
-}
-
-.btn-secondary:hover {
-    background-color: #d1d5db;
-}
-
-.btn-danger {
-    background-color: #dc2626;
-    color: white;
-}
-
+/* Settings页面按钮特殊效果 */
+.btn-primary:hover,
 .btn-danger:hover {
-    background-color: #b91c1c;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-.btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Header adjustments for settings page */
-.header-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-}
-
-/* Nav adjustments */
-.nav-btn {
-    background: none;
-    border: none;
-    padding: 12px 16px;
-    color: #6b7280;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    text-decoration: none;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.nav-btn:hover {
-    color: #374151;
-    background-color: #f3f4f6;
-}
-
-.nav-btn.active {
-    color: #667eea;
-    background-color: #eef2ff;
-}
+/* Settings页面特有样式 */
 
 /* Responsive design */
 @media (max-width: 768px) {

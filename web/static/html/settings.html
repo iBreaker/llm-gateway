@@ -15,15 +15,13 @@
                 <span data-i18n="header.subtitle">Management Console</span>
                 <span>•</span>
                 <span data-i18n="settings.title">Settings</span>
-                <span>•</span>
-                <button class="btn btn-secondary btn-sm" onclick="logout()" data-i18n="settings.logout">Logout</button>
             </div>
         </div>
     </header>
 
     <nav class="nav">
         <div class="container">
-            <a href="/" class="nav-btn" data-i18n="nav.dashboard">Dashboard</a>
+            <button class="nav-btn" onclick="window.location.href='/'" data-i18n="nav.dashboard">Dashboard</button>
             <button class="nav-btn active" data-i18n="settings.title">Settings</button>
         </div>
     </nav>
@@ -38,18 +36,9 @@
             </div>
             
             <!-- Password Management Section -->
-            <div class="settings-section">
-                <div class="section-header">
-                    <h2 data-i18n="settings.security">Security Settings</h2>
-                    <p data-i18n="settings.security_subtitle">Update your system password</p>
-                </div>
-                
-                <div class="card settings-card">
-                    <div class="card-header">
-                        <h3 data-i18n="settings.change_password">Change Password</h3>
-                    </div>
-                    <div class="card-body">
-                        <form id="change-password-form" class="password-form">
+            <div class="config-section">
+                <h3 data-i18n="settings.change_password">Change Password</h3>
+                <form id="change-password-form" class="password-form">
                             <div class="form-group">
                                 <label for="current-password" data-i18n="settings.current_password">Current Password</label>
                                 <div class="password-input-group">
@@ -62,7 +51,7 @@
                                         placeholder="Enter your current password"
                                     >
                                     <button type="button" class="password-toggle" onclick="togglePassword('current-password')">
-                                        👁️
+                                        Show
                                     </button>
                                 </div>
                             </div>
@@ -80,7 +69,7 @@
                                         placeholder="Enter your new password (min 6 characters)"
                                     >
                                     <button type="button" class="password-toggle" onclick="togglePassword('new-password')">
-                                        👁️
+                                        Show
                                     </button>
                                 </div>
                                 <div class="password-strength" id="password-strength" style="display: none;">
@@ -103,7 +92,7 @@
                                         placeholder="Confirm your new password"
                                     >
                                     <button type="button" class="password-toggle" onclick="togglePassword('confirm-password')">
-                                        👁️
+                                        Show
                                     </button>
                                 </div>
                                 <div class="password-match" id="password-match" style="display: none;">
@@ -118,35 +107,20 @@
                             
                             <div id="password-message" class="message" style="display: none;"></div>
                         </form>
-                    </div>
-                </div>
             </div>
 
             <!-- Session Management Section -->
-            <div class="settings-section">
-                <div class="section-header">
-                    <h2 data-i18n="settings.session">Session Management</h2>
-                    <p data-i18n="settings.session_subtitle">Manage active sessions</p>
-                </div>
-                
-                <div class="card settings-card">
-                    <div class="card-header">
-                        <h3 data-i18n="settings.active_sessions">Active Sessions</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="session-info">
-                            <div class="session-item">
-                                <div class="session-details">
-                                    <strong data-i18n="settings.current_session">Current Session</strong>
-                                    <div class="session-meta">
-                                        <span data-i18n="settings.logged_in_at">Logged in at:</span>
-                                        <span id="login-time">-</span>
-                                    </div>
-                                </div>
-                                <button class="btn btn-danger btn-sm" onclick="logout()" data-i18n="settings.logout">Logout</button>
-                            </div>
+            <div class="config-section">
+                <h3 data-i18n="settings.active_sessions">Session Management</h3>
+                <div class="config-item">
+                    <div class="session-details">
+                        <label data-i18n="settings.current_session">Current Session</label>
+                        <div class="session-meta">
+                            <span data-i18n="settings.logged_in_at">Logged in at:</span>
+                            <span id="login-time">-</span>
                         </div>
                     </div>
+                    <button class="btn btn-danger btn-sm" onclick="logout()" data-i18n="settings.logout">Logout</button>
                 </div>
             </div>
         </div>

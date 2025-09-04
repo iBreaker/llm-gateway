@@ -129,8 +129,8 @@ class LoginManager {
 
     initializeI18n() {
         // Initialize i18n if available
-        if (window.I18n) {
-            window.I18n.init();
+        if (window.i18n) {
+            window.i18n.init();
         }
     }
 }
@@ -149,7 +149,7 @@ function handlePasswordVisibility() {
         toggleBtn.addEventListener('click', () => {
             const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
             passwordInput.setAttribute('type', type);
-            toggleBtn.textContent = type === 'password' ? '👁️' : '🙈';
+            toggleBtn.textContent = type === 'password' ? 'Show' : 'Hide';
         });
     }
 }

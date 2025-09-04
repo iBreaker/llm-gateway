@@ -4,10 +4,31 @@ class LLMGatewayApp {
         this.apiBase = '/api/v1';
     }
 
-    init() {
+    // Check if user is authenticated
+    async checkAuthentication() {
+        try {
+            const response = await fetch('/api/v1/health', {
+                credentials: 'include'
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            return false;
+        }
+    }
+
+    async init() {
         console.log('LLMGatewayApp initializing...');
         // Initialize i18n first
         window.i18n.init();
+        
+        // Check authentication first
+        const isAuthenticated = await this.checkAuthentication();
+        if (!isAuthenticated) {
+            console.log('User not authenticated, redirecting to login...');
+            window.location.href = '/static/html/login.html';
+            return;
+        }
         
         this.setupTabNavigation();
         this.setupFormHandlers();
@@ -204,12 +225,14 @@ class LLMGatewayApp {
         const statusDot = document.getElementById('system-status');
         const statusText = document.getElementById('system-status-text');
         
-        if (healthy) {
-            statusDot.className = 'status-dot healthy';
-            statusText.textContent = window.i18n.t('dashboard.healthy');
-        } else {
-            statusDot.className = 'status-dot unhealthy';
-            statusText.textContent = window.i18n.t('dashboard.unhealthy');
+        if (statusDot && statusText) {
+            if (healthy) {
+                statusDot.className = 'status-dot healthy';
+                statusText.textContent = window.i18n.t('dashboard.healthy');
+            } else {
+                statusDot.className = 'status-dot unhealthy';
+                statusText.textContent = window.i18n.t('dashboard.unhealthy');
+            }
         }
     }
 
@@ -400,11 +423,23 @@ class LLMGatewayApp {
             (config.server?.Timeout || config.server?.timeout) ? `${config.server.Timeout || config.server.timeout}s` : '-';
         
         // Proxy config - 兼容大小写和不同命名约定
-        const requestTimeout = config.proxy?.RequestTimeout || config.proxy?.request_timeout || 0;
-        const streamTimeout = config.proxy?.StreamTimeout || config.proxy?.stream_timeout || 0;
+        const requestTimeout = config.proxy?.RequestTimeout !== undefined ? config.proxy.RequestTimeout : 
+                              config.proxy?.request_timeout !== undefined ? config.proxy.request_timeout : null;
+        const streamTimeout = config.proxy?.StreamTimeout !== undefined ? config.proxy.StreamTimeout : 
+                             config.proxy?.stream_timeout !== undefined ? config.proxy.stream_timeout : null;
+        const connectTimeout = config.proxy?.ConnectTimeout !== undefined ? config.proxy.ConnectTimeout : 
+                              config.proxy?.connect_timeout !== undefined ? config.proxy.connect_timeout : null;
+        const responseTimeout = config.proxy?.ResponseTimeout !== undefined ? config.proxy.ResponseTimeout : 
+                               config.proxy?.response_timeout !== undefined ? config.proxy.response_timeout : null;
         
-        document.getElementById('config-request-timeout').textContent = requestTimeout ? `${requestTimeout}s` : '-';
-        document.getElementById('config-stream-timeout').textContent = streamTimeout ? `${streamTimeout}s` : '-';
+        document.getElementById('config-request-timeout').textContent = 
+            requestTimeout !== null ? (requestTimeout === 0 ? window.i18n.t('config.unlimited') : `${requestTimeout}s`) : '-';
+        document.getElementById('config-stream-timeout').textContent = 
+            streamTimeout !== null ? (streamTimeout === 0 ? window.i18n.t('config.unlimited') : `${streamTimeout}s`) : '-';
+        document.getElementById('config-connect-timeout').textContent = 
+            connectTimeout !== null ? (connectTimeout === 0 ? window.i18n.t('config.unlimited') : `${connectTimeout}s`) : '-';
+        document.getElementById('config-response-timeout').textContent = 
+            responseTimeout !== null ? (responseTimeout === 0 ? window.i18n.t('config.unlimited') : `${responseTimeout}s`) : '-';
         
         // Logging config - 兼容大小写字段名
         document.getElementById('config-log-level').textContent = config.logging?.Level || config.logging?.level || '-';
@@ -679,12 +714,12 @@ class LLMGatewayApp {
 
     showSuccess(message) {
         // Simple success notification - could be enhanced with a toast system
-        alert('✅ ' + message);
+        alert(message);
     }
 
     showError(message) {
         // Simple error notification - could be enhanced with a toast system  
-        alert('❌ ' + message);
+        alert(message);
     }
 
     escapeHtml(text) {
@@ -742,6 +777,24 @@ function fallbackCopyToClipboard(text) {
         alert(window.i18n.t('msg.copy_failed'));
     }
     document.body.removeChild(textArea);
+}
+
+// Logout function
+async function logout() {
+    try {
+        const response = await fetch('/api/v1/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        // Redirect to login page regardless of response
+        // This ensures user is logged out even if server request fails
+        window.location.href = '/static/html/login.html';
+    } catch (error) {
+        console.error('Logout error:', error);
+        // Still redirect to login page
+        window.location.href = '/static/html/login.html';
+    }
 }
 
 // Initialize app when DOM is loaded

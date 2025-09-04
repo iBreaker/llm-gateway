@@ -99,8 +99,11 @@ class I18n {
                 'config.timeout': 'Timeout:',
                 'config.request_timeout': 'Request Timeout:',
                 'config.stream_timeout': 'Stream Timeout:',
+                'config.connect_timeout': 'Connect Timeout:',
+                'config.response_timeout': 'Response Timeout:',
                 'config.level': 'Level:',
                 'config.format': 'Format:',
+                'config.unlimited': 'Unlimited',
                 
                 // Modals
                 'modal.add_upstream': 'Add Upstream Account',
@@ -111,7 +114,7 @@ class I18n {
                 'modal.generate': 'Generate Key',
                 'modal.saved': "I've Saved It",
                 'modal.copy': 'Copy',
-                'modal.warning': '⚠️ Important: This is the only time you\'ll see this key. Please copy and store it securely.',
+                'modal.warning': 'Important: This is the only time you\'ll see this key. Please copy and store it securely.',
                 
                 // Forms
                 'form.name': 'Name:',
@@ -142,8 +145,8 @@ class I18n {
                 'msg.upstream_added': 'Upstream account added successfully',
                 'msg.upstream_deleted': 'Upstream account deleted successfully',
                 'msg.apikey_deleted': 'API key deleted successfully',
-                'msg.copied': '✅ Copied to clipboard!',
-                'msg.copy_failed': '❌ Failed to copy to clipboard',
+                'msg.copied': 'Copied to clipboard!',
+                'msg.copy_failed': 'Failed to copy to clipboard',
                 
                 // Stats
                 'stats.total': 'Total',
@@ -267,8 +270,11 @@ class I18n {
                 'config.timeout': '超时：',
                 'config.request_timeout': '请求超时：',
                 'config.stream_timeout': '流超时：',
+                'config.connect_timeout': '连接超时：',
+                'config.response_timeout': '响应超时：',
                 'config.level': '级别：',
                 'config.format': '格式：',
+                'config.unlimited': '无限制',
                 
                 // Modals
                 'modal.add_upstream': '添加上游账号',
@@ -279,7 +285,7 @@ class I18n {
                 'modal.generate': '生成密钥',
                 'modal.saved': '我已保存',
                 'modal.copy': '复制',
-                'modal.warning': '⚠️ 重要提示：这是您唯一看到此密钥的机会。请复制并安全保存。',
+                'modal.warning': '重要提示：这是您唯一看到此密钥的机会。请复制并安全保存。',
                 
                 // Forms
                 'form.name': '名称：',
@@ -310,8 +316,8 @@ class I18n {
                 'msg.upstream_added': '上游账号添加成功',
                 'msg.upstream_deleted': '上游账号删除成功',
                 'msg.apikey_deleted': 'API密钥删除成功',
-                'msg.copied': '✅ 已复制到剪贴板！',
-                'msg.copy_failed': '❌ 复制到剪贴板失败',
+                'msg.copied': '已复制到剪贴板！',
+                'msg.copy_failed': '复制到剪贴板失败',
                 
                 // Stats
                 'stats.total': '总计',

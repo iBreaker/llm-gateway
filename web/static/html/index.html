@@ -13,8 +13,6 @@
             <div class="header-info">
                 <span data-i18n="header.subtitle">Management Console</span>
                 <span>•</span>
-                <span id="header-status" data-i18n="header.status">Online</span>
-                <span>•</span>
                 <a href="/static/html/settings.html" class="btn btn-secondary btn-sm" data-i18n="settings.title">Settings</a>
             </div>
         </div>
@@ -244,6 +242,14 @@
                         <label data-i18n="config.stream_timeout">Stream Timeout:</label>
                         <span id="config-stream-timeout">-</span>
                     </div>
+                    <div class="config-item">
+                        <label data-i18n="config.connect_timeout">Connect Timeout:</label>
+                        <span id="config-connect-timeout">-</span>
+                    </div>
+                    <div class="config-item">
+                        <label data-i18n="config.response_timeout">Response Timeout:</label>
+                        <span id="config-response-timeout">-</span>
+                    </div>
                 </div>
                 
                 <div class="config-section">
@@ -339,7 +345,7 @@
         <div class="modal-content">
             <h3 data-i18n="modal.key_generated">API Key Generated</h3>
             <div class="alert alert-warning">
-                <span data-i18n="modal.warning">⚠️ Important: This is the only time you'll see this key. Please copy and store it securely.</span>
+                <span data-i18n="modal.warning">Important: This is the only time you'll see this key. Please copy and store it securely.</span>
             </div>
             <div class="generated-key">
                 <code id="generated-key-value"></code>

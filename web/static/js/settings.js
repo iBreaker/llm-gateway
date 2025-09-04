@@ -228,10 +228,10 @@ function togglePassword(inputId) {
     
     if (input.type === 'password') {
         input.type = 'text';
-        toggleBtn.textContent = '🙈';
+        toggleBtn.textContent = 'Hide';
     } else {
         input.type = 'password';
-        toggleBtn.textContent = '👁️';
+        toggleBtn.textContent = 'Show';
     }
 }
 
