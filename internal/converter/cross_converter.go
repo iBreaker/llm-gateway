@@ -1,9 +1,11 @@
 package converter
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // crossConverter 跨格式转换器实现
@@ -132,14 +134,84 @@ func (c *crossConverter) ConvertStream(from, to Format, reader io.Reader, writer
 
 // forwardStream 直接转发流
 func (c *crossConverter) forwardStream(from Format, reader io.Reader, writer StreamWriter) error {
-	// 获取转换器用于格式处理
-	converter, err := c.registry.Get(from)
-	if err != nil {
-		return fmt.Errorf("获取转换器失败: %w", err)
-	}
+	// 真正的直接转发：逐行读取并直接写入，不经过格式解析和转换
+	return c.directForwardStream(reader, writer)
+}
 
-	// 直接使用SSE工具函数转发
-	return ProcessSSEStream(reader, converter, writer)
+// directForwardStream 真正的直接转发，不经过任何格式解析
+func (c *crossConverter) directForwardStream(reader io.Reader, writer StreamWriter) error {
+	scanner := bufio.NewScanner(reader)
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+		
+		if line == "" {
+			continue
+		}
+		
+		// 处理SSE数据行
+		if strings.HasPrefix(line, "data: ") {
+			data := line[6:] // 移除"data: "前缀
+			
+			// 处理结束标记
+			if data == "[DONE]" {
+				return writer.WriteDone()
+			}
+			
+			// 直接转发原始数据，不解析为内部格式
+			var rawData interface{}
+			if err := json.Unmarshal([]byte(data), &rawData); err != nil {
+				// 如果无法解析JSON，跳过这行
+				continue
+			}
+			
+			chunk := &StreamChunk{
+				EventType: "",
+				Data:      rawData, // 直接使用原始数据
+				Tokens:    0,
+				IsDone:    false,
+			}
+			
+			if err := writer.WriteChunk(chunk); err != nil {
+				return err
+			}
+			
+		} else if strings.HasPrefix(line, "event: ") {
+			// 处理命名事件（Anthropic风格），但在OpenAI直接转发中不应该遇到
+			eventType := line[7:] // 移除"event: "前缀
+			
+			// 读取下一行的data
+			if scanner.Scan() {
+				dataLine := scanner.Text()
+				if strings.HasPrefix(dataLine, "data: ") {
+					data := dataLine[6:]
+					
+					var rawData interface{}
+					if err := json.Unmarshal([]byte(data), &rawData); err != nil {
+						continue
+					}
+					
+					chunk := &StreamChunk{
+						EventType: eventType,
+						Data:      rawData,
+						Tokens:    0,
+						IsDone:    false,
+					}
+					
+					if err := writer.WriteChunk(chunk); err != nil {
+						return err
+					}
+					
+					if eventType == "message_stop" {
+						return writer.WriteDone()
+					}
+				}
+			}
+		}
+	}
+	
+	return scanner.Err()
 }
 
 // crossFormatWriter 跨格式流写入器
