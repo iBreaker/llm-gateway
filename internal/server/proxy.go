@@ -208,10 +208,11 @@ func (h *ProxyHandler) handleProxyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 3. 模型路由处理（根据配置）
+	// 3. 模型路由处理（优先使用Key级别配置）
 	var modelRouteContext *types.ModelRouteContext
 	if h.modelRouteConfig != nil {
-		modelRouteContext = h.modelRouteConfig.CreateContext(tempReq.Model)
+		gatewayKey, _ := r.Context().Value("gatewayKey").(*types.GatewayAPIKey)
+		modelRouteContext = h.modelRouteConfig.CreateContextWithKey(tempReq.Model, gatewayKey)
 	}
 
 	// 4. 重新解析请求并应用模型路由

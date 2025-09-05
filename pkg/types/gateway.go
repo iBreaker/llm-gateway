@@ -10,6 +10,7 @@ type GatewayAPIKey struct {
 	Permissions []Permission     `json:"permissions" yaml:"permissions"`
 	Status      string           `json:"status" yaml:"status"` // active, disabled
 	RateLimit   *RateLimitConfig `json:"rate_limit,omitempty" yaml:"rate_limit,omitempty"`
+	ModelRoutes *ModelRouteConfig `json:"model_routes,omitempty" yaml:"model_routes,omitempty"`
 	Usage       *KeyUsageStats   `json:"usage,omitempty" yaml:"usage,omitempty"`
 	CreatedAt   time.Time        `json:"created_at" yaml:"created_at"`
 	UpdatedAt   time.Time        `json:"updated_at" yaml:"updated_at"`
@@ -22,6 +23,7 @@ type RateLimitConfig struct {
 	RequestsPerHour   int `json:"requests_per_hour" yaml:"requests_per_hour"`
 	RequestsPerDay    int `json:"requests_per_day" yaml:"requests_per_day"`
 }
+
 
 // KeyUsageStats - Gateway API Key使用统计
 type KeyUsageStats struct {

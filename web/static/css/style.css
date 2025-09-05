@@ -809,3 +809,301 @@ body {
 .btn-success:hover {
     background: #218838;
 }
+
+/* Model Routes Modal Styles */
+.modal-large .modal-content {
+    max-width: 800px;
+    width: 90%;
+}
+
+.modal-actions {
+    margin-bottom: 1rem;
+    text-align: right;
+}
+
+.modal-actions .btn {
+    margin-left: 0.5rem;
+}
+
+/* Model Routes Modal Styles */
+.modal-routes {
+    max-width: 1000px;
+    width: 95%;
+    max-height: 85vh;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 2rem 2rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+}
+
+.modal-title h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b;
+    letter-spacing: -0.025em;
+}
+
+.modal-subtitle {
+    margin: 0.5rem 0 0;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.key-name {
+    font-family: 'Monaco', 'Menlo', monospace;
+    background-color: #f1f5f9;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    color: #334155;
+    font-weight: 600;
+}
+
+.modal-body {
+    padding: 1.5rem 2rem;
+    max-height: calc(85vh - 200px);
+    overflow-y: auto;
+}
+
+.routes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+}
+
+.routes-info p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.routes-table-container {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: white;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.routes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.routes-table th {
+    background-color: #f8fafc;
+    padding: 1rem 0.75rem;
+    font-weight: 600;
+    color: #374151;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.routes-table td {
+    padding: 1rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.routes-table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+.routes-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Table Column Widths */
+.col-source { width: 20%; }
+.col-target { width: 20%; }
+.col-provider { width: 15%; }
+.col-priority { width: 10%; text-align: center; }
+.col-status { width: 15%; }
+.col-actions { width: 20%; }
+
+/* Empty State */
+.empty-state {
+    padding: 3rem 2rem !important;
+    text-align: center;
+    border: none !important;
+}
+
+.empty-state-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.empty-state-icon {
+    font-size: 2.5rem;
+    opacity: 0.6;
+}
+
+.empty-state-text {
+    color: #64748b;
+    font-size: 0.875rem;
+    font-style: italic;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem 2rem;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+}
+
+.footer-info small {
+    color: #64748b;
+    font-size: 0.75rem;
+}
+
+.footer-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.icon-plus {
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+/* Route Form Styles */
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.form-group label input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Route Form Modal Styles */
+.modal-form {
+    max-width: 500px;
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.modal-header-simple {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+}
+
+.modal-header-simple h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.modal-form form {
+    padding: 2rem;
+}
+
+.modal-form .form-actions {
+    margin: 0;
+    padding: 1rem 2rem 2rem;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+}
+
+/* Button spacing in table actions */
+.btn-small + .btn-small {
+    margin-left: 0.5rem;
+}
+
+/* Responsive design for model routes */
+@media (max-width: 768px) {
+    .modal-large .modal-content {
+        width: 95%;
+        max-width: none;
+    }
+    
+    .btn-small + .btn-small {
+        margin-left: 0.25rem;
+        margin-top: 0.25rem;
+    }
+
+    /* Model Routes Modal Responsive */
+    .modal-routes {
+        width: 98%;
+        max-height: 95vh;
+        margin: 10px;
+    }
+    
+    .modal-header {
+        padding: 1rem 1rem 0.5rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        position: relative;
+    }
+    
+    .modal-header .close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+    }
+    
+    .modal-body {
+        padding: 1rem;
+    }
+    
+    .routes-header {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: left;
+    }
+    
+    .routes-table-container {
+        overflow-x: auto;
+    }
+    
+    .routes-table {
+        min-width: 600px;
+    }
+    
+    .modal-footer {
+        padding: 1rem;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .footer-actions {
+        flex-direction: column;
+    }
+    
+    .footer-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

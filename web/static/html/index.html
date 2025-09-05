@@ -24,6 +24,7 @@
             <button class="nav-btn" data-tab="upstream" data-i18n="nav.upstream">Upstream Accounts</button>
             <button class="nav-btn" data-tab="apikeys" data-i18n="nav.apikeys">API Keys</button>
             <button class="nav-btn" data-tab="config" data-i18n="nav.config">Configuration</button>
+            <button class="nav-btn" data-tab="model-routes" data-i18n="nav.model_routes">Model Routes</button>
         </div>
     </nav>
 
@@ -264,6 +265,72 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Global Model Routes Tab -->
+            <div id="model-routes" class="tab-content">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title" data-i18n="global_routes.title">Global Model Routes</h1>
+                        <p class="page-subtitle" data-i18n="global_routes.subtitle">Configure global model routing rules and fallback behaviors</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.showAddGlobalRouteForm()" data-i18n="global_routes.add_route">+ Add Route</button>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="app.refreshGlobalRoutes()" data-i18n="global_routes.refresh">Refresh</button>
+                </div>
+
+                <!-- Statistics Cards -->
+                <div class="cards" id="global-routes-stats" style="display: none;">
+                    <div class="card stat-card stat-total">
+                        <h3 data-i18n="stats.total">Total</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="global-routes-stats-total">0</span>
+                            <span class="metric-label" data-i18n="stats.routes">Routes</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-active">
+                        <h3 data-i18n="stats.active">Active</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="global-routes-stats-active">0</span>
+                            <span class="metric-label" data-i18n="stats.active">Active</span>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-providers">
+                        <h3 data-i18n="stats.providers">Providers</h3>
+                        <div class="metric providers-list">
+                            <div id="global-routes-stats-providers">-</div>
+                        </div>
+                    </div>
+                    <div class="card stat-card stat-recent">
+                        <h3 data-i18n="stats.recent_usage">Recent Usage</h3>
+                        <div class="metric">
+                            <span class="metric-value" id="global-routes-stats-recent">0</span>
+                            <span class="metric-label" data-i18n="stats.last_24h">Last 24h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table" id="global-routes-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="model_routes.source_model">Source Model</th>
+                                <th data-i18n="model_routes.target_model">Target Model</th>
+                                <th data-i18n="model_routes.target_provider">Target Provider</th>
+                                <th data-i18n="model_routes.priority">Priority</th>
+                                <th data-i18n="common.status">Status</th>
+                                <th data-i18n="apikeys.table.actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="global-routes-tbody">
+                            <tr>
+                                <td colspan="6" class="loading" data-i18n="global_routes.loading">Loading global routes...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -354,6 +421,174 @@
             <div class="form-actions">
                 <button type="button" class="btn btn-primary" onclick="closeModal('generated-key-modal')" data-i18n="modal.saved">I've Saved It</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Model Routes Configuration Modal -->
+    <div id="model-routes-modal" class="modal">
+        <div class="modal-content modal-routes">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h3><span data-i18n="routes.config_title">Model Routes Configuration</span></h3>
+                    <p class="modal-subtitle"><span data-i18n="routes.key_name_prefix">API Key:</span> <span id="model-routes-key-name" class="key-name"></span></p>
+                </div>
+                <span class="close" onclick="closeModal('model-routes-modal')">&times;</span>
+            </div>
+            
+            <div class="modal-body">
+                <div class="routes-header">
+                    <div class="routes-info">
+                        <p data-i18n="routes.description">Configure routing rules to redirect specific models to different providers.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.showAddRouteForm()" data-i18n="routes.add_route">
+                        <i class="icon-plus">+</i> Add Route
+                    </button>
+                </div>
+                
+                <!-- Model Routes Table -->
+                <div class="routes-table-container">
+                    <table class="routes-table" id="model-routes-table">
+                        <thead>
+                            <tr>
+                                <th class="col-source" data-i18n="routes.table.source_model">Source Model</th>
+                                <th class="col-target" data-i18n="routes.table.target_model">Target Model</th>
+                                <th class="col-provider" data-i18n="routes.table.provider">Provider</th>
+                                <th class="col-priority" data-i18n="routes.table.priority">Priority</th>
+                                <th class="col-status" data-i18n="routes.table.status">Status</th>
+                                <th class="col-actions" data-i18n="routes.table.actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="model-routes-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <div class="empty-state-content">
+                                        <div class="empty-state-icon">📋</div>
+                                        <div class="empty-state-text" data-i18n="routes.loading">Loading routes...</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="footer-info">
+                    <small data-i18n="routes.priority_info">Lower priority numbers take precedence over higher numbers.</small>
+                </div>
+                <div class="footer-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('model-routes-modal')" data-i18n="modal.close">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="app.saveModelRoutes()" data-i18n="routes.save_changes">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Route Modal -->
+    <div id="route-form-modal" class="modal">
+        <div class="modal-content modal-form">
+            <div class="modal-header-simple">
+                <h3 id="route-form-title" data-i18n="routes.add_route_title">Add Model Route</h3>
+                <span class="close" onclick="closeModal('route-form-modal')">&times;</span>
+            </div>
+            <form id="route-form">
+                <div class="form-group">
+                    <label for="route-source-model" data-i18n="routes.form.source_model">Source Model:</label>
+                    <input type="text" id="route-source-model" placeholder="e.g., gpt-4* or claude-*" data-i18n-placeholder="routes.form.source_placeholder" required>
+                    <small data-i18n="routes.form.source_help">Use * for wildcards (e.g., gpt-4* matches all GPT-4 variants)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="route-target-model" data-i18n="routes.form.target_model">Target Model:</label>
+                    <input type="text" id="route-target-model" placeholder="e.g., gpt-4-turbo-preview" data-i18n-placeholder="routes.form.target_placeholder" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="route-target-provider" data-i18n="routes.form.target_provider">Target Provider:</label>
+                    <select id="route-target-provider" required>
+                        <option value="" data-i18n="routes.form.select_provider">Select Provider</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="google">Google</option>
+                        <option value="qwen">Qwen</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="route-priority" data-i18n="routes.form.priority">Priority:</label>
+                    <input type="number" id="route-priority" value="10" min="0" max="1000" required>
+                    <small data-i18n="routes.form.priority_help">Lower numbers = higher priority</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="route-description" data-i18n="routes.form.description">Description:</label>
+                    <input type="text" id="route-description" placeholder="Optional description" data-i18n-placeholder="routes.form.description_placeholder">
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="route-enabled" checked> <span data-i18n="routes.form.enabled">Enabled</span>
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('route-form-modal')" data-i18n="modal.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="routes.form.save_route">Save Route</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Global Route Form Modal -->
+    <div id="global-route-form-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('global-route-form-modal')">&times;</span>
+            <h3 id="global-route-form-title" data-i18n="global_routes.add_route_title">Add Global Route</h3>
+            <form id="global-route-form">
+                <div class="form-group">
+                    <label for="global-route-source-model" data-i18n="routes.form.source_model">Source Model:</label>
+                    <input type="text" id="global-route-source-model" placeholder="e.g., gpt-4* or claude-*" data-i18n-placeholder="routes.form.source_placeholder" required>
+                    <small data-i18n="routes.form.source_help">Use * for wildcards (e.g., gpt-4* matches all GPT-4 variants)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="global-route-target-model" data-i18n="routes.form.target_model">Target Model:</label>
+                    <input type="text" id="global-route-target-model" placeholder="e.g., gpt-4-turbo-preview" data-i18n-placeholder="routes.form.target_placeholder" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="global-route-target-provider" data-i18n="routes.form.target_provider">Target Provider:</label>
+                    <select id="global-route-target-provider" required>
+                        <option value="" data-i18n="routes.form.select_provider">Select Provider</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="google">Google</option>
+                        <option value="qwen">Qwen</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="global-route-priority" data-i18n="routes.form.priority">Priority:</label>
+                    <input type="number" id="global-route-priority" value="10" min="0" max="1000" required>
+                    <small data-i18n="routes.form.priority_help">Lower numbers = higher priority</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="global-route-description" data-i18n="routes.form.description">Description:</label>
+                    <input type="text" id="global-route-description" placeholder="Optional description" data-i18n-placeholder="routes.form.description_placeholder">
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="global-route-enabled" checked> <span data-i18n="routes.form.enabled">Enabled</span>
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('global-route-form-modal')" data-i18n="modal.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="routes.form.save_route">Save Route</button>
+                </div>
+            </form>
         </div>
     </div>
 

@@ -43,6 +43,7 @@ class I18n {
                 'nav.upstream': 'Upstream Accounts',
                 'nav.apikeys': 'API Keys',
                 'nav.config': 'Configuration',
+                'nav.model_routes': 'Model Routes',
                 
                 // Dashboard
                 'dashboard.title': 'System Dashboard',
@@ -86,7 +87,74 @@ class I18n {
                 'apikeys.table.created': 'Created',
                 'apikeys.table.actions': 'Actions',
                 'apikeys.delete': 'Delete',
+                'apikeys.configure_routes': 'Routes',
+                'apikeys.configure_routes_title': 'Configure Model Routes',
                 'apikeys.loading': 'Loading API keys...',
+                
+                // Model Routes
+                'model_routes.title': 'Model Routes Configuration',
+                'model_routes.subtitle': 'Configure model routing rules for this API key',
+                'model_routes.add_route': 'Add Model Route',
+                'model_routes.edit_route': 'Edit Model Route',
+                'model_routes.delete_confirm': 'Are you sure you want to delete this route?',
+                'model_routes.save_success': 'Model routes saved successfully',
+                'model_routes.save_error': 'Failed to save model routes',
+                'model_routes.required_fields': 'Please fill in all required fields',
+                'model_routes.priority_error': 'Priority must be a valid number >= 0',
+                'model_routes.route_saved': 'Route saved successfully. Don\'t forget to save changes.',
+                'model_routes.source_model': 'Source Model',
+                'model_routes.target_model': 'Target Model',
+                'model_routes.target_provider': 'Target Provider',
+                'model_routes.priority': 'Priority',
+                'model_routes.description': 'Description',
+                'model_routes.enabled': 'Enabled',
+                'model_routes.save_changes': 'Save Changes',
+                'model_routes.close': 'Close',
+                'routes.no_routes': 'No routes configured',
+                'routes.config_title': 'Model Routes Configuration',
+                'routes.add_route': '+ Add Route',
+                'routes.add_route_title': 'Add Model Route',
+                'routes.loading': 'Loading routes...',
+                'routes.save_changes': 'Save Changes',
+                'routes.table.source_model': 'Source Model',
+                'routes.table.target_model': 'Target Model',
+                'routes.table.provider': 'Provider',
+                'routes.table.priority': 'Priority',
+                'routes.table.status': 'Status',
+                'routes.table.actions': 'Actions',
+                'routes.form.source_model': 'Source Model',
+                'routes.form.target_model': 'Target Model',
+                'routes.form.target_provider': 'Target Provider',
+                'routes.form.priority': 'Priority',
+                'routes.form.description': 'Description',
+                'routes.form.enabled': 'Enabled',
+                'routes.form.save_route': 'Save Route',
+                'routes.form.select_provider': 'Select Provider',
+                'routes.form.source_placeholder': 'e.g., gpt-4* or claude-*',
+                'routes.form.target_placeholder': 'e.g., gpt-4-turbo-preview',
+                'routes.form.description_placeholder': 'Optional description',
+                'routes.form.source_help': 'Use * for wildcards (e.g., gpt-4* matches all GPT-4 variants)',
+                'routes.form.priority_help': 'Lower numbers = higher priority',
+                'routes.key_name_prefix': 'API Key:',
+                'routes.description': 'Configure routing rules to redirect specific models to different providers.',
+                'routes.priority_info': 'Lower priority numbers take precedence over higher numbers.',
+                
+                // Common
+                'common.edit': 'Edit',
+                'common.delete': 'Delete',
+                'common.enabled': 'Enabled',
+                'common.disabled': 'Disabled',
+                'common.status': 'Status',
+                
+                // Global Routes
+                'global_routes.title': 'Global Model Routes',
+                'global_routes.subtitle': 'Configure global model routing rules and fallback behaviors',
+                'global_routes.add_route': '+ Add Route',
+                'global_routes.refresh': 'Refresh',
+                'global_routes.loading': 'Loading global routes...',
+                'global_routes.add_route_title': 'Add Global Route',
+                'global_routes.load_error': 'Failed to load global routes',
+                'stats.routes': 'Routes',
                 
                 // Configuration
                 'config.title': 'System Configuration',
@@ -115,6 +183,7 @@ class I18n {
                 'modal.saved': "I've Saved It",
                 'modal.copy': 'Copy',
                 'modal.warning': 'Important: This is the only time you\'ll see this key. Please copy and store it securely.',
+                'modal.close': 'Close',
                 
                 // Forms
                 'form.name': 'Name:',
@@ -214,6 +283,7 @@ class I18n {
                 'nav.upstream': '上游账号',
                 'nav.apikeys': 'API 密钥',
                 'nav.config': '配置',
+                'nav.model_routes': '模型路由',
                 
                 // Dashboard
                 'dashboard.title': '系统仪表板',
@@ -257,7 +327,74 @@ class I18n {
                 'apikeys.table.created': '创建时间',
                 'apikeys.table.actions': '操作',
                 'apikeys.delete': '删除',
+                'apikeys.configure_routes': '路由',
+                'apikeys.configure_routes_title': '配置模型路由',
                 'apikeys.loading': '正在加载API密钥...',
+                
+                // Model Routes
+                'model_routes.title': '模型路由配置',
+                'model_routes.subtitle': '为此API密钥配置模型路由规则',
+                'model_routes.add_route': '添加模型路由',
+                'model_routes.edit_route': '编辑模型路由',
+                'model_routes.delete_confirm': '确定要删除此路由吗？',
+                'model_routes.save_success': '模型路由保存成功',
+                'model_routes.save_error': '保存模型路由失败',
+                'model_routes.required_fields': '请填写所有必填字段',
+                'model_routes.priority_error': '优先级必须是大于等于0的有效数字',
+                'model_routes.route_saved': '路由保存成功。别忘了保存更改。',
+                'model_routes.source_model': '源模型',
+                'model_routes.target_model': '目标模型',
+                'model_routes.target_provider': '目标提供商',
+                'model_routes.priority': '优先级',
+                'model_routes.description': '描述',
+                'model_routes.enabled': '启用',
+                'model_routes.save_changes': '保存更改',
+                'model_routes.close': '关闭',
+                'routes.no_routes': '未配置路由',
+                'routes.config_title': '模型路由配置',
+                'routes.add_route': '+ 添加路由',
+                'routes.add_route_title': '添加模型路由',
+                'routes.loading': '正在加载路由...',
+                'routes.save_changes': '保存更改',
+                'routes.table.source_model': '源模型',
+                'routes.table.target_model': '目标模型',
+                'routes.table.provider': '提供商',
+                'routes.table.priority': '优先级',
+                'routes.table.status': '状态',
+                'routes.table.actions': '操作',
+                'routes.form.source_model': '源模型',
+                'routes.form.target_model': '目标模型',
+                'routes.form.target_provider': '目标提供商',
+                'routes.form.priority': '优先级',
+                'routes.form.description': '描述',
+                'routes.form.enabled': '启用',
+                'routes.form.save_route': '保存路由',
+                'routes.form.select_provider': '选择提供商',
+                'routes.form.source_placeholder': '例如：gpt-4* 或 claude-*',
+                'routes.form.target_placeholder': '例如：gpt-4-turbo-preview',
+                'routes.form.description_placeholder': '可选描述',
+                'routes.form.source_help': '使用 * 作为通配符（例如：gpt-4* 匹配所有 GPT-4 变体）',
+                'routes.form.priority_help': '数字越小优先级越高',
+                'routes.key_name_prefix': 'API 密钥：',
+                'routes.description': '配置路由规则以将特定模型重定向到不同的提供商。',
+                'routes.priority_info': '优先级数字越小，优先级越高。',
+                
+                // Common
+                'common.edit': '编辑',
+                'common.delete': '删除',
+                'common.enabled': '启用',
+                'common.disabled': '禁用',
+                'common.status': '状态',
+                
+                // Global Routes
+                'global_routes.title': '全局模型路由',
+                'global_routes.subtitle': '配置全局模型路由规则和回退行为',
+                'global_routes.add_route': '+ 添加路由',
+                'global_routes.refresh': '刷新',
+                'global_routes.loading': '正在加载全局路由...',
+                'global_routes.add_route_title': '添加全局路由',
+                'global_routes.load_error': '加载全局路由失败',
+                'stats.routes': '路由',
                 
                 // Configuration
                 'config.title': '系统配置',
@@ -286,6 +423,7 @@ class I18n {
                 'modal.saved': '我已保存',
                 'modal.copy': '复制',
                 'modal.warning': '重要提示：这是您唯一看到此密钥的机会。请复制并安全保存。',
+                'modal.close': '关闭',
                 
                 // Forms
                 'form.name': '名称：',
@@ -380,6 +518,12 @@ class I18n {
         document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
             const key = element.getAttribute('data-i18n-placeholder');
             element.placeholder = this.t(key);
+        });
+
+        // Update elements with data-i18n-title attribute
+        document.querySelectorAll('[data-i18n-title]').forEach(element => {
+            const key = element.getAttribute('data-i18n-title');
+            element.title = this.t(key);
         });
 
         // Update HTML lang attribute

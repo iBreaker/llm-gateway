@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -73,6 +74,10 @@ func (m *AuthMiddleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 		// 在请求上下文中保存Gateway Key信息，供后续处理使用
 		r.Header.Set("X-Gateway-Key-ID", gatewayKey.ID)
 		r.Header.Set("X-Gateway-Key-Name", gatewayKey.Name)
+		
+		// 通过 context 传递完整的 GatewayKey 对象
+		ctx := context.WithValue(r.Context(), "gatewayKey", gatewayKey)
+		r = r.WithContext(ctx)
 
 		// 调用下一个处理器
 		next(w, r)

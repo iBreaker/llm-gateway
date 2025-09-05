@@ -114,7 +114,7 @@ func (s *HTTPServer) setupWebRoutes() {
 		s.mux.HandleFunc("/api/v1/upstream", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIUpstream))))
 		s.mux.HandleFunc("/api/v1/upstream/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIUpstreamDelete))))
 		s.mux.HandleFunc("/api/v1/apikeys", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIKeys))))
-		s.mux.HandleFunc("/api/v1/apikeys/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIKeyDelete))))
+		s.mux.HandleFunc("/api/v1/apikeys/", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleAPIKeyActions))))
 		
 		// 受保护的OAuth API 端点（需要认证）
 		s.mux.HandleFunc("/api/v1/oauth/start", CORSMiddleware(LoggingMiddleware(webHandler.requireAuth(webHandler.HandleOAuthStart))))

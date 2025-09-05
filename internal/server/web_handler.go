@@ -419,21 +419,34 @@ func (h *WebHandler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// API Delete API Key
-func (h *WebHandler) HandleAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-	
-	// 从URL路径中提取ID
+// HandleAPIKeyActions handles various API Key related actions
+func (h *WebHandler) HandleAPIKeyActions(w http.ResponseWriter, r *http.Request) {
+	// 从URL路径中解析操作
 	pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(pathParts) < 4 {
-		h.writeError(w, http.StatusBadRequest, "Invalid API key ID")
+		h.writeError(w, http.StatusBadRequest, "Invalid API key action path")
 		return
 	}
 	
 	keyID := pathParts[3] // /api/v1/apikeys/{id}
+	
+	// 检查是否有子路径
+	if len(pathParts) == 4 {
+		// /api/v1/apikeys/{id} - Delete API Key
+		h.handleAPIKeyDelete(w, r, keyID)
+	} else if len(pathParts) == 5 && pathParts[4] == "model-routes" {
+		// /api/v1/apikeys/{id}/model-routes - Model Routes operations
+		h.handleAPIKeyModelRoutes(w, r, keyID)
+	} else {
+		h.writeError(w, http.StatusNotFound, "API endpoint not found")
+	}
+}
+
+func (h *WebHandler) handleAPIKeyDelete(w http.ResponseWriter, r *http.Request, keyID string) {
+	if r.Method != http.MethodDelete {
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	
 	if err := h.configMgr.DeleteGatewayKey(keyID); err != nil {
 		logger.Error("Failed to delete API key %s: %v", keyID, err)
@@ -443,6 +456,88 @@ func (h *WebHandler) HandleAPIKeyDelete(w http.ResponseWriter, r *http.Request) 
 	
 	logger.Info("Deleted API key: %s", keyID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *WebHandler) handleAPIKeyModelRoutes(w http.ResponseWriter, r *http.Request, keyID string) {
+	switch r.Method {
+	case http.MethodGet:
+		h.getAPIKeyModelRoutes(w, r, keyID)
+	case http.MethodPut:
+		h.updateAPIKeyModelRoutes(w, r, keyID)
+	default:
+		h.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+func (h *WebHandler) getAPIKeyModelRoutes(w http.ResponseWriter, r *http.Request, keyID string) {
+	// 获取Gateway Key
+	gatewayKey, err := h.configMgr.GetGatewayKey(keyID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "API key not found")
+		return
+	}
+	
+	// 返回模型路由配置
+	response := map[string]interface{}{
+		"key_id":           keyID,
+		"key_name":         gatewayKey.Name,
+		"routes":           []interface{}{},
+		"default_behavior": "passthrough",
+		"enable_logging":   true,
+	}
+	
+	if gatewayKey.ModelRoutes != nil {
+		response["routes"] = gatewayKey.ModelRoutes.Routes
+		response["default_behavior"] = gatewayKey.ModelRoutes.DefaultBehavior
+		response["enable_logging"] = gatewayKey.ModelRoutes.EnableLogging
+	}
+	
+	h.writeJSON(w, http.StatusOK, response)
+}
+
+func (h *WebHandler) updateAPIKeyModelRoutes(w http.ResponseWriter, r *http.Request, keyID string) {
+	// 解析请求体
+	var req struct {
+		Routes          []types.ModelRoute `json:"routes"`
+		DefaultBehavior string            `json:"default_behavior"`
+		EnableLogging   bool              `json:"enable_logging"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON format")
+		return
+	}
+	
+	// 创建模型路由配置
+	modelRoutes := &types.ModelRouteConfig{
+		Routes:          req.Routes,
+		DefaultBehavior: req.DefaultBehavior,
+		EnableLogging:   req.EnableLogging,
+	}
+	
+	// 验证配置
+	if err := modelRoutes.Validate(); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid route configuration: "+err.Error())
+		return
+	}
+	
+	// 更新Gateway Key的模型路由配置
+	err := h.configMgr.UpdateGatewayKey(keyID, func(key *types.GatewayAPIKey) error {
+		key.ModelRoutes = modelRoutes
+		return nil
+	})
+	
+	if err != nil {
+		logger.Error("Failed to update model routes for API key %s: %v", keyID, err)
+		h.writeError(w, http.StatusInternalServerError, "Failed to update model routes")
+		return
+	}
+	
+	logger.Info("Updated model routes for API key: %s", keyID)
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Model routes updated successfully",
+	})
 }
 
 // 辅助方法

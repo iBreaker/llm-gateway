@@ -227,6 +227,51 @@ func (config *ModelRouteConfig) CreateContext(originalModel string) *ModelRouteC
 	}
 }
 
+// CreateContextWithKey 根据 GatewayKey 和全局配置创建模型路由上下文
+// 将Key级别和全局路由规则合并，Key级别路由优先级更高
+func (config *ModelRouteConfig) CreateContextWithKey(originalModel string, gatewayKey *GatewayAPIKey) *ModelRouteContext {
+	// 输入验证
+	if originalModel == "" {
+		return nil
+	}
+
+	// 构建合并的路由规则列表
+	var mergedRoutes []*ModelRoute
+	
+	// 1. 首先添加Key级别的路由规则（高优先级）
+	if gatewayKey != nil && gatewayKey.ModelRoutes != nil {
+		for i := range gatewayKey.ModelRoutes.Routes {
+			if gatewayKey.ModelRoutes.Routes[i].Enabled {
+				mergedRoutes = append(mergedRoutes, &gatewayKey.ModelRoutes.Routes[i])
+			}
+		}
+	}
+	
+	// 2. 然后添加全局路由规则（低优先级）
+	if config != nil {
+		for i := range config.Routes {
+			if config.Routes[i].Enabled {
+				mergedRoutes = append(mergedRoutes, &config.Routes[i])
+			}
+		}
+	}
+	
+	// 3. 在合并的规则中查找匹配的路由
+	for _, route := range mergedRoutes {
+		if route.Matches(originalModel) {
+			return &ModelRouteContext{
+				OriginalModel:  originalModel,
+				TargetModel:    route.TargetModel,
+				TargetProvider: route.TargetProvider,
+				RouteRuleID:    route.ID,
+				Enabled:        true,
+			}
+		}
+	}
+
+	return nil
+}
+
 // Validate 验证模型路由配置的完整性
 func (config *ModelRouteConfig) Validate() error {
 	if config == nil {

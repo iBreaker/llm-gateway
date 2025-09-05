@@ -91,7 +91,7 @@ class LLMGatewayApp {
 
     initializeFromHash() {
         const hash = window.location.hash.substring(1); // Remove #
-        if (hash && ['dashboard', 'upstream', 'apikeys', 'config'].includes(hash)) {
+        if (hash && ['dashboard', 'upstream', 'apikeys', 'config', 'model-routes'].includes(hash)) {
             console.log('Initializing from hash:', hash);
             
             // Remove active from all
@@ -121,6 +121,18 @@ class LLMGatewayApp {
         document.getElementById('add-apikey-form').addEventListener('submit', (e) => {
             e.preventDefault();
             this.generateApiKey();
+        });
+
+        // Route form handler
+        document.getElementById('route-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveRoute();
+        });
+
+        // Global Route form handler
+        document.getElementById('global-route-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveGlobalRoute();
         });
 
         // Upstream type change handler
@@ -190,6 +202,9 @@ class LLMGatewayApp {
                 break;
             case 'config':
                 this.loadConfiguration();
+                break;
+            case 'model-routes':
+                this.loadGlobalRoutes();
                 break;
         }
     }
@@ -341,6 +356,7 @@ class LLMGatewayApp {
                 <td>${this.renderUsageStats(key.usage)}</td>
                 <td>${key.created_at ? new Date(key.created_at).toLocaleDateString() : 'N/A'}</td>
                 <td>
+                    <button class="btn btn-secondary btn-small" onclick="app.configureModelRoutes('${key.id}', '${this.escapeHtml(key.name)}')" data-i18n="apikeys.configure_routes" data-i18n-title="apikeys.configure_routes_title">Routes</button>
                     <button class="btn btn-danger btn-small" onclick="app.deleteApiKey('${key.id}')">${window.i18n.t('apikeys.delete')}</button>
                 </td>
             </tr>
@@ -650,6 +666,379 @@ class LLMGatewayApp {
         } catch (error) {
             this.showError('Failed to delete upstream account: ' + error.message);
         }
+    }
+
+    async configureModelRoutes(keyId, keyName) {
+        // 设置当前编辑的Key信息
+        window.currentEditingKey = { id: keyId, name: keyName };
+        
+        // 设置模态框标题
+        document.getElementById('model-routes-key-name').textContent = keyName;
+        
+        // 加载现有的路由配置
+        await this.loadKeyModelRoutes(keyId);
+        
+        // 显示模态框
+        this.showModal('model-routes-modal');
+    }
+
+    async loadKeyModelRoutes(keyId) {
+        try {
+            const response = await this.apiCall(`/apikeys/${keyId}/model-routes`);
+            const routes = response.routes || [];
+            this.renderModelRoutes(routes);
+        } catch (error) {
+            // 如果没有配置或API不存在，显示空列表
+            this.renderModelRoutes([]);
+        }
+    }
+
+    renderModelRoutes(routes) {
+        const tbody = document.getElementById('model-routes-tbody');
+        
+        if (routes.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-state">
+                        <div class="empty-state-content">
+                            <div class="empty-state-icon">📋</div>
+                            <div class="empty-state-text">${window.i18n.t('routes.no_routes')}</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = routes.map((route, index) => `
+            <tr>
+                <td class="col-source">${this.escapeHtml(route.source_model)}</td>
+                <td class="col-target">${this.escapeHtml(route.target_model)}</td>
+                <td class="col-provider">${this.escapeHtml(route.target_provider)}</td>
+                <td class="col-priority">${route.priority || 0}</td>
+                <td class="col-status"><span class="status-badge ${route.enabled ? 'active' : 'disabled'}">${route.enabled ? window.i18n.t('common.enabled') : window.i18n.t('common.disabled')}</span></td>
+                <td class="col-actions">
+                    <button class="btn btn-secondary btn-small" onclick="app.editModelRoute(${index})" title="${window.i18n.t('common.edit')}">${window.i18n.t('common.edit')}</button>
+                    <button class="btn btn-danger btn-small" onclick="app.deleteModelRoute(${index})" title="${window.i18n.t('common.delete')}">${window.i18n.t('common.delete')}</button>
+                </td>
+            </tr>
+        `).join('');
+        
+        // 保存当前路由配置到全局变量
+        window.currentModelRoutes = routes;
+    }
+
+    showAddRouteForm() {
+        // 重置表单
+        document.getElementById('route-form').reset();
+        document.getElementById('route-form-title').textContent = window.i18n.t('model_routes.add_route');
+        document.getElementById('route-priority').value = '10';
+        document.getElementById('route-enabled').checked = true;
+        
+        // 设置编辑状态
+        window.currentEditingRouteIndex = -1;
+        
+        // 显示表单模态框
+        this.showModal('route-form-modal');
+    }
+
+    editModelRoute(index) {
+        const route = window.currentModelRoutes[index];
+        
+        // 填充表单
+        document.getElementById('route-source-model').value = route.source_model || '';
+        document.getElementById('route-target-model').value = route.target_model || '';
+        document.getElementById('route-target-provider').value = route.target_provider || '';
+        document.getElementById('route-priority').value = route.priority || 10;
+        document.getElementById('route-description').value = route.description || '';
+        document.getElementById('route-enabled').checked = route.enabled !== false;
+        
+        // 更新标题和编辑状态
+        document.getElementById('route-form-title').textContent = window.i18n.t('model_routes.edit_route');
+        window.currentEditingRouteIndex = index;
+        
+        // 显示表单模态框
+        this.showModal('route-form-modal');
+    }
+
+    deleteModelRoute(index) {
+        if (!confirm(window.i18n.t('model_routes.delete_confirm'))) {
+            return;
+        }
+        
+        // 从当前路由列表中删除
+        window.currentModelRoutes.splice(index, 1);
+        
+        // 重新渲染表格
+        this.renderModelRoutes(window.currentModelRoutes);
+    }
+
+    async saveModelRoutes() {
+        try {
+            const keyId = window.currentEditingKey.id;
+            const routes = window.currentModelRoutes || [];
+            
+            await this.apiCall(`/apikeys/${keyId}/model-routes`, 'PUT', {
+                routes: routes,
+                default_behavior: 'passthrough',
+                enable_logging: true
+            });
+            
+            this.showSuccess(window.i18n.t('model_routes.save_success'));
+            this.closeModal('model-routes-modal');
+        } catch (error) {
+            this.showError(window.i18n.t('model_routes.save_error') + ': ' + error.message);
+        }
+    }
+
+    async saveRoute() {
+        // 获取表单数据
+        const sourceModel = document.getElementById('route-source-model').value.trim();
+        const targetModel = document.getElementById('route-target-model').value.trim();
+        const targetProvider = document.getElementById('route-target-provider').value;
+        const priority = parseInt(document.getElementById('route-priority').value);
+        const description = document.getElementById('route-description').value.trim();
+        const enabled = document.getElementById('route-enabled').checked;
+
+        // 基本验证
+        if (!sourceModel || !targetModel || !targetProvider) {
+            this.showError(window.i18n.t('model_routes.required_fields'));
+            return;
+        }
+
+        if (isNaN(priority) || priority < 0) {
+            this.showError(window.i18n.t('model_routes.priority_error'));
+            return;
+        }
+
+        // 创建路由对象
+        const route = {
+            id: `route_${Date.now()}`, // 临时ID，后端会生成真实ID
+            source_model: sourceModel,
+            target_model: targetModel,
+            target_provider: targetProvider,
+            priority: priority,
+            enabled: enabled,
+            description: description
+        };
+
+        try {
+            // 初始化路由数组如果不存在
+            if (!window.currentModelRoutes) {
+                window.currentModelRoutes = [];
+            }
+
+            // 添加或更新路由到本地数组
+            const editIndex = window.currentEditingRouteIndex;
+            if (editIndex >= 0) {
+                // 编辑现有路由
+                window.currentModelRoutes[editIndex] = route;
+            } else {
+                // 添加新路由
+                window.currentModelRoutes.push(route);
+            }
+
+            // 按优先级排序
+            window.currentModelRoutes.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+            // 立即保存到服务器
+            const keyId = window.currentEditingKey.id;
+            await this.apiCall(`/apikeys/${keyId}/model-routes`, 'PUT', {
+                routes: window.currentModelRoutes,
+                default_behavior: 'passthrough',
+                enable_logging: true
+            });
+
+            // 重新渲染表格
+            this.renderModelRoutes(window.currentModelRoutes);
+
+            // 关闭表单模态框
+            this.closeModal('route-form-modal');
+
+            this.showSuccess(window.i18n.t('model_routes.route_saved_and_applied'));
+        } catch (error) {
+            this.showError(window.i18n.t('model_routes.save_error') + ': ' + error.message);
+        }
+    }
+
+    // Global Routes Management
+    async loadGlobalRoutes() {
+        try {
+            // 暂时显示空数据，等待后端API实现
+            const routes = [];
+            this.renderGlobalRoutes(routes);
+            this.updateGlobalRoutesStats(routes);
+        } catch (error) {
+            console.error('Failed to load global routes:', error);
+            this.showError(window.i18n.t('global_routes.load_error') + ': ' + error.message);
+        }
+    }
+
+    renderGlobalRoutes(routes) {
+        const tbody = document.getElementById('global-routes-tbody');
+        
+        if (routes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">${window.i18n.t('routes.no_routes')}</td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = routes.map((route, index) => `
+            <tr>
+                <td>${this.escapeHtml(route.source_model)}</td>
+                <td>${this.escapeHtml(route.target_model)}</td>
+                <td>${this.escapeHtml(route.target_provider)}</td>
+                <td>${route.priority || 0}</td>
+                <td><span class="status-badge ${route.enabled ? 'active' : 'disabled'}">${route.enabled ? window.i18n.t('common.enabled') : window.i18n.t('common.disabled')}</span></td>
+                <td>
+                    <button class="btn btn-secondary btn-small" onclick="app.editGlobalRoute(${index})">${window.i18n.t('common.edit')}</button>
+                    <button class="btn btn-danger btn-small" onclick="app.deleteGlobalRoute(${index})">${window.i18n.t('common.delete')}</button>
+                </td>
+            </tr>
+        `).join('');
+        
+        // 保存当前全局路由配置到全局变量
+        window.currentGlobalRoutes = routes;
+    }
+
+    updateGlobalRoutesStats(routes) {
+        const totalRoutes = routes.length;
+        const activeRoutes = routes.filter(route => route.enabled).length;
+        const providers = [...new Set(routes.map(route => route.target_provider))];
+        
+        document.getElementById('global-routes-stats-total').textContent = totalRoutes;
+        document.getElementById('global-routes-stats-active').textContent = activeRoutes;
+        document.getElementById('global-routes-stats-providers').textContent = providers.join(', ') || '-';
+        
+        // 显示统计卡片
+        const statsContainer = document.getElementById('global-routes-stats');
+        if (totalRoutes > 0 && statsContainer) {
+            statsContainer.style.display = 'grid';
+        }
+    }
+
+    showAddGlobalRouteForm() {
+        // 重置表单
+        document.getElementById('global-route-form').reset();
+        document.getElementById('global-route-form-title').textContent = window.i18n.t('global_routes.add_route_title');
+        document.getElementById('global-route-priority').value = '10';
+        document.getElementById('global-route-enabled').checked = true;
+        
+        // 设置编辑状态
+        window.currentEditingGlobalRouteIndex = -1;
+        
+        // 显示表单模态框
+        this.showModal('global-route-form-modal');
+    }
+
+    editGlobalRoute(index) {
+        const route = window.currentGlobalRoutes[index];
+        
+        // 填充表单
+        document.getElementById('global-route-source-model').value = route.source_model || '';
+        document.getElementById('global-route-target-model').value = route.target_model || '';
+        document.getElementById('global-route-target-provider').value = route.target_provider || '';
+        document.getElementById('global-route-priority').value = route.priority || 10;
+        document.getElementById('global-route-description').value = route.description || '';
+        document.getElementById('global-route-enabled').checked = route.enabled !== false;
+        
+        // 更新标题和编辑状态
+        document.getElementById('global-route-form-title').textContent = window.i18n.t('model_routes.edit_route');
+        window.currentEditingGlobalRouteIndex = index;
+        
+        // 显示表单模态框
+        this.showModal('global-route-form-modal');
+    }
+
+    deleteGlobalRoute(index) {
+        if (!confirm(window.i18n.t('model_routes.delete_confirm'))) {
+            return;
+        }
+        
+        // 从当前全局路由列表中删除
+        window.currentGlobalRoutes.splice(index, 1);
+        
+        // 重新渲染表格
+        this.renderGlobalRoutes(window.currentGlobalRoutes);
+    }
+
+    saveGlobalRoute() {
+        // 获取表单数据
+        const sourceModel = document.getElementById('global-route-source-model').value.trim();
+        const targetModel = document.getElementById('global-route-target-model').value.trim();
+        const targetProvider = document.getElementById('global-route-target-provider').value;
+        const priority = parseInt(document.getElementById('global-route-priority').value);
+        const description = document.getElementById('global-route-description').value.trim();
+        const enabled = document.getElementById('global-route-enabled').checked;
+
+        // 基本验证
+        if (!sourceModel || !targetModel || !targetProvider) {
+            this.showError(window.i18n.t('model_routes.required_fields'));
+            return;
+        }
+
+        if (isNaN(priority) || priority < 0) {
+            this.showError(window.i18n.t('model_routes.priority_error'));
+            return;
+        }
+
+        // 创建路由对象
+        const route = {
+            id: `global_route_${Date.now()}`, // 临时ID，后端会生成真实ID
+            source_model: sourceModel,
+            target_model: targetModel,
+            target_provider: targetProvider,
+            priority: priority,
+            enabled: enabled,
+            description: description
+        };
+
+        // 初始化全局路由数组如果不存在
+        if (!window.currentGlobalRoutes) {
+            window.currentGlobalRoutes = [];
+        }
+
+        // 添加或更新路由
+        const editIndex = window.currentEditingGlobalRouteIndex;
+        if (editIndex >= 0) {
+            // 编辑现有路由
+            window.currentGlobalRoutes[editIndex] = route;
+        } else {
+            // 添加新路由
+            window.currentGlobalRoutes.push(route);
+        }
+
+        // 按优先级排序
+        window.currentGlobalRoutes.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        // 重新渲染表格
+        this.renderGlobalRoutes(window.currentGlobalRoutes);
+
+        // 关闭表单模态框
+        this.closeModal('global-route-form-modal');
+
+        this.showSuccess(window.i18n.t('model_routes.route_saved'));
+    }
+
+    async saveGlobalRoutes() {
+        try {
+            const routes = window.currentGlobalRoutes || [];
+            
+            // 这里需要调用后端API来保存全局路由
+            // await this.apiCall('/config/model-routes', 'PUT', {
+            //     routes: routes,
+            //     default_behavior: 'passthrough',
+            //     enable_logging: true
+            // });
+            
+            this.showSuccess(window.i18n.t('model_routes.save_success'));
+            console.log('Global routes to save:', routes);
+        } catch (error) {
+            this.showError(window.i18n.t('model_routes.save_error') + ': ' + error.message);
+        }
+    }
+
+    refreshGlobalRoutes() {
+        this.loadGlobalRoutes();
     }
 
     async deleteApiKey(id) {

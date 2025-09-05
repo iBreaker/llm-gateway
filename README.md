@@ -205,6 +205,31 @@ gateway_keys:
     key_hash: "hashed_key"
     permissions: ["read", "write"]
     status: "active"
+    # 可选：为此Key配置独立的模型路由（与全局路由合并，Key级别优先级更高）
+    model_routes:
+      default_behavior: "passthrough"
+      enable_logging: true
+      routes:
+        - id: "key-specific-route"
+          source_model: "gpt-4*"
+          target_model: "gpt-4-turbo-preview"
+          target_provider: "openai"
+          priority: 10
+          enabled: true
+          description: "此Key特有的GPT-4路由规则"
+
+# 全局模型路由配置（作为所有Key的后备规则）
+model_routes:
+  default_behavior: "passthrough"
+  enable_logging: true
+  routes:
+    - id: "global-claude-route"
+      source_model: "claude-*"
+      target_model: "claude-3-5-sonnet-20241022"
+      target_provider: "anthropic"
+      priority: 20
+      enabled: true
+      description: "全局Claude路由规则"
 
 upstream_accounts:
   - id: "upstream_xxxxx"
