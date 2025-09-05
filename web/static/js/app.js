@@ -761,34 +761,44 @@ class LLMGatewayApp {
         this.showModal('route-form-modal');
     }
 
-    deleteModelRoute(index) {
+    async deleteModelRoute(index) {
         if (!confirm(window.i18n.t('model_routes.delete_confirm'))) {
             return;
         }
         
-        // 从当前路由列表中删除
-        window.currentModelRoutes.splice(index, 1);
-        
-        // 重新渲染表格
-        this.renderModelRoutes(window.currentModelRoutes);
-    }
-
-    async saveModelRoutes() {
         try {
-            const keyId = window.currentEditingKey.id;
-            const routes = window.currentModelRoutes || [];
+            // 保存要删除的路由，以便失败时恢复
+            const deletedRoute = window.currentModelRoutes[index];
             
+            // 从当前路由列表中删除
+            window.currentModelRoutes.splice(index, 1);
+            
+            // 立即保存到服务器
+            const keyId = window.currentEditingKey.id;
             await this.apiCall(`/apikeys/${keyId}/model-routes`, 'PUT', {
-                routes: routes,
+                routes: window.currentModelRoutes,
                 default_behavior: 'passthrough',
                 enable_logging: true
             });
             
-            this.showSuccess(window.i18n.t('model_routes.save_success'));
-            this.closeModal('model-routes-modal');
+            // 重新渲染表格
+            this.renderModelRoutes(window.currentModelRoutes);
+            
+            this.showSuccess(window.i18n.t('model_routes.route_deleted'));
         } catch (error) {
-            this.showError(window.i18n.t('model_routes.save_error') + ': ' + error.message);
+            // 如果保存失败，恢复删除的路由
+            if (typeof deletedRoute !== 'undefined') {
+                window.currentModelRoutes.splice(index, 0, deletedRoute);
+                this.renderModelRoutes(window.currentModelRoutes);
+            }
+            this.showError(window.i18n.t('model_routes.delete_error') + ': ' + error.message);
         }
+    }
+
+    async saveModelRoutes() {
+        // 这个方法现在主要用于关闭模态框
+        // 因为所有更改都会自动保存
+        this.closeModal('model-routes-modal');
     }
 
     async saveRoute() {

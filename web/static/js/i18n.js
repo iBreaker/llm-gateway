@@ -138,6 +138,10 @@ class I18n {
                 'routes.key_name_prefix': 'API Key:',
                 'routes.description': 'Configure routing rules to redirect specific models to different providers.',
                 'routes.priority_info': 'Lower priority numbers take precedence over higher numbers.',
+                'routes.auto_save_info': 'Changes are automatically saved when you add, edit, or delete routes.',
+                'routes.route_saved_and_applied': 'Route saved and applied successfully!',
+                'routes.route_deleted': 'Route deleted successfully!',
+                'routes.delete_error': 'Failed to delete route',
                 
                 // Common
                 'common.edit': 'Edit',
@@ -378,6 +382,10 @@ class I18n {
                 'routes.key_name_prefix': 'API 密钥：',
                 'routes.description': '配置路由规则以将特定模型重定向到不同的提供商。',
                 'routes.priority_info': '优先级数字越小，优先级越高。',
+                'routes.auto_save_info': '添加、编辑或删除路由时会自动保存更改。',
+                'routes.route_saved_and_applied': '路由已保存并生效！',
+                'routes.route_deleted': '路由删除成功！',
+                'routes.delete_error': '删除路由失败',
                 
                 // Common
                 'common.edit': '编辑',
